@@ -1,0 +1,56 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User runner profile and cross country 6k goals",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "displayName": { "type": "string", "maxLength": 128 },
+        "target6kTimeSeconds": { "type": "number" },
+        "current6kPrSeconds": { "type": "number" },
+        "weeklyRunGoal": { "type": "number" },
+        "unitPreference": { "type": "string", "enum": ["km", "miles"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "email", "target6kTimeSeconds", "weeklyRunGoal"]
+    },
+    "RunRecord": {
+      "title": "RunRecord",
+      "description": "Individual running activity record with Garmin metrics and 6k calculations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 32 },
+        "title": { "type": "string", "maxLength": 150 },
+        "distanceKm": { "type": "number" },
+        "durationSeconds": { "type": "number" },
+        "averagePaceSecPerKm": { "type": "number" },
+        "best6kTimeSeconds": { "type": "number" },
+        "runType": { "type": "string", "enum": ["Aerobic", "Interval Training", "6K Time Trial", "Tempo", "Long Run", "Race", "Easy", "Intervals"] },
+        "avgHeartRate": { "type": "number" },
+        "maxHeartRate": { "type": "number" },
+        "avgCadence": { "type": "number" },
+        "elevationGainMeters": { "type": "number" },
+        "source": { "type": "string", "maxLength": 64 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "date", "title", "distanceKm", "durationSeconds", "runType"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Runner settings, 6K time target, and weekly 3-run goal configurations"
+    },
+    "/runs/{runId}": {
+      "schema": "RunRecord",
+      "description": "Cross country training runs, Garmin sync activities, and 6k trial performances"
+    }
+  }
+}

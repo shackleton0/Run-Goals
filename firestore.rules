@@ -1,0 +1,95 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default-deny all unhandled paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidUserProfile(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.email is string && data.email.size() <= 256
+        && (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 128))
+        && data.target6kTimeSeconds is number && data.target6kTimeSeconds > 0
+        && (!('current6kPrSeconds' in data) || (data.current6kPrSeconds is number && data.current6kPrSeconds > 0))
+        && data.weeklyRunGoal is number && data.weeklyRunGoal >= 1 && data.weeklyRunGoal <= 14
+        && (!('unitPreference' in data) || (data.unitPreference in ['km', 'miles']))
+        && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64))
+        && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    function isValidRunRecord(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId.size() <= 128
+        && data.date is string && data.date.size() <= 32
+        && data.title is string && data.title.size() <= 150
+        && data.distanceKm is number && data.distanceKm >= 0
+        && data.durationSeconds is number && data.durationSeconds >= 0
+        && (!('averagePaceSecPerKm' in data) || (data.averagePaceSecPerKm is number))
+        && (!('best6kTimeSeconds' in data) || (data.best6kTimeSeconds is number))
+        && data.runType in ['Aerobic', 'Interval Training', '6K Time Trial', 'Tempo', 'Long Run', 'Race', 'Easy', 'Intervals']
+        && (!('avgHeartRate' in data) || (data.avgHeartRate is number))
+        && (!('maxHeartRate' in data) || (data.maxHeartRate is number))
+        && (!('avgCadence' in data) || (data.avgCadence is number))
+        && (!('elevationGainMeters' in data) || (data.elevationGainMeters is number))
+        && (!('source' in data) || (data.source is string && data.source.size() <= 64))
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000))
+        && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64))
+        && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    // User Profile: /users/{userId}
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if false; // Blanket queries disallowed
+      allow create: if isSignedIn()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && incoming().id == userId
+        && isValidUserProfile(incoming());
+      allow update: if isSignedIn()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && incoming().id == existing().id
+        && isValidUserProfile(incoming());
+      allow delete: if isSignedIn()
+        && isValidId(userId)
+        && request.auth.uid == userId;
+    }
+
+    // Runs Collection: /runs/{runId}
+    match /runs/{runId} {
+      allow get: if isSignedIn() && isValidId(runId) && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn()
+        && isValidId(runId)
+        && incoming().userId == request.auth.uid
+        && isValidRunRecord(incoming());
+      allow update: if isSignedIn()
+        && isValidId(runId)
+        && existing().userId == request.auth.uid
+        && incoming().userId == existing().userId
+        && isValidRunRecord(incoming());
+      allow delete: if isSignedIn()
+        && isValidId(runId)
+        && existing().userId == request.auth.uid;
+    }
+  }
+}

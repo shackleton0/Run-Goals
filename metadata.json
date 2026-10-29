@@ -1,0 +1,6 @@
+{
+  "name": "XC 6K Pace & Garmin Tracker",
+  "description": "Cross country 6k progress tracker with Garmin sync, weekly run consistency, visual performance metrics, and AI-ready training export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
