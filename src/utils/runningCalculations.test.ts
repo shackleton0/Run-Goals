@@ -6,6 +6,8 @@ import {
   calculatePaceSecPerKm,
   formatPace,
   calculate6kEquivalent,
+  calculateTargetDistanceEquivalent,
+  calculateTargetCutoff,
   groupRunsByWeek,
   inferRunType,
   findDuplicateRuns,
@@ -17,6 +19,9 @@ import { RunRecord } from '../types/running';
 test('formatDuration and parseDuration roundtrip correctly', () => {
   assert.equal(formatDuration(1260), '21:00');
   assert.equal(parseDuration('21:00'), 1260);
+  assert.equal(parseDuration('24'), 1440); // 24 minutes
+  assert.equal(parseDuration('24.5'), 1470); // 24m 30s
+  assert.equal(parseDuration('24m'), 1440);
 });
 
 test('calculatePaceSecPerKm calculates pace', () => {
@@ -27,6 +32,19 @@ test('calculatePaceSecPerKm calculates pace', () => {
 
 test('calculate6kEquivalent projects correctly', () => {
   assert.equal(calculate6kEquivalent(6.0, 1300), 1300);
+});
+
+test('calculateTargetCutoff calculates 23 seconds cut off from 4:43/km to 4:20/km', () => {
+  // Current 6K: 28:18 (1698s) => pace 4:43/km (283s)
+  // Target: 4:20 pace (260s) or 26:00 (1560s)
+  const resultPaceInput = calculateTargetCutoff(260, 1698, 6.0);
+  assert.ok(resultPaceInput);
+  assert.equal(resultPaceInput.paceCutoffSeconds, 23); // exactly 23 seconds
+  assert.equal(resultPaceInput.isAchieved, false);
+
+  const resultTimeInput = calculateTargetCutoff(1560, 1698, 6.0);
+  assert.ok(resultTimeInput);
+  assert.equal(resultTimeInput.paceCutoffSeconds, 23); // exactly 23 seconds
 });
 
 test('inferRunType maps to clean categories', () => {

@@ -7,6 +7,7 @@ interface EmptyGarminStateProps {
   unit: 'km' | 'miles';
   onProcessIncomingRuns: (runs: RunRecord[]) => void;
   onOpenGarminSync: () => void;
+  onOpenGarminSyncWithRuns?: (runs: RunRecord[]) => void;
   onOpenAddRun: () => void;
   onOpenSettings: () => void;
 }
@@ -15,6 +16,7 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
   unit,
   onProcessIncomingRuns,
   onOpenGarminSync,
+  onOpenGarminSyncWithRuns,
   onOpenAddRun,
   onOpenSettings,
 }) => {
@@ -90,7 +92,11 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
       if (accumulatedRuns.length === 0) {
         setErrorMessage('No valid running activities were recognized in the uploaded file(s). Supported: Garmin .TCX, .GPX, .CSV, and Garmin JSON.');
       } else {
-        onProcessIncomingRuns(accumulatedRuns);
+        if (onOpenGarminSyncWithRuns) {
+          onOpenGarminSyncWithRuns(accumulatedRuns);
+        } else {
+          onProcessIncomingRuns(accumulatedRuns);
+        }
       }
     } catch (err: unknown) {
       console.error('File parsing error:', err);
@@ -131,7 +137,7 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
             Awaiting Garmin Run Data
           </h2>
           <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
-            All 6K progression curves, 3-run weekly consistency tracking, aerobic base analysis, and interval split breakdowns populate strictly from your authentic Garmin data.
+            All 6K progression curves, weekly consistency tracking, aerobic base analysis, and interval split breakdowns populate strictly from your authentic Garmin data.
           </p>
         </div>
 
@@ -200,10 +206,10 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
           >
             <div className="flex items-center space-x-2 text-xs font-semibold text-neutral-900 dark:text-white mb-1">
               <FileText className="w-4 h-4 text-[#0a84ff]" />
-              <span>Paste Garmin JSON</span>
+              <span>Select Garmin Activities</span>
             </div>
             <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              Paste raw JSON or activities exported from Garmin Connect Web
+              Upload your workout file and pick which runs to import
             </p>
           </button>
 
@@ -234,10 +240,10 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
           </button>
         </div>
 
-        {/* Zero placeholder guarantee */}
+        {/* Clean status */}
         <div className="mt-6 flex items-center justify-center space-x-2 text-[11px] text-neutral-400 dark:text-neutral-500">
           <CheckCircle2 className="w-3.5 h-3.5 text-[#30d158]" />
-          <span>Zero placeholder data active · Duplicate check enabled on import</span>
+          <span>Authentic Garmin data · Watch telemetry & heart rate analysis</span>
         </div>
       </div>
     </div>

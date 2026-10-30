@@ -33,12 +33,16 @@ export interface UserProfile {
   id: string;
   email: string;
   displayName: string;
-  target6kTimeSeconds?: number; // Optional user goal (e.g. 1260 = 21:00)
+  targetDistanceKm?: number; // Target distance goal (default 6 km, or 5K, 8K, 10K, or custom)
+  targetGoalName?: string; // e.g. "6K XC", "5K Race", "10K"
+  target6kTimeSeconds?: number; // Target time or pace for the goal distance
   hasCustomTarget?: boolean;
   current6kPrSeconds?: number;
-  weeklyRunGoal: number; // default 3
+  weeklyRunGoal: number; // default 3 runs/wk
+  weeklyDistanceGoalKm?: number; // Optional weekly mileage/distance goal (e.g. 25 km / 15 mi)
   unitPreference: 'km' | 'miles';
   athleteLevel?: 'Beginner' | 'High School XC' | 'Collegiate / Advanced' | 'Masters';
+  maxHeartRate?: number;
   createdAt?: string;
   updatedAt?: string;
 }

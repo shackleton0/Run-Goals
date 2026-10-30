@@ -1,6 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { RunRecord } from '../types/running';
-import { parseGarminCsv, parseTcx, parseGpx } from '../utils/runningCalculations';
+import {
+  parseGarminCsv,
+  parseTcx,
+  parseGpx,
+  formatDuration,
+  formatPace,
+} from '../utils/runningCalculations';
 import {
   X,
   UploadCloud,
@@ -8,12 +14,21 @@ import {
   Check,
   AlertCircle,
   HelpCircle,
+  CheckSquare,
+  Square,
+  Search,
+  Heart,
+  Activity,
+  ArrowLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 interface GarminSyncModalProps {
   isOpen: boolean;
   onClose: () => void;
   userId: string;
+  unit?: 'km' | 'miles';
+  initialIncomingRuns?: RunRecord[];
   onProcessIncomingRuns: (runs: RunRecord[]) => void;
 }
 
@@ -21,18 +36,37 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
   isOpen,
   onClose,
   userId,
+  unit = 'km',
+  initialIncomingRuns,
   onProcessIncomingRuns,
 }) => {
   const [dragOver, setDragOver] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'upload' | 'instructions'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'selection' | 'instructions'>('upload');
+
+  // Parsed activities from uploaded file(s)
+  const [parsedActivities, setParsedActivities] = useState<RunRecord[]>([]);
+  // Set of selected activity IDs
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Search query in selection screen
+  const [searchFilter, setSearchFilter] = useState('');
+  const [fileName, setFileName] = useState<string>('');
+
+  useEffect(() => {
+    if (initialIncomingRuns && initialIncomingRuns.length > 0) {
+      setParsedActivities(initialIncomingRuns);
+      setSelectedIds(new Set(initialIncomingRuns.map((r) => r.id)));
+      setActiveTab('selection');
+    }
+  }, [initialIncomingRuns]);
 
   if (!isOpen) return null;
 
   const handleFileProcess = async (file: File) => {
     setErrorMsg(null);
-    setImportStatus(`Reading ${file.name}...`);
+    setImportStatus(`Parsing ${file.name}...`);
+    setFileName(file.name);
 
     try {
       const text = await file.text();
@@ -58,17 +92,45 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
         } else if (text.includes('Activity Type') || text.includes('Distance')) {
           parsedRuns = parseGarminCsv(text, userId);
         } else {
-          throw new Error('Please upload a .csv, .tcx, or .gpx exported from Garmin Connect.');
+          // Check for JSON
+          try {
+            const rawJson = JSON.parse(text);
+            const items = Array.isArray(rawJson) ? rawJson : [rawJson];
+            const jsonRuns = items.filter((item: any) => item && (item.distanceKm || item.distance));
+            if (jsonRuns.length > 0) {
+              parsedRuns = jsonRuns.map((j: any, idx: number) => ({
+                id: j.id || `garmin_json_${Date.now()}_${idx}`,
+                userId,
+                date: j.date || new Date().toISOString().split('T')[0],
+                title: j.title || 'Garmin Run',
+                distanceKm: Number(j.distanceKm || (j.distance ? j.distance / 1000 : 5)),
+                durationSeconds: Number(j.durationSeconds || j.duration || 1200),
+                averagePaceSecPerKm: Number(j.averagePaceSecPerKm || 240),
+                runType: j.runType || 'Aerobic',
+                avgHeartRate: j.avgHeartRate || j.averageHeartRate,
+                maxHeartRate: j.maxHeartRate || j.maximumHeartRate,
+                avgCadence: j.avgCadence || j.cadence,
+                elevationGainMeters: j.elevationGainMeters || j.elevationGain,
+                source: 'garmin',
+                garminActivityId: j.garminActivityId || j.activityId,
+              }));
+            }
+          } catch {
+            // Not JSON
+          }
         }
       }
 
-      if (parsedRuns.length === 0) {
-        throw new Error('No running activities found in file.');
+      if (!parsedRuns || parsedRuns.length === 0) {
+        throw new Error('No valid running activities found in this file. Please verify it is an exported Garmin activity file (.csv, .tcx, .gpx).');
       }
 
-      // Hand off to duplicate checker & importer
-      onProcessIncomingRuns(parsedRuns);
-      onClose();
+      // Transition to selection view
+      setParsedActivities(parsedRuns);
+      // Select all by default so user can deselect what they don't want
+      setSelectedIds(new Set(parsedRuns.map((r) => r.id)));
+      setImportStatus(null);
+      setActiveTab('selection');
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to parse file.');
       setImportStatus(null);
@@ -89,60 +151,105 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
     }
   };
 
+  const toggleSelectAll = () => {
+    if (selectedIds.size === parsedActivities.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(parsedActivities.map((r) => r.id)));
+    }
+  };
+
+  const toggleSelectRun = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedIds(next);
+  };
+
+  const handleConfirmUpload = () => {
+    const selectedRuns = parsedActivities.filter((r) => selectedIds.has(r.id));
+    if (selectedRuns.length === 0) return;
+
+    onProcessIncomingRuns(selectedRuns);
+    onClose();
+  };
+
+  const handleResetToUpload = () => {
+    setParsedActivities([]);
+    setSelectedIds(new Set());
+    setSearchFilter('');
+    setErrorMsg(null);
+    setImportStatus(null);
+    setActiveTab('upload');
+  };
+
+  const filteredActivities = parsedActivities.filter((r) => {
+    if (!searchFilter.trim()) return true;
+    const q = searchFilter.toLowerCase();
+    return r.title.toLowerCase().includes(q) || r.date.includes(q) || r.runType.toLowerCase().includes(q);
+  });
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-      <div className="relative w-full max-w-xl rounded-2xl bg-white dark:bg-[#1c1c1e] border border-neutral-200 dark:border-neutral-800 shadow-2xl p-6 overflow-hidden">
+      <div className="relative w-full max-w-2xl rounded-2xl bg-white dark:bg-[#1c1c1e] border border-neutral-200 dark:border-neutral-800 shadow-2xl p-6 overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-neutral-200 dark:border-neutral-800">
+        <div className="flex items-center justify-between pb-4 border-b border-neutral-200 dark:border-neutral-800 flex-shrink-0">
           <div className="flex items-center space-x-2.5">
             <div className="w-8 h-8 rounded-full bg-[#0a84ff]/10 text-[#0a84ff] flex items-center justify-center">
               <Watch className="w-4 h-4" />
             </div>
             <div>
               <h2 className="text-lg font-bold text-neutral-900 dark:text-white tracking-tight">
-                Garmin Data Sync
+                {activeTab === 'selection' ? 'Select Garmin Activities to Upload' : 'Garmin Data Sync'}
               </h2>
               <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                Upload your Garmin Connect workout files to track 6K progress
+                {activeTab === 'selection'
+                  ? `Choose which workouts to import (${selectedIds.size} of ${parsedActivities.length} selected)`
+                  : 'Upload your Garmin Connect workout files to track 6K progress'}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full text-neutral-400 hover:text-neutral-700 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            className="p-1.5 rounded-full text-neutral-400 hover:text-neutral-700 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
             aria-label="Close modal"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Segmented Control */}
-        <div className="flex p-1 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800 text-xs font-semibold my-4">
-          <button
-            onClick={() => setActiveTab('upload')}
-            className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
-              activeTab === 'upload'
-                ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-xs'
-                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-            }`}
-          >
-            Upload Garmin File
-          </button>
-          <button
-            onClick={() => setActiveTab('instructions')}
-            className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
-              activeTab === 'instructions'
-                ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-xs'
-                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-            }`}
-          >
-            Export Help
-          </button>
-        </div>
+        {/* Segmented Control - Only in upload/instructions mode */}
+        {activeTab !== 'selection' && (
+          <div className="flex p-1 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800 text-xs font-semibold my-4 flex-shrink-0">
+            <button
+              onClick={() => setActiveTab('upload')}
+              className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
+                activeTab === 'upload'
+                  ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-xs'
+                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
+            >
+              Upload Garmin File
+            </button>
+            <button
+              onClick={() => setActiveTab('instructions')}
+              className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
+                activeTab === 'instructions'
+                  ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-xs'
+                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
+            >
+              Export Help
+            </button>
+          </div>
+        )}
 
-        {/* Tab 1: Upload */}
+        {/* Tab 1: Upload View */}
         {activeTab === 'upload' && (
-          <div className="space-y-4">
+          <div className="space-y-4 py-2">
             <div
               onDragOver={(e) => {
                 e.preventDefault();
@@ -160,7 +267,7 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
               <input
                 id="garmin-file-input"
                 type="file"
-                accept=".csv,.tcx,.gpx,.fit"
+                accept=".csv,.tcx,.gpx,.json,.fit"
                 className="hidden"
                 onChange={handleFileInput}
               />
@@ -172,7 +279,7 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
                 Supports Garmin .CSV (Activities Export), .TCX, and .GPX files
               </p>
               <span className="inline-block px-3 py-1 rounded-full text-[11px] font-medium bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
-                Automatic duplicate detection checks before importing
+                You can select and preview individual activities before uploading
               </span>
             </div>
 
@@ -191,9 +298,164 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
           </div>
         )}
 
-        {/* Tab 2: Instructions */}
+        {/* Tab 2: Activity Selection Step */}
+        {activeTab === 'selection' && (
+          <div className="flex-1 flex flex-col min-h-0 py-2 space-y-3">
+            {/* Control Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 flex-shrink-0 bg-neutral-50 dark:bg-neutral-900/60 p-3 rounded-xl border border-neutral-200/80 dark:border-neutral-800">
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={toggleSelectAll}
+                  className="flex items-center space-x-1.5 text-xs font-semibold text-neutral-800 dark:text-neutral-200 hover:text-[#0a84ff] cursor-pointer"
+                >
+                  {selectedIds.size === parsedActivities.length ? (
+                    <CheckSquare className="w-4 h-4 text-[#30d158]" />
+                  ) : (
+                    <Square className="w-4 h-4 text-neutral-400" />
+                  )}
+                  <span>{selectedIds.size === parsedActivities.length ? 'Deselect All' : 'Select All'}</span>
+                </button>
+
+                <span className="text-xs text-neutral-400">|</span>
+
+                <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400 tabular-nums">
+                  <strong className="text-neutral-900 dark:text-white">{selectedIds.size}</strong> of {parsedActivities.length} selected
+                </span>
+              </div>
+
+              {/* Search filter for large CSVs */}
+              {parsedActivities.length > 4 && (
+                <div className="relative min-w-[180px]">
+                  <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Filter activities..."
+                    value={searchFilter}
+                    onChange={(e) => setSearchFilter(e.target.value)}
+                    className="w-full pl-7 pr-2.5 py-1 text-xs rounded-lg bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-none focus:border-[#30d158]"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Scrollable Activities Selection List */}
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[220px]">
+              {filteredActivities.length === 0 ? (
+                <div className="py-8 text-center text-xs text-neutral-400">
+                  No activities match your search.
+                </div>
+              ) : (
+                filteredActivities.map((run) => {
+                  const isChecked = selectedIds.has(run.id);
+
+                  return (
+                    <div
+                      key={run.id}
+                      onClick={() => toggleSelectRun(run.id)}
+                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 text-xs select-none ${
+                        isChecked
+                          ? 'bg-neutral-50 dark:bg-neutral-900/80 border-[#30d158]/50 dark:border-[#30d158]/40 shadow-xs'
+                          : 'bg-white dark:bg-black/40 border-neutral-200 dark:border-neutral-800 opacity-60 hover:opacity-100'
+                      }`}
+                    >
+                      {/* Left: Checkbox + Title + Meta */}
+                      <div className="flex items-center space-x-3 min-w-0">
+                        <div className="flex-shrink-0">
+                          {isChecked ? (
+                            <CheckSquare className="w-4 h-4 text-[#30d158]" />
+                          ) : (
+                            <Square className="w-4 h-4 text-neutral-400" />
+                          )}
+                        </div>
+
+                        <div className="min-w-0 space-y-0.5">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-semibold text-neutral-900 dark:text-white truncate">
+                              {run.title}
+                            </span>
+                            <span className="px-1.5 py-0.2 rounded-full bg-neutral-200/80 dark:bg-neutral-800 text-[10px] font-medium text-neutral-700 dark:text-neutral-300 flex-shrink-0">
+                              {run.runType}
+                            </span>
+                          </div>
+
+                          <div className="text-[11px] text-neutral-500 dark:text-neutral-400 flex items-center space-x-2">
+                            <span>{run.date}</span>
+                            {run.avgHeartRate && (
+                              <>
+                                <span>·</span>
+                                <span className="flex items-center space-x-1 text-[#ff375f]">
+                                  <Heart className="w-3 h-3 fill-[#ff375f]" />
+                                  <span>{run.avgHeartRate} bpm</span>
+                                </span>
+                              </>
+                            )}
+                            {run.avgCadence && (
+                              <>
+                                <span>·</span>
+                                <span>{run.avgCadence} spm</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: Distance & Pace Telemetry */}
+                      <div className="flex items-center space-x-3 text-right flex-shrink-0 tabular-nums">
+                        <div>
+                          <div className="font-bold text-neutral-900 dark:text-white">
+                            {run.distanceKm} km
+                          </div>
+                          <div className="text-[11px] text-neutral-500">
+                            {formatDuration(run.durationSeconds)}
+                          </div>
+                        </div>
+
+                        <div className="min-w-[65px]">
+                          <div className="font-semibold text-neutral-800 dark:text-neutral-200">
+                            {formatPace(run.averagePaceSecPerKm, unit)}
+                          </div>
+                          <div className="text-[10px] text-neutral-400 uppercase">Avg Pace</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Bottom Action Footer */}
+            <div className="pt-3 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between flex-shrink-0">
+              <button
+                onClick={handleResetToUpload}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Upload Different File</span>
+              </button>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={onClose}
+                  className="px-3.5 py-2 rounded-full text-xs font-semibold text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmUpload}
+                  disabled={selectedIds.size === 0}
+                  className="px-5 py-2 rounded-full text-xs font-semibold bg-[#30d158] hover:bg-[#28cd41] text-black disabled:opacity-40 transition-all cursor-pointer flex items-center space-x-1.5 shadow-xs"
+                >
+                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>Upload Selected ({selectedIds.size})</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 3: Instructions */}
         {activeTab === 'instructions' && (
-          <div className="space-y-3 text-xs text-neutral-700 dark:text-neutral-300 max-h-72 overflow-y-auto pr-1">
+          <div className="space-y-3 text-xs text-neutral-700 dark:text-neutral-300 max-h-72 overflow-y-auto pr-1 py-2">
             <div className="font-semibold text-neutral-900 dark:text-white flex items-center space-x-1.5">
               <HelpCircle className="w-4 h-4 text-[#0a84ff]" />
               <span>How to Export from Garmin Connect:</span>
@@ -207,7 +469,7 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
                 <li>Log in to <strong>connect.garmin.com</strong> in your browser.</li>
                 <li>Go to <strong>Activities &gt; All Activities</strong> in the left menu.</li>
                 <li>Click <strong>Export CSV</strong> at the top right of the table.</li>
-                <li>Drop the downloaded file here. Duplicate runs will be automatically flagged!</li>
+                <li>Drop the downloaded file here. You will be able to select exactly which activities to import!</li>
               </ol>
             </div>
 

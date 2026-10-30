@@ -27,10 +27,13 @@ service cloud.firestore {
       return data.id is string && data.id.size() <= 128
         && data.email is string && data.email.size() <= 256
         && (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 128))
-        && data.target6kTimeSeconds is number && data.target6kTimeSeconds > 0
+        && (!('target6kTimeSeconds' in data) || (data.target6kTimeSeconds is number && data.target6kTimeSeconds > 0))
+        && (!('hasCustomTarget' in data) || (data.hasCustomTarget is bool))
         && (!('current6kPrSeconds' in data) || (data.current6kPrSeconds is number && data.current6kPrSeconds > 0))
         && data.weeklyRunGoal is number && data.weeklyRunGoal >= 1 && data.weeklyRunGoal <= 14
         && (!('unitPreference' in data) || (data.unitPreference in ['km', 'miles']))
+        && (!('athleteLevel' in data) || (data.athleteLevel in ['Beginner', 'High School XC', 'Collegiate / Advanced', 'Masters']))
+        && (!('maxHeartRate' in data) || (data.maxHeartRate is number && data.maxHeartRate >= 100 && data.maxHeartRate <= 250))
         && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64))
         && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
     }
@@ -51,6 +54,7 @@ service cloud.firestore {
         && (!('elevationGainMeters' in data) || (data.elevationGainMeters is number))
         && (!('source' in data) || (data.source is string && data.source.size() <= 64))
         && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000))
+        && (!('garminActivityId' in data) || (data.garminActivityId is string && data.garminActivityId.size() <= 128))
         && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64))
         && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
     }

@@ -21,6 +21,7 @@ import { DEFAULT_RUNNER_PROFILE } from './data/sampleRuns';
 import {
   groupRunsByWeek,
   calculate6kEquivalent,
+  calculateTargetDistanceEquivalent,
   findDuplicateRuns,
 } from './utils/runningCalculations';
 import { Navbar } from './components/Navbar';
@@ -34,6 +35,7 @@ import { AiExportModal } from './components/AiExportModal';
 import { AddRunModal } from './components/AddRunModal';
 import { GoalSettingsModal } from './components/GoalSettingsModal';
 import { EmptyGarminState } from './components/EmptyGarminState';
+import { WatchTelemetrySection } from './components/WatchTelemetrySection';
 import { Cloud, CloudOff, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -103,9 +105,25 @@ export default function App() {
 
   // Modals state
   const [isGarminSyncOpen, setIsGarminSyncOpen] = useState(false);
+  const [preParsedGarminRuns, setPreParsedGarminRuns] = useState<RunRecord[]>([]);
   const [isAiExportOpen, setIsAiExportOpen] = useState(false);
   const [isAddRunOpen, setIsAddRunOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  const handleOpenGarminSync = () => {
+    setPreParsedGarminRuns([]);
+    setIsGarminSyncOpen(true);
+  };
+
+  const handleOpenGarminSyncWithRuns = (runsToSelect: RunRecord[]) => {
+    setPreParsedGarminRuns(runsToSelect);
+    setIsGarminSyncOpen(true);
+  };
+
+  const handleCloseGarminSync = () => {
+    setIsGarminSyncOpen(false);
+    setPreParsedGarminRuns([]);
+  };
 
   // Firebase Auth & Firestore Subscription
   useEffect(() => {
@@ -152,8 +170,9 @@ export default function App() {
   // Derived metrics
   const { weeklyStats, adherence } = groupRunsByWeek(runs, profile.weeklyRunGoal);
 
+  const targetDistKm = profile.targetDistanceKm || 6.0;
   const best6kSec = runs.reduce<number | undefined>((best, run) => {
-    const eq = run.best6kTimeSeconds || calculate6kEquivalent(run.distanceKm, run.durationSeconds);
+    const eq = calculateTargetDistanceEquivalent(run.distanceKm, run.durationSeconds, targetDistKm);
     if (!eq || eq <= 0) return best;
     if (best === undefined || eq < best) return eq;
     return best;
@@ -270,6 +289,22 @@ export default function App() {
     }
   };
 
+  const handleCombineRuns = async (combinedRun: RunRecord, sourceRunIds: string[]) => {
+    const targetUserId = user ? user.uid : 'local_user';
+    const runToSave: RunRecord = { ...combinedRun, userId: targetUserId };
+    const sourceIdsSet = new Set(sourceRunIds);
+
+    const updatedRuns = [runToSave, ...runs.filter((r) => !sourceIdsSet.has(r.id))];
+    setRuns(updatedRuns);
+
+    if (user) {
+      await saveRunRecord(runToSave);
+      for (const id of sourceRunIds) {
+        await deleteRunRecord(id);
+      }
+    }
+  };
+
   const handleSaveProfile = async (updatedProfile: UserProfile) => {
     setProfile(updatedProfile);
     if (user) {
@@ -305,7 +340,7 @@ export default function App() {
           best6kSec={best6kSec}
           theme={theme}
           onToggleTheme={toggleTheme}
-          onOpenGarminSync={() => setIsGarminSyncOpen(true)}
+          onOpenGarminSync={handleOpenGarminSync}
           onOpenAiExport={() => setIsAiExportOpen(true)}
           onOpenAddRun={() => setIsAddRunOpen(true)}
           onOpenSettings={() => setIsSettingsOpen(true)}
@@ -342,9 +377,7 @@ export default function App() {
             </div>
 
             <div className="hidden sm:flex items-center space-x-2 text-neutral-400 dark:text-neutral-500">
-              <span>Garmin Duplicate Filter Active</span>
-              <span>·</span>
-              <span>3 Runs / Wk Target</span>
+              <span className="tabular-nums">{runs.length} {runs.length === 1 ? 'run' : 'runs'} logged</span>
             </div>
           </div>
         </div>
@@ -355,13 +388,14 @@ export default function App() {
             <EmptyGarminState
               unit={profile.unitPreference}
               onProcessIncomingRuns={handleProcessIncomingRuns}
-              onOpenGarminSync={() => setIsGarminSyncOpen(true)}
+              onOpenGarminSync={handleOpenGarminSync}
+              onOpenGarminSyncWithRuns={handleOpenGarminSyncWithRuns}
               onOpenAddRun={() => setIsAddRunOpen(true)}
               onOpenSettings={() => setIsSettingsOpen(true)}
             />
           ) : (
             <div className="space-y-5">
-              {/* 1. 6K Target & Splits Banner */}
+              {/* 1. TARGET SPEED THING (6K Target, Pace & Race Splits) */}
               <GoalBanner
                 profile={profile}
                 adherence={adherence}
@@ -369,33 +403,43 @@ export default function App() {
                 onEditGoal={() => setIsSettingsOpen(true)}
               />
 
-              {/* 2. 3-Runs Weekly Consistency Tracker */}
+              {/* 2. WEEKLY TRAINING (Weekly Training Schedule) */}
               <WeeklyAdherenceCard
                 weeklyStats={weeklyStats}
                 adherence={adherence}
                 onOpenAddRun={() => setIsAddRunOpen(true)}
                 unit={profile.unitPreference}
+                weeklyDistanceGoalKm={profile.weeklyDistanceGoalKm}
               />
 
-              {/* 3. Performance Analytics with Aerobic & Interval views */}
+              {/* 3. PERFORMANCE ANALYTICS (Progression curves, aerobic base, interval training) */}
               <ProgressVisualizer
                 runs={runs}
                 weeklyStats={weeklyStats}
                 target6kSec={profile.target6kTimeSeconds}
                 unit={profile.unitPreference}
-                onOpenGarminSync={() => setIsGarminSyncOpen(true)}
+                onOpenGarminSync={handleOpenGarminSync}
                 onOpenAddRun={() => setIsAddRunOpen(true)}
               />
 
-              {/* 4. Workout History Log with inline Category selection */}
+              {/* 4. FITNESS TRACKER DATA (Watch Biometrics, Fastest Pace, Peak Heartbeat, HR Training Zones) */}
+              <WatchTelemetrySection
+                runs={runs}
+                unit={profile.unitPreference}
+                customMaxHr={profile.maxHeartRate}
+                onUpdateMaxHr={(val) => handleSaveProfile({ ...profile, maxHeartRate: val })}
+              />
+
+              {/* 5. WORKOUT HISTORY (History log, categories, and Combine Workout tool) */}
               <RunList
                 runs={runs}
                 unit={profile.unitPreference}
                 target6kSec={profile.target6kTimeSeconds}
                 onDeleteRun={handleDeleteRun}
                 onUpdateRunCategory={handleUpdateRunCategory}
+                onCombineRuns={handleCombineRuns}
                 best6kSec={best6kSec}
-                onOpenGarminSync={() => setIsGarminSyncOpen(true)}
+                onOpenGarminSync={handleOpenGarminSync}
                 onOpenAddRun={() => setIsAddRunOpen(true)}
               />
             </div>
@@ -404,14 +448,16 @@ export default function App() {
 
         {/* Minimal Footer */}
         <footer className="border-t border-neutral-200 dark:border-neutral-800 bg-white/50 dark:bg-black/50 py-5 text-center text-xs text-neutral-400 dark:text-neutral-500">
-          <p>Cross Country 6K Race Tracker & Garmin Data Sync</p>
+          <p>RunGoals · Cross Country 6K Pace & Fitness Tracker Data</p>
         </footer>
 
         {/* Modals */}
         <GarminSyncModal
           isOpen={isGarminSyncOpen}
-          onClose={() => setIsGarminSyncOpen(false)}
+          onClose={handleCloseGarminSync}
           userId={user ? user.uid : 'local_user'}
+          unit={profile.unitPreference}
+          initialIncomingRuns={preParsedGarminRuns}
           onProcessIncomingRuns={handleProcessIncomingRuns}
         />
 

@@ -9,13 +9,16 @@
         "email": { "type": "string", "maxLength": 256 },
         "displayName": { "type": "string", "maxLength": 128 },
         "target6kTimeSeconds": { "type": "number" },
+        "hasCustomTarget": { "type": "boolean" },
         "current6kPrSeconds": { "type": "number" },
         "weeklyRunGoal": { "type": "number" },
         "unitPreference": { "type": "string", "enum": ["km", "miles"] },
+        "athleteLevel": { "type": "string", "enum": ["Beginner", "High School XC", "Collegiate / Advanced", "Masters"] },
+        "maxHeartRate": { "type": "number" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
-      "required": ["id", "email", "target6kTimeSeconds", "weeklyRunGoal"]
+      "required": ["id", "email", "weeklyRunGoal"]
     },
     "RunRecord": {
       "title": "RunRecord",
@@ -37,6 +40,7 @@
         "elevationGainMeters": { "type": "number" },
         "source": { "type": "string", "maxLength": 64 },
         "notes": { "type": "string", "maxLength": 1000 },
+        "garminActivityId": { "type": "string", "maxLength": 128 },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },

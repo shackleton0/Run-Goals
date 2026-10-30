@@ -19,32 +19,40 @@ export function formatDuration(seconds?: number | null): string {
   return `${formattedMins}:${formattedSecs}`;
 }
 
-export function parseDuration(input: string): number {
+export function parseDuration(input: string, assumeMinutesForBareNumber: boolean = true): number {
   if (!input || typeof input !== 'string') return 0;
   const clean = input.trim();
+  if (!clean) return 0;
 
   if (clean.includes(':')) {
     const parts = clean.split(':').map((p) => parseFloat(p.trim()) || 0);
     if (parts.length === 3) {
-      return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      return Math.round(parts[0] * 3600 + parts[1] * 60 + parts[2]);
     } else if (parts.length === 2) {
-      return parts[0] * 60 + parts[1];
+      return Math.round(parts[0] * 60 + parts[1]);
     }
   }
 
-  const minMatch = clean.match(/(\d+)\s*(?:m|min|minutes)/i);
-  const secMatch = clean.match(/(\d+)\s*(?:s|sec|seconds)/i);
-  const hrMatch = clean.match(/(\d+)\s*(?:h|hr|hours)/i);
+  const minMatch = clean.match(/(\d+(?:\.\d+)?)\s*(?:m|min|mins|minutes)/i);
+  const secMatch = clean.match(/(\d+(?:\.\d+)?)\s*(?:s|sec|secs|seconds)/i);
+  const hrMatch = clean.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hours)/i);
 
   if (minMatch || secMatch || hrMatch) {
-    const h = hrMatch ? parseInt(hrMatch[1], 10) : 0;
-    const m = minMatch ? parseInt(minMatch[1], 10) : 0;
-    const s = secMatch ? parseInt(secMatch[1], 10) : 0;
-    return h * 3600 + m * 60 + s;
+    const h = hrMatch ? parseFloat(hrMatch[1]) : 0;
+    const m = minMatch ? parseFloat(minMatch[1]) : 0;
+    const s = secMatch ? parseFloat(secMatch[1]) : 0;
+    return Math.round(h * 3600 + m * 60 + s);
   }
 
   const rawNum = parseFloat(clean);
-  return isNaN(rawNum) ? 0 : rawNum;
+  if (isNaN(rawNum) || rawNum <= 0) return 0;
+
+  // When a runner enters a bare number like 24 or 24.5, assume it is minutes (e.g. 24 min = 1440 sec)
+  if (assumeMinutesForBareNumber && rawNum < 600) {
+    return Math.round(rawNum * 60);
+  }
+
+  return Math.round(rawNum);
 }
 
 export function calculatePaceSecPerKm(distanceKm: number, durationSeconds: number): number {
@@ -61,13 +69,73 @@ export function formatPace(secPerKm: number, unit: 'km' | 'miles' = 'km'): strin
   return `${mins}:${secs.toString().padStart(2, '0')} ${unitSuffix}`;
 }
 
-export function calculate6kEquivalent(distanceKm: number, durationSeconds: number): number {
-  if (!distanceKm || distanceKm <= 0 || !durationSeconds || durationSeconds <= 0) return 0;
-  if (Math.abs(distanceKm - 6.0) < 0.05) {
-    return Math.round(durationSeconds * (6.0 / distanceKm));
+export function calculateTargetDistanceEquivalent(
+  distanceKm: number,
+  durationSeconds: number,
+  targetDistanceKm: number = 6.0
+): number {
+  if (!distanceKm || distanceKm <= 0 || !durationSeconds || durationSeconds <= 0 || !targetDistanceKm || targetDistanceKm <= 0) return 0;
+  if (Math.abs(distanceKm - targetDistanceKm) < 0.05) {
+    return Math.round(durationSeconds * (targetDistanceKm / distanceKm));
   }
-  const riegelFactor = Math.pow(6.0 / distanceKm, 1.06);
+  const riegelFactor = Math.pow(targetDistanceKm / distanceKm, 1.06);
   return Math.round(durationSeconds * riegelFactor);
+}
+
+export function calculate6kEquivalent(distanceKm: number, durationSeconds: number): number {
+  return calculateTargetDistanceEquivalent(distanceKm, durationSeconds, 6.0);
+}
+
+export interface TargetCutoffResult {
+  paceCutoffSeconds: number; // e.g. 23 seconds cut off
+  totalTimeCutoffSeconds: number; // e.g. 138s total across the distance
+  currentPaceSecPerKm: number; // e.g. 283 (4:43/km)
+  targetPaceSecPerKm: number; // e.g. 260 (4:20/km)
+  currentTotalSec: number;
+  targetTotalSec: number;
+  targetDistanceKm: number;
+  isAchieved: boolean;
+}
+
+export function calculateTargetCutoff(
+  targetSec?: number | null,
+  currentSec?: number | null,
+  targetDistanceKm: number = 6.0
+): TargetCutoffResult | null {
+  if (!targetSec || targetSec <= 0 || !currentSec || currentSec <= 0 || !targetDistanceKm || targetDistanceKm <= 0) {
+    return null;
+  }
+
+  // If targetSec is under 600 (under 10 minutes), user entered pace (e.g. 260s = 4:20 /km)
+  let targetPacePerKm: number;
+  let targetTotalSec: number;
+
+  if (targetSec < 600) {
+    targetPacePerKm = targetSec;
+    targetTotalSec = Math.round(targetSec * targetDistanceKm);
+  } else {
+    targetTotalSec = targetSec;
+    targetPacePerKm = targetSec / targetDistanceKm;
+  }
+
+  const currentTotalSec = currentSec;
+  const currentPacePerKm = currentSec / targetDistanceKm;
+
+  // Pace difference in seconds (e.g. 283 - 260 = 23 seconds)
+  const paceCutoffSeconds = Math.round(currentPacePerKm - targetPacePerKm);
+  const totalTimeCutoffSeconds = Math.round(currentTotalSec - targetTotalSec);
+  const isAchieved = paceCutoffSeconds <= 0;
+
+  return {
+    paceCutoffSeconds,
+    totalTimeCutoffSeconds,
+    currentPaceSecPerKm: currentPacePerKm,
+    targetPaceSecPerKm: targetPacePerKm,
+    currentTotalSec,
+    targetTotalSec,
+    targetDistanceKm,
+    isAchieved,
+  };
 }
 
 export function isAerobicRun(type: RunType): boolean {
