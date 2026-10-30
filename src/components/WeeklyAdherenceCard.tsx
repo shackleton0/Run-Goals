@@ -211,8 +211,9 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
                   <div className="text-[10px] text-neutral-500 dark:text-neutral-400 tabular-nums">
                     {distDisplay} {unit}
                   </div>
-                  <div className="mt-1 text-[9px] text-[#0a84ff] font-medium">
-                    {isSelected ? '▴ Hide runs' : '▾ View runs'}
+                  <div className="mt-1 text-[10px] text-[#0a84ff] font-medium flex items-center justify-center space-x-1">
+                    <span>{isSelected ? 'Hide runs' : 'View runs'}</span>
+                    {isSelected ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                   </div>
                 </button>
               );

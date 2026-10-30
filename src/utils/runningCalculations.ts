@@ -671,3 +671,148 @@ ${runRows || '| - | No runs logged yet | - | - | - | - | - | - | - |'}
 4. "How can I improve my cadence and finish faster over the final 2 kilometers of a hilly 6K cross country course?"
 `;
 }
+
+export type TrainingCategory = 'Easy' | 'Interval' | 'Tempo' | 'Race';
+
+export function getTrainingCategory(runType: RunType, title?: string): TrainingCategory {
+  if (runType === 'Race' || runType === '6K Time Trial') {
+    return 'Race';
+  }
+  if (runType === 'Interval Training' || runType === 'Intervals') {
+    return 'Interval';
+  }
+  if (runType === 'Tempo') {
+    return 'Tempo';
+  }
+  if (runType === 'Easy' || runType === 'Aerobic' || runType === 'Long Run') {
+    return 'Easy';
+  }
+  const lower = (title || '').toLowerCase();
+  if (lower.includes('race') || lower.includes('time trial')) return 'Race';
+  if (lower.includes('interval') || lower.includes('track') || lower.includes('repeat')) return 'Interval';
+  if (lower.includes('tempo') || lower.includes('threshold')) return 'Tempo';
+  return 'Easy';
+}
+
+export interface CategoryBreakdownItem {
+  category: TrainingCategory;
+  name: string;
+  description: string;
+  runCount: number;
+  totalDistanceKm: number;
+  totalDurationSeconds: number;
+  percentageDistance: number;
+  percentageCount: number;
+  avgPaceSecPerKm: number;
+  color: string;
+  darkColor: string;
+  badgeBg: string;
+}
+
+export interface TrainingBreakdownResult {
+  items: CategoryBreakdownItem[];
+  totalRuns: number;
+  totalDistanceKm: number;
+  totalDurationSeconds: number;
+  avgPaceSecPerKm: number;
+  periodDays: number;
+}
+
+export function calculateCategoryBreakdown(
+  runs: RunRecord[],
+  days: number = 30,
+  referenceDate: Date = new Date()
+): TrainingBreakdownResult {
+  const cutoffTime = referenceDate.getTime() - days * 24 * 60 * 60 * 1000;
+
+  const windowRuns = runs.filter((r) => {
+    const d = new Date(r.date).getTime();
+    return !isNaN(d) && d >= cutoffTime;
+  });
+
+  const categoryMeta: Record<TrainingCategory, { name: string; description: string; color: string; darkColor: string; badgeBg: string }> = {
+    Easy: {
+      name: 'Easy & Base',
+      description: 'Aerobic foundation, recovery, and long runs (Zone 2)',
+      color: '#0284c7', // Sky 600
+      darkColor: '#38bdf8', // Sky 400
+      badgeBg: 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300',
+    },
+    Interval: {
+      name: 'Intervals',
+      description: 'Track repeats, VO2 max speed, and race turnover',
+      color: '#7c3aed', // Violet 600
+      darkColor: '#a78bfa', // Violet 400
+      badgeBg: 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300',
+    },
+    Tempo: {
+      name: 'Tempo',
+      description: 'Lactate threshold and sustained tempo rhythm',
+      color: '#d97706', // Amber 600
+      darkColor: '#fbbf24', // Amber 400
+      badgeBg: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300',
+    },
+    Race: {
+      name: 'Race & Trials',
+      description: 'Cross country races and goal distance time trials',
+      color: '#059669', // Emerald 600
+      darkColor: '#34d399', // Emerald 400
+      badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300',
+    },
+  };
+
+  const buckets: Record<TrainingCategory, { runs: RunRecord[]; distance: number; duration: number }> = {
+    Easy: { runs: [], distance: 0, duration: 0 },
+    Interval: { runs: [], distance: 0, duration: 0 },
+    Tempo: { runs: [], distance: 0, duration: 0 },
+    Race: { runs: [], distance: 0, duration: 0 },
+  };
+
+  windowRuns.forEach((r) => {
+    const cat = getTrainingCategory(r.runType, r.title);
+    buckets[cat].runs.push(r);
+    buckets[cat].distance += r.distanceKm;
+    buckets[cat].duration += r.durationSeconds;
+  });
+
+  const totalDistanceKm = Number(windowRuns.reduce((sum, r) => sum + r.distanceKm, 0).toFixed(2));
+  const totalDurationSeconds = windowRuns.reduce((sum, r) => sum + r.durationSeconds, 0);
+  const totalRuns = windowRuns.length;
+  const avgPaceSecPerKm = totalDistanceKm > 0 ? Math.round(totalDurationSeconds / totalDistanceKm) : 0;
+
+  const categories: TrainingCategory[] = ['Easy', 'Interval', 'Tempo', 'Race'];
+
+  const items: CategoryBreakdownItem[] = categories.map((cat) => {
+    const b = buckets[cat];
+    const catDist = Number(b.distance.toFixed(2));
+    const catPace = catDist > 0 ? Math.round(b.duration / catDist) : 0;
+    const pctDist = totalDistanceKm > 0 ? Math.round((catDist / totalDistanceKm) * 100) : 0;
+    const pctCount = totalRuns > 0 ? Math.round((b.runs.length / totalRuns) * 100) : 0;
+    const meta = categoryMeta[cat];
+
+    return {
+      category: cat,
+      name: meta.name,
+      description: meta.description,
+      runCount: b.runs.length,
+      totalDistanceKm: catDist,
+      totalDurationSeconds: b.duration,
+      percentageDistance: pctDist,
+      percentageCount: pctCount,
+      avgPaceSecPerKm: catPace,
+      color: meta.color,
+      darkColor: meta.darkColor,
+      badgeBg: meta.badgeBg,
+    };
+  });
+
+  return {
+    items,
+    totalRuns,
+    totalDistanceKm,
+    totalDurationSeconds,
+    avgPaceSecPerKm,
+    periodDays: days,
+  };
+}
+

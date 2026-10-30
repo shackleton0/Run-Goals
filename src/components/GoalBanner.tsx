@@ -101,7 +101,7 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
             className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-[#30d158]/15 text-[#30d158] text-xs font-semibold hover:bg-[#30d158]/25 transition-colors cursor-pointer self-start sm:self-auto"
           >
             <Trophy className="w-3.5 h-3.5" />
-            <span>Target Achieved! Celebrate 🎉</span>
+            <span>Target Goal Achieved</span>
           </button>
         )}
       </div>

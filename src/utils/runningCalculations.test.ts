@@ -13,6 +13,7 @@ import {
   findDuplicateRuns,
   isAerobicRun,
   isIntervalRun,
+  calculateCategoryBreakdown,
 } from './runningCalculations';
 import { RunRecord } from '../types/running';
 
@@ -115,3 +116,83 @@ test('findDuplicateRuns identifies matching runs and isolates unique ones', () =
   assert.equal(uniqueRuns.length, 1);
   assert.equal(uniqueRuns[0].id, 'r_new');
 });
+
+test('calculateCategoryBreakdown groups Easy, Interval, Tempo, and Race correctly', () => {
+  const refDate = new Date('2026-10-30T12:00:00Z');
+  const sampleRuns: RunRecord[] = [
+    {
+      id: '1',
+      userId: 'u1',
+      date: '2026-10-28',
+      title: 'Easy Morning Aerobic Run',
+      distanceKm: 8.0,
+      durationSeconds: 2400,
+      averagePaceSecPerKm: 300,
+      runType: 'Easy',
+      source: 'garmin',
+    },
+    {
+      id: '2',
+      userId: 'u1',
+      date: '2026-10-25',
+      title: 'Track Repeats',
+      distanceKm: 6.0,
+      durationSeconds: 1440,
+      averagePaceSecPerKm: 240,
+      runType: 'Interval Training',
+      source: 'garmin',
+    },
+    {
+      id: '3',
+      userId: 'u1',
+      date: '2026-10-20',
+      title: 'Threshold Tempo',
+      distanceKm: 6.0,
+      durationSeconds: 1500,
+      averagePaceSecPerKm: 250,
+      runType: 'Tempo',
+      source: 'garmin',
+    },
+    {
+      id: '4',
+      userId: 'u1',
+      date: '2026-10-15',
+      title: '6K Time Trial',
+      distanceKm: 6.0,
+      durationSeconds: 1560,
+      averagePaceSecPerKm: 260,
+      runType: '6K Time Trial',
+      source: 'garmin',
+    },
+    {
+      id: 'old',
+      userId: 'u1',
+      date: '2026-08-01', // > 30 days ago
+      title: 'Summer Base Run',
+      distanceKm: 10.0,
+      durationSeconds: 3000,
+      averagePaceSecPerKm: 300,
+      runType: 'Easy',
+      source: 'garmin',
+    },
+  ];
+
+  const result = calculateCategoryBreakdown(sampleRuns, 30, refDate);
+  assert.equal(result.totalRuns, 4); // Only the 4 runs in the last 30 days
+  assert.equal(result.totalDistanceKm, 26.0);
+
+  const easy = result.items.find((i) => i.category === 'Easy')!;
+  const interval = result.items.find((i) => i.category === 'Interval')!;
+  const tempo = result.items.find((i) => i.category === 'Tempo')!;
+  const race = result.items.find((i) => i.category === 'Race')!;
+
+  assert.equal(easy.runCount, 1);
+  assert.equal(easy.totalDistanceKm, 8.0);
+  assert.equal(interval.runCount, 1);
+  assert.equal(interval.totalDistanceKm, 6.0);
+  assert.equal(tempo.runCount, 1);
+  assert.equal(tempo.totalDistanceKm, 6.0);
+  assert.equal(race.runCount, 1);
+  assert.equal(race.totalDistanceKm, 6.0);
+});
+

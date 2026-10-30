@@ -130,7 +130,7 @@ export const AiExportModal: React.FC<AiExportModalProps> = ({
       const lower = q.toLowerCase();
 
       if (lower.includes('break') || lower.includes('goal') || lower.includes('ready')) {
-        analysis = `### 🏃 6K Goal Readiness Assessment
+        analysis = `### 6K Goal Readiness Assessment
 - **Target 6K**: ${target6kStr} (Target Pace: ${targetPaceStr})
 - **Current 6K Best**: ${currentBestStr}
 - **3-Run Weekly Adherence**: ${adherence.currentWeekRuns}/3 runs this week, ${adherence.currentStreakWeeks}-week streak.
@@ -139,7 +139,7 @@ export const AiExportModal: React.FC<AiExportModalProps> = ({
 1. Focus on specific interval turnover: 5 x 1000m repeats at your goal 6K pace with 90s jog recovery.
 2. Maintain your 3-run weekly consistency. With only 3 runs per week, make each session intentional (Intervals, Threshold Tempo, and Long Aerobic Run).`;
       } else if (lower.includes('structure') || lower.includes('week') || lower.includes('3 runs') || lower.includes('plan')) {
-        analysis = `### 📋 Recommended 3-Run Weekly Cross Country Structure
+        analysis = `### Recommended 3-Run Weekly Cross Country Structure
 To maximize 6K race performance while staying strictly within your 3 runs/week schedule:
 
 - **Run 1 - Goal Pace Intervals**:
@@ -152,7 +152,7 @@ To maximize 6K race performance while staying strictly within your 3 runs/week s
   - *Workout*: 9 to 12 km relaxed aerobic run on hilly grass or dirt trails.
   - *Purpose*: Expands aerobic ceiling and builds fatigue resistance.`;
       } else {
-        analysis = `### 🎯 Cross Country 6K Analysis
+        analysis = `### Cross Country 6K Analysis
 - **Target 6K**: ${target6kStr} (${targetPaceStr})
 - **3-Run Adherence**: ${adherence.currentStreakWeeks} consecutive weeks meeting your 3 runs/week target.
 - **Coaching Tip**: Prioritize full recovery between your 3 weekly efforts so you hit your interval and tempo workouts at high quality.`;
