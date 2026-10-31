@@ -128,6 +128,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
   const [isEditingMaxHr, setIsEditingMaxHr] = useState(false);
   const [tempMaxHr, setTempMaxHr] = useState<number>(195);
   const [showZoneDetails, setShowZoneDetails] = useState(false);
+  const [showAllActivityLogs, setShowAllActivityLogs] = useState(false);
 
   // Watch activities (from Garmin or with telemetry)
   const watchRuns = useMemo(() => {
@@ -367,7 +368,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
           <div>
             <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1.5">
               <span>Fastest Pace Ran Before</span>
-              <Trophy className="w-4 h-4 text-[#30d158]" />
+              <Zap className="w-4 h-4 text-[#30d158]" />
             </div>
 
             <div className="text-3xl font-bold text-neutral-900 dark:text-white tracking-tight tabular-nums mt-1">
@@ -472,31 +473,34 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
         </div>
       </div>
 
-      {/* Heart Rate Training Zones Breakdown */}
+      {/* Heart Rate Training Zones Breakdown - Simplified to Z1-Z5 */}
       <div className="mb-6">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
           <div>
             <h3 className="text-sm font-bold text-neutral-900 dark:text-white tracking-tight flex items-center space-x-1.5">
               <Activity className="w-4 h-4 text-[#ff375f]" />
-              <span>Heart Rate Training Zones (Based on {maxHrToUse} BPM Max)</span>
+              <span>Training Zones (Based on {maxHrToUse} BPM Max)</span>
             </h3>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-              Tap any zone to filter your activities or explore physiological targets
+              Select a zone to filter activity logs and view physiological targets
             </p>
           </div>
 
           {selectedZoneFilter !== 'all' && (
             <button
-              onClick={() => setSelectedZoneFilter('all')}
-              className="text-xs font-semibold text-[#0a84ff] hover:underline cursor-pointer"
+              onClick={() => {
+                setSelectedZoneFilter('all');
+                setShowZoneDetails(false);
+              }}
+              className="text-xs font-semibold text-[#0a84ff] hover:underline cursor-pointer self-start sm:self-auto"
             >
-              Show All Zones
+              Reset to All Zones
             </button>
           )}
         </div>
 
         {/* 5-Zone Distribution Bar */}
-        <div className="w-full bg-neutral-200 dark:bg-neutral-800 rounded-xl h-3.5 flex overflow-hidden p-0.5 gap-0.5 mb-3 shadow-inner">
+        <div className="w-full bg-neutral-200 dark:bg-neutral-800 rounded-xl h-2.5 flex overflow-hidden p-0.5 gap-0.5 mb-3 shadow-inner">
           {HR_ZONES.map((zoneDef) => {
             const count = zoneDistribution.counts[zoneDef.zone as keyof typeof zoneDistribution.counts];
             const pct = totalZoneRuns > 0 ? (count / totalZoneRuns) * 100 : 20;
@@ -505,96 +509,131 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
               <div
                 key={zoneDef.zone}
                 style={{ width: `${Math.max(5, pct)}%`, backgroundColor: zoneDef.color }}
-                className="h-full rounded-sm transition-all duration-300 relative group cursor-pointer hover:opacity-90"
+                className="h-full rounded-xs transition-all duration-300 relative cursor-pointer hover:opacity-90"
                 onClick={() => setSelectedZoneFilter(zoneDef.zone)}
-                title={`Zone ${zoneDef.zone}: ${zoneDef.name} (${count} runs, ${Math.round(pct)}%)`}
+                title={`Z${zoneDef.zone}: ${zoneDef.name} (${count} runs)`}
               />
             );
           })}
         </div>
 
-        {/* Interactive Zone Cards Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+        {/* Minimal Z1, Z2, Z3, Z4, Z5 Selector Pills */}
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <button
+            onClick={() => {
+              setSelectedZoneFilter('all');
+              setShowZoneDetails(false);
+            }}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+              selectedZoneFilter === 'all'
+                ? 'bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs'
+                : 'bg-neutral-100 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-800'
+            }`}
+          >
+            <span>All Activities ({totalZoneRuns})</span>
+          </button>
+
           {HR_ZONES.map((zoneDef) => {
-            const minBpm = Math.round((zoneDef.minPct / 100) * maxHrToUse);
-            const maxBpm = Math.round((zoneDef.maxPct / 100) * maxHrToUse);
             const count = zoneDistribution.counts[zoneDef.zone as keyof typeof zoneDistribution.counts];
             const isSelected = selectedZoneFilter === zoneDef.zone;
 
             return (
               <button
                 key={zoneDef.zone}
-                onClick={() => setSelectedZoneFilter(isSelected ? 'all' : zoneDef.zone)}
-                className={`p-3 rounded-xl border text-left transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+                onClick={() => {
+                  setSelectedZoneFilter(isSelected ? 'all' : zoneDef.zone);
+                }}
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
                   isSelected
-                    ? `${zoneDef.bgLight} ${zoneDef.bgDark} ring-2 ring-[${zoneDef.color}] border-transparent shadow-xs`
-                    : 'bg-neutral-50 dark:bg-neutral-900/60 border-neutral-200/80 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                    ? 'ring-2 shadow-xs'
+                    : 'bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-900 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
                 }`}
+                style={
+                  isSelected
+                    ? {
+                        backgroundColor: zoneDef.color,
+                        color: zoneDef.zone === 2 ? '#000000' : '#ffffff',
+                        borderColor: zoneDef.color,
+                      }
+                    : undefined
+                }
               >
-                <div className="w-full">
-                  <div className="flex items-center justify-between mb-1">
-                    <span
-                      className="text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white"
-                      style={{ backgroundColor: zoneDef.color }}
-                    >
-                      Z{zoneDef.zone}
-                    </span>
-                    <span className="text-[11px] font-bold text-neutral-900 dark:text-white tabular-nums">
-                      {count} {count === 1 ? 'run' : 'runs'}
-                    </span>
-                  </div>
-
-                  <div className="font-bold text-xs text-neutral-900 dark:text-white leading-tight truncate">
-                    {zoneDef.name}
-                  </div>
-
-                  <div className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 mt-1 tabular-nums">
-                    {minBpm} – {maxBpm} <span className="text-[10px] font-normal text-neutral-500">bpm</span>
-                  </div>
-                  <div className="text-[10px] text-neutral-400 tabular-nums">
-                    {zoneDef.minPct}% – {zoneDef.maxPct}% of Max
-                  </div>
-                </div>
-
-                <div className="mt-2 pt-2 border-t border-neutral-200/60 dark:border-neutral-800 text-[10px] text-neutral-500 line-clamp-2">
-                  {zoneDef.description}
-                </div>
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: isSelected ? 'currentColor' : zoneDef.color }}
+                />
+                <span>Z{zoneDef.zone}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-semibold tabular-nums ${
+                    isSelected
+                      ? 'bg-black/20 text-current'
+                      : 'bg-neutral-200/80 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
+                  }`}
+                >
+                  {count}
+                </span>
               </button>
             );
           })}
         </div>
 
-        {/* Expandable Deep Physiological Zone Guide */}
-        {showZoneDetails && (
-          <div className="mt-4 p-4 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs space-y-3">
-            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-2">
-              <span className="font-bold text-neutral-900 dark:text-white">
-                How to Train Across Heart Rate Zones for 6K Cross Country
-              </span>
-              <span className="text-[11px] text-neutral-400">Cardiovascular Physiology</span>
-            </div>
+        {/* Selected Zone Focus Card with "Display More" Button */}
+        {selectedZoneFilter !== 'all' && (() => {
+          const activeZone = HR_ZONES.find((z) => z.zone === selectedZoneFilter);
+          if (!activeZone) return null;
+          const minBpm = Math.round((activeZone.minPct / 100) * maxHrToUse);
+          const maxBpm = Math.round((activeZone.maxPct / 100) * maxHrToUse);
+          const count = zoneDistribution.counts[activeZone.zone as keyof typeof zoneDistribution.counts];
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-neutral-600 dark:text-neutral-300">
-              <div className="space-y-1">
-                <strong className="text-neutral-900 dark:text-white block">
-                  Zones 1 & 2 (Aerobic Foundation):
-                </strong>
-                <p className="text-[11px]">
-                  Builds capillary pathways around fast-twitch and slow-twitch muscle fibers. 70-80% of weekly mileage should be here so you can absorb high-intensity workouts without injury.
-                </p>
+          return (
+            <div className="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-900/70 border border-neutral-200/90 dark:border-neutral-800 transition-all text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className="text-[11px] font-bold px-2 py-0.5 rounded-full text-white"
+                    style={{ backgroundColor: activeZone.color }}
+                  >
+                    Z{activeZone.zone} {activeZone.name}
+                  </span>
+                  <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
+                    {minBpm} – {maxBpm} bpm
+                  </span>
+                  <span className="text-neutral-400 tabular-nums">
+                    ({activeZone.minPct}%–{activeZone.maxPct}% Max HR)
+                  </span>
+                  <span className="text-neutral-500 font-medium">
+                    · {count} {count === 1 ? 'activity' : 'activities'} logged
+                  </span>
+                </div>
+
+                {/* The "little button so I can display more" */}
+                <button
+                  type="button"
+                  onClick={() => setShowZoneDetails(!showZoneDetails)}
+                  className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold text-neutral-700 dark:text-neutral-300 bg-white dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-700 border border-neutral-200 dark:border-neutral-700 transition-colors cursor-pointer self-start sm:self-auto"
+                >
+                  <Info className="w-3 h-3 text-[#0a84ff]" />
+                  <span>{showZoneDetails ? 'Less Info' : 'More Zone Details'}</span>
+                  {showZoneDetails ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
               </div>
 
-              <div className="space-y-1">
-                <strong className="text-neutral-900 dark:text-white block">
-                  Zones 4 & 5 (Threshold & Race Pace):
-                </strong>
-                <p className="text-[11px]">
-                  Zone 4 teaches your body to buffer hydrogen ions at 6K race velocity. Zone 5 develops top-end sprint mechanics and VO2 max for track intervals and race kicks.
-                </p>
-              </div>
+              {/* Expandable zone description shown when user taps the display more button */}
+              {showZoneDetails && (
+                <div className="mt-3 pt-3 border-t border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-300 space-y-2 animate-in fade-in duration-150">
+                  <p className="text-xs leading-relaxed">
+                    <strong className="text-neutral-900 dark:text-white font-semibold">Purpose: </strong>
+                    {activeZone.description}
+                  </p>
+                  <p className="text-xs leading-relaxed">
+                    <strong className="text-neutral-900 dark:text-white font-semibold">Adaptation Benefit: </strong>
+                    {activeZone.benefit}
+                  </p>
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* Filtered Activities Table / List for Watch Telemetry */}
@@ -621,8 +660,8 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
             No activities recorded in this heart rate training zone.
           </div>
         ) : (
-          <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-            {filteredWatchRuns.map((run) => {
+          <div className="space-y-2">
+            {(showAllActivityLogs ? filteredWatchRuns : filteredWatchRuns.slice(0, 1)).map((run) => {
               const repHr = run.avgHeartRate || (run.maxHeartRate ? Math.round(run.maxHeartRate * 0.88) : null);
               const zoneDef = repHr ? getZoneForHr(repHr, maxHrToUse) : null;
               const isFastestRun = metrics.fastestRun?.id === run.id;
@@ -631,7 +670,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
               return (
                 <div
                   key={run.id}
-                  className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200/80 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 text-xs"
+                  className="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200/80 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 text-xs"
                 >
                   {/* Left: Title & Date & Badges */}
                   <div className="min-w-0 space-y-1">
@@ -653,7 +692,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                       {/* Fastest Pace Badge */}
                       {isFastestRun && (
                         <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#30d158]/15 text-[#30d158]">
-                          <Trophy className="w-2.5 h-2.5" />
+                          <Zap className="w-2.5 h-2.5" />
                           <span>Fastest Pace</span>
                         </span>
                       )}
@@ -738,6 +777,33 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                 </div>
               );
             })}
+
+            {/* Click to display more activities button */}
+            {filteredWatchRuns.length > 1 && (
+              <div className="pt-2.5 flex flex-col sm:flex-row items-center justify-between gap-2 border-t border-neutral-100 dark:border-neutral-800/80">
+                <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                  {showAllActivityLogs
+                    ? `Showing all ${filteredWatchRuns.length} activities`
+                    : `Showing 1 most recent activity (${filteredWatchRuns.length - 1} older activities collapsed)`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowAllActivityLogs(!showAllActivityLogs)}
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 transition-colors cursor-pointer"
+                >
+                  <span>
+                    {showAllActivityLogs
+                      ? 'Show Most Recent Only'
+                      : `Show More (${filteredWatchRuns.length - 1} more)`}
+                  </span>
+                  {showAllActivityLogs ? (
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

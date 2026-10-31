@@ -6,7 +6,7 @@ import {
   calculateTargetCutoff,
   KM_TO_MILES,
 } from '../utils/runningCalculations';
-import { Trophy, Target, Edit2, Flame, Calendar, Sparkles, TrendingDown, CheckCircle2 } from 'lucide-react';
+import { Trophy, Target, Edit2, Calendar, Clock, TrendingDown, CheckCircle2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface GoalBannerProps {
@@ -162,7 +162,7 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
         <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200/80 dark:border-neutral-800/60">
           <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">
             <span>Weekly Streak</span>
-            <Flame className="w-3.5 h-3.5 text-[#ff9f0a] fill-[#ff9f0a]" />
+            <TrendingDown className="w-3.5 h-3.5 text-[#ff9f0a] rotate-180" />
           </div>
           <div className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-white tracking-tight tabular-nums">
             {adherence.currentStreakWeeks > 0 ? (
@@ -181,13 +181,13 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
         </div>
       </div>
 
-      {/* Under Target: Fastest Current Projected Time & Time to Cut Off */}
-      <div className="p-4 rounded-xl bg-gradient-to-br from-neutral-50 to-neutral-100/50 dark:from-neutral-900/80 dark:to-neutral-900/40 border border-neutral-200/90 dark:border-neutral-800">
+      {/* Under Target: Fastest Current Benchmark & Time to Cut Off */}
+      <div className="p-4 rounded-xl bg-neutral-50/70 dark:bg-neutral-900/50 border border-neutral-200/80 dark:border-neutral-800">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           {/* Left: Fastest Current Projected Time */}
           <div className="space-y-1">
             <div className="flex items-center space-x-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-              <Sparkles className="w-3.5 h-3.5 text-[#0a84ff]" />
+              <Clock className="w-3.5 h-3.5 text-[#0a84ff]" />
               <span>{projectedCardLabel}</span>
             </div>
 

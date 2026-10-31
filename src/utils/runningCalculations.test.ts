@@ -15,6 +15,7 @@ import {
   isIntervalRun,
   calculateCategoryBreakdown,
   calculateRecoveryStatus,
+  calculateGoalProjection,
 } from './runningCalculations';
 import { RunRecord } from '../types/running';
 
@@ -250,4 +251,41 @@ test('calculateRecoveryStatus reflects high recovery after sufficient elapsed ti
   assert.equal(status.readinessState, 'Fully Rested');
   assert.equal(status.remainingRecoveryHours, 0);
 });
+
+test('calculateGoalProjection computes weeks remaining and trajectory milestones', () => {
+  const currentRuns: RunRecord[] = [
+    {
+      id: 'r1',
+      userId: 'u1',
+      date: '2026-10-25',
+      title: '6K Time Trial',
+      distanceKm: 6.0,
+      durationSeconds: 1380, // 23:00
+      averagePaceSecPerKm: 230,
+      runType: '6K Time Trial',
+      best6kTimeSeconds: 1380,
+      source: 'garmin',
+    },
+  ];
+
+  // Target: 21:00 (1260s)
+  const projection = calculateGoalProjection(currentRuns, 6.0, 1260, 1380, 3, 2);
+  assert.equal(projection.hasTarget, true);
+  assert.equal(projection.hasData, true);
+  assert.equal(projection.isAchieved, false);
+  assert.equal(projection.gapSeconds, 120);
+  assert.ok(projection.estimatedWeeks >= 6 && projection.estimatedWeeks <= 12);
+  assert.ok(projection.milestones.length >= 3);
+  assert.ok(projection.projectedCompletionDate.length > 0);
+
+  // When goal is surpassed
+  const achievedProjection = calculateGoalProjection(currentRuns, 6.0, 1500, 1380, 3, 2);
+  assert.equal(achievedProjection.isAchieved, true);
+  assert.equal(achievedProjection.estimatedWeeks, 0);
+
+  // When no target provided
+  const noTargetProjection = calculateGoalProjection(currentRuns, 6.0, undefined, 1380, 3, 2);
+  assert.equal(noTargetProjection.hasTarget, false);
+});
+
 

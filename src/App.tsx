@@ -26,6 +26,7 @@ import {
 } from './utils/runningCalculations';
 import { Navbar } from './components/Navbar';
 import { GoalBanner } from './components/GoalBanner';
+import { GoalProjectionCard } from './components/GoalProjectionCard';
 import { WeeklyAdherenceCard } from './components/WeeklyAdherenceCard';
 import { ProgressVisualizer } from './components/ProgressVisualizer';
 import { RunList } from './components/RunList';
@@ -478,7 +479,7 @@ export default function App() {
             />
           ) : (
             <div className="space-y-5">
-              {/* 1. TARGET SPEED THING (6K Target, Pace & Race Splits) */}
+              {/* 1. TARGET BENCHMARK (Target Distance, Pace & Current Best) */}
               <GoalBanner
                 profile={profile}
                 adherence={adherence}
@@ -486,7 +487,16 @@ export default function App() {
                 onEditGoal={() => setIsSettingsOpen(true)}
               />
 
-              {/* 2. WEEKLY TRAINING (Weekly Training Schedule) */}
+              {/* 2. GOAL PROJECTION (Estimated weeks to goal, projected progress trajectory & milestones) */}
+              <GoalProjectionCard
+                runs={runs}
+                profile={profile}
+                adherence={adherence}
+                best6kSec={best6kSec}
+                onOpenSettings={() => setIsSettingsOpen(true)}
+              />
+
+              {/* 3. WEEKLY TRAINING (Weekly Training Schedule) */}
               <WeeklyAdherenceCard
                 weeklyStats={weeklyStats}
                 adherence={adherence}

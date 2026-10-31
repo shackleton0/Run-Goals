@@ -1031,3 +1031,280 @@ export function calculateRecoveryStatus(
   };
 }
 
+export interface GoalMilestone {
+  weekNumber: number;
+  projectedDate: string;
+  projectedTimeSeconds: number;
+  projectedPaceSecPerKm: number;
+  notes: string;
+}
+
+export interface GoalProjectionResult {
+  hasTarget: boolean;
+  hasData: boolean;
+  isAchieved: boolean;
+  targetDistanceKm: number;
+  targetTimeSeconds?: number;
+  currentBestSeconds?: number;
+  gapSeconds: number;
+  estimatedWeeks: number;
+  projectedCompletionDate: string;
+  weeklyImprovementSeconds: number;
+  confidence: 'High' | 'Moderate' | 'Initial Estimate';
+  basisDescription: string;
+  milestones: GoalMilestone[];
+  scenarios: {
+    accelerated: { weeks: number; date: string; weeklyRateSec: number };
+    expected: { weeks: number; date: string; weeklyRateSec: number };
+    conservative: { weeks: number; date: string; weeklyRateSec: number };
+  };
+}
+
+export function calculateGoalProjection(
+  runs: RunRecord[],
+  targetDistanceKm: number = 6.0,
+  targetTimeSeconds?: number | null,
+  currentBestSeconds?: number | null,
+  weeklyRunGoal: number = 3,
+  currentWeeklyStreak: number = 0
+): GoalProjectionResult {
+  const targetDist = targetDistanceKm || 6.0;
+
+  if (!targetTimeSeconds || targetTimeSeconds <= 0) {
+    return {
+      hasTarget: false,
+      hasData: Boolean(runs.length > 0),
+      isAchieved: false,
+      targetDistanceKm: targetDist,
+      gapSeconds: 0,
+      estimatedWeeks: 0,
+      projectedCompletionDate: '',
+      weeklyImprovementSeconds: 0,
+      confidence: 'Initial Estimate',
+      basisDescription: 'Set a goal time to calculate projected completion date and weekly progression milestones.',
+      milestones: [],
+      scenarios: {
+        accelerated: { weeks: 0, date: '', weeklyRateSec: 0 },
+        expected: { weeks: 0, date: '', weeklyRateSec: 0 },
+        conservative: { weeks: 0, date: '', weeklyRateSec: 0 },
+      },
+    };
+  }
+
+  // Handle if target was entered as pace per km (< 600s)
+  const targetTotalSec =
+    targetTimeSeconds < 600
+      ? Math.round(targetTimeSeconds * targetDist)
+      : targetTimeSeconds;
+
+  const currentBest =
+    currentBestSeconds && currentBestSeconds > 0
+      ? currentBestSeconds
+      : runs.length > 0
+      ? runs.reduce((min, r) => {
+          const eq =
+            r.targetEquivalentSeconds ||
+            calculateTargetDistanceEquivalent(r.distanceKm, r.durationSeconds, targetDist) ||
+            r.best6kTimeSeconds;
+          return eq && eq > 0 && eq < min ? eq : min;
+        }, 999999)
+      : null;
+
+  const effectiveCurrentSec = currentBest && currentBest < 999999 ? currentBest : null;
+
+  if (!effectiveCurrentSec) {
+    return {
+      hasTarget: true,
+      hasData: false,
+      isAchieved: false,
+      targetDistanceKm: targetDist,
+      targetTimeSeconds: targetTotalSec,
+      gapSeconds: 0,
+      estimatedWeeks: 0,
+      projectedCompletionDate: '',
+      weeklyImprovementSeconds: 0,
+      confidence: 'Initial Estimate',
+      basisDescription: 'Log or sync your first workout to establish baseline performance and compute projection.',
+      milestones: [],
+      scenarios: {
+        accelerated: { weeks: 0, date: '', weeklyRateSec: 0 },
+        expected: { weeks: 0, date: '', weeklyRateSec: 0 },
+        conservative: { weeks: 0, date: '', weeklyRateSec: 0 },
+      },
+    };
+  }
+
+  const gapSeconds = effectiveCurrentSec - targetTotalSec;
+  const isAchieved = gapSeconds <= 0;
+
+  if (isAchieved) {
+    return {
+      hasTarget: true,
+      hasData: true,
+      isAchieved: true,
+      targetDistanceKm: targetDist,
+      targetTimeSeconds: targetTotalSec,
+      currentBestSeconds: effectiveCurrentSec,
+      gapSeconds: 0,
+      estimatedWeeks: 0,
+      projectedCompletionDate: 'Goal Achieved',
+      weeklyImprovementSeconds: 0,
+      confidence: 'High',
+      basisDescription: `You have already surpassed your ${targetDist}K target by ${formatDuration(Math.abs(gapSeconds))}. Maintain conditioning with regular aerobic tempo workouts!`,
+      milestones: [
+        {
+          weekNumber: 0,
+          projectedDate: 'Now',
+          projectedTimeSeconds: effectiveCurrentSec,
+          projectedPaceSecPerKm: effectiveCurrentSec / targetDist,
+          notes: 'Current PR / Benchmark (Goal Surpassed)',
+        },
+      ],
+      scenarios: {
+        accelerated: { weeks: 0, date: 'Achieved', weeklyRateSec: 0 },
+        expected: { weeks: 0, date: 'Achieved', weeklyRateSec: 0 },
+        conservative: { weeks: 0, date: 'Achieved', weeklyRateSec: 0 },
+      },
+    };
+  }
+
+  // Calculate improvement rate:
+  const runsWithEquivalent = [...runs]
+    .map((r) => ({
+      date: new Date(r.date).getTime(),
+      timeSec:
+        r.targetEquivalentSeconds ||
+        calculateTargetDistanceEquivalent(r.distanceKm, r.durationSeconds, targetDist) ||
+        r.best6kTimeSeconds ||
+        0,
+    }))
+    .filter((r) => r.timeSec > 0 && !isNaN(r.date))
+    .sort((a, b) => a.date - b.date);
+
+  let weeklyImprovement = 14; // Default steady cross country adaptation: ~14s/week on 6k
+  let confidence: 'High' | 'Moderate' | 'Initial Estimate' = 'Initial Estimate';
+  let basisDescription = 'Based on steady cross country training adaptation (3 weekly workouts).';
+
+  if (runsWithEquivalent.length >= 3) {
+    const firstPoint = runsWithEquivalent[0];
+    const latestPoint = runsWithEquivalent[runsWithEquivalent.length - 1];
+    const daysDiff = (latestPoint.date - firstPoint.date) / (1000 * 3600 * 24);
+
+    if (daysDiff >= 10) {
+      const weeksDiff = daysDiff / 7;
+      const totalImprovement = firstPoint.timeSec - latestPoint.timeSec;
+      const empiricalRate = totalImprovement / weeksDiff;
+
+      if (empiricalRate > 2 && empiricalRate < 35) {
+        weeklyImprovement = Math.round(empiricalRate);
+        confidence = runsWithEquivalent.length >= 6 ? 'High' : 'Moderate';
+        basisDescription = `Calculated from your empirical improvement rate of ~${weeklyImprovement}s/week across logged workouts.`;
+      } else {
+        const streakFactor = Math.min(1.3, 1 + currentWeeklyStreak * 0.05);
+        weeklyImprovement = Math.round(14 * streakFactor);
+        confidence = 'Moderate';
+        basisDescription = `Calibrated from your ${currentWeeklyStreak}-week adherence streak and 3-run weekly consistency.`;
+      }
+    }
+  } else if (currentWeeklyStreak > 0) {
+    weeklyImprovement = Math.min(20, Math.round(12 + currentWeeklyStreak * 1.5));
+    confidence = 'Moderate';
+    basisDescription = `Projected from your ${currentWeeklyStreak}-week training streak and target workout volume.`;
+  }
+
+  // Scenarios
+  const acceleratedRate = Math.max(8, Math.round(weeklyImprovement * 1.35));
+  const expectedRate = Math.max(5, weeklyImprovement);
+  const conservativeRate = Math.max(3, Math.round(weeklyImprovement * 0.65));
+
+  const expectedWeeks = Math.max(1, Math.ceil(gapSeconds / expectedRate));
+  const acceleratedWeeks = Math.max(1, Math.ceil(gapSeconds / acceleratedRate));
+  const conservativeWeeks = Math.max(1, Math.ceil(gapSeconds / conservativeRate));
+
+  const now = new Date();
+  const formatDateOffset = (weeks: number): string => {
+    const d = new Date(now.getTime() + weeks * 7 * 24 * 3600 * 1000);
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const projectedCompletionDate = formatDateOffset(expectedWeeks);
+
+  // Milestone checkpoints: Now, 1/3, 2/3, and Final Goal
+  const milestones: GoalMilestone[] = [];
+
+  // Week 0: Baseline
+  milestones.push({
+    weekNumber: 0,
+    projectedDate: 'Current Baseline',
+    projectedTimeSeconds: effectiveCurrentSec,
+    projectedPaceSecPerKm: effectiveCurrentSec / targetDist,
+    notes: 'Starting performance benchmark',
+  });
+
+  if (expectedWeeks > 2) {
+    const mid1 = Math.max(1, Math.round(expectedWeeks * 0.33));
+    const timeMid1 = Math.max(targetTotalSec, Math.round(effectiveCurrentSec - mid1 * expectedRate));
+    milestones.push({
+      weekNumber: mid1,
+      projectedDate: formatDateOffset(mid1),
+      projectedTimeSeconds: timeMid1,
+      projectedPaceSecPerKm: timeMid1 / targetDist,
+      notes: 'Threshold capacity & aerobic expansion',
+    });
+
+    const mid2 = Math.max(mid1 + 1, Math.round(expectedWeeks * 0.66));
+    if (mid2 < expectedWeeks) {
+      const timeMid2 = Math.max(targetTotalSec, Math.round(effectiveCurrentSec - mid2 * expectedRate));
+      milestones.push({
+        weekNumber: mid2,
+        projectedDate: formatDateOffset(mid2),
+        projectedTimeSeconds: timeMid2,
+        projectedPaceSecPerKm: timeMid2 / targetDist,
+        notes: 'Race-pace interval conditioning',
+      });
+    }
+  }
+
+  // Final Target Milestone
+  milestones.push({
+    weekNumber: expectedWeeks,
+    projectedDate: projectedCompletionDate,
+    projectedTimeSeconds: targetTotalSec,
+    projectedPaceSecPerKm: targetTotalSec / targetDist,
+    notes: `Projected ${targetDist}K Target Hit!`,
+  });
+
+  return {
+    hasTarget: true,
+    hasData: true,
+    isAchieved: false,
+    targetDistanceKm: targetDist,
+    targetTimeSeconds: targetTotalSec,
+    currentBestSeconds: effectiveCurrentSec,
+    gapSeconds,
+    estimatedWeeks: expectedWeeks,
+    projectedCompletionDate,
+    weeklyImprovementSeconds: expectedRate,
+    confidence,
+    basisDescription,
+    milestones,
+    scenarios: {
+      accelerated: {
+        weeks: acceleratedWeeks,
+        date: formatDateOffset(acceleratedWeeks),
+        weeklyRateSec: acceleratedRate,
+      },
+      expected: {
+        weeks: expectedWeeks,
+        date: projectedCompletionDate,
+        weeklyRateSec: expectedRate,
+      },
+      conservative: {
+        weeks: conservativeWeeks,
+        date: formatDateOffset(conservativeWeeks),
+        weeklyRateSec: conservativeRate,
+      },
+    },
+  };
+}
+
