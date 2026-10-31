@@ -14,6 +14,7 @@ import {
   isAerobicRun,
   isIntervalRun,
   calculateCategoryBreakdown,
+  calculateRecoveryStatus,
 } from './runningCalculations';
 import { RunRecord } from '../types/running';
 
@@ -194,5 +195,59 @@ test('calculateCategoryBreakdown groups Easy, Interval, Tempo, and Race correctl
   assert.equal(tempo.totalDistanceKm, 6.0);
   assert.equal(race.runCount, 1);
   assert.equal(race.totalDistanceKm, 6.0);
+});
+
+test('calculateRecoveryStatus handles empty runs gracefully', () => {
+  const status = calculateRecoveryStatus([]);
+  assert.equal(status.hasRuns, false);
+  assert.equal(status.recoveryPercentage, 100);
+  assert.equal(status.readinessState, 'Fully Rested');
+});
+
+test('calculateRecoveryStatus reflects low recovery after recent hard workout', () => {
+  const now = new Date('2026-10-31T15:00:00Z');
+  const recentHardRun: RunRecord = {
+    id: 'hard_race',
+    userId: 'u1',
+    date: '2026-10-31T12:00:00Z', // 3 hours ago
+    title: 'XC 6K Championship Race',
+    distanceKm: 6.0,
+    durationSeconds: 1260, // 21:00 (3:30/km)
+    averagePaceSecPerKm: 210,
+    runType: 'Race',
+    avgHeartRate: 184, // high HR
+    maxHeartRate: 195,
+    source: 'garmin',
+  };
+
+  const status = calculateRecoveryStatus([recentHardRun], now, 190);
+  assert.equal(status.hasRuns, true);
+  assert.equal(status.hoursSinceLastRun, 3);
+  assert.ok(status.effortScore > 50, `Effort score should be high, was ${status.effortScore}`);
+  assert.ok(status.recommendedRecoveryHours >= 24, `Should recommend >= 24h recovery, was ${status.recommendedRecoveryHours}`);
+  assert.ok(status.recoveryPercentage < 40, `Recovery percentage after 3h should be < 40%, was ${status.recoveryPercentage}`);
+  assert.equal(status.readinessState, 'Deep Recovery');
+});
+
+test('calculateRecoveryStatus reflects high recovery after sufficient elapsed time', () => {
+  const now = new Date('2026-10-31T12:00:00Z');
+  const pastRun: RunRecord = {
+    id: 'easy_run',
+    userId: 'u1',
+    date: '2026-10-28T12:00:00Z', // 72 hours ago
+    title: 'Easy 5K Base Run',
+    distanceKm: 5.0,
+    durationSeconds: 1600,
+    averagePaceSecPerKm: 320,
+    runType: 'Easy',
+    avgHeartRate: 135,
+    source: 'garmin',
+  };
+
+  const status = calculateRecoveryStatus([pastRun], now, 190);
+  assert.equal(status.hasRuns, true);
+  assert.equal(status.recoveryPercentage, 100);
+  assert.equal(status.readinessState, 'Fully Rested');
+  assert.equal(status.remainingRecoveryHours, 0);
 });
 

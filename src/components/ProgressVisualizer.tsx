@@ -4,11 +4,13 @@ import {
   formatDuration,
   formatPace,
   calculate6kEquivalent,
+  calculateTargetDistanceEquivalent,
   isAerobicRun,
   isIntervalRun,
   KM_TO_MILES,
 } from '../utils/runningCalculations';
 import { CategoryPieChart } from './CategoryPieChart';
+import { RecoveryBar } from './RecoveryBar';
 import {
   PieChart,
   TrendingUp,
@@ -23,7 +25,10 @@ interface ProgressVisualizerProps {
   runs: RunRecord[];
   weeklyStats: WeeklyStat[];
   target6kSec?: number;
+  targetDistanceKm?: number;
+  targetGoalName?: string;
   unit: 'km' | 'miles';
+  maxHeartRate?: number;
   onOpenGarminSync?: () => void;
   onOpenAddRun?: () => void;
 }
@@ -39,7 +44,10 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
   runs,
   weeklyStats,
   target6kSec,
+  targetDistanceKm = 6.0,
+  targetGoalName,
   unit,
+  maxHeartRate,
   onOpenGarminSync,
   onOpenAddRun,
 }) => {
@@ -47,12 +55,14 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
   const [activeTab, setActiveTab] = useState<ViewMode>('categories_30d');
   const [selectedRun, setSelectedRun] = useState<RunRecord | null>(null);
 
+  const targetDistKm = targetDistanceKm || 6.0;
+
   // Filter categories
   const quality6kRuns = [...runs]
-    .filter((r) => r.runType === '6K Time Trial' || r.runType === 'Race' || r.runType === 'Tempo')
+    .filter((r) => r.runType === '6K Time Trial' || r.runType === 'Time Trial' || r.runType === 'Race' || r.runType === 'Tempo')
     .map((r) => ({
       ...r,
-      calc6k: r.best6kTimeSeconds || calculate6kEquivalent(r.distanceKm, r.durationSeconds),
+      calc6k: r.targetEquivalentSeconds || calculateTargetDistanceEquivalent(r.distanceKm, r.durationSeconds, targetDistKm) || r.best6kTimeSeconds || 0,
     }))
     .filter((r) => r.calc6k > 0)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -170,10 +180,13 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
               Performance Analytics
             </h2>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-              30-day category breakdown, race progression curves, and aerobic foundation
+              Recovery readiness, 30-day category breakdown, race progression curves, and aerobic foundation
             </p>
           </div>
         </div>
+
+        {/* Real-time Math-based Recovery Bar */}
+        <RecoveryBar runs={runs} maxHeartRate={maxHeartRate} />
 
         {/* Mobile-Friendly Horizontally Scrollable Segmented Tab Control */}
         <div className="w-full overflow-x-auto no-scrollbar scroll-smooth -mx-1 px-1">

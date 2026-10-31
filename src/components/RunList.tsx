@@ -4,9 +4,11 @@ import {
   formatDuration,
   formatPace,
   calculate6kEquivalent,
+  calculateTargetDistanceEquivalent,
   calculatePaceSecPerKm,
   isAerobicRun,
   isIntervalRun,
+  KM_TO_MILES,
 } from '../utils/runningCalculations';
 import {
   Trophy,
@@ -30,6 +32,7 @@ import {
 interface RunListProps {
   runs: RunRecord[];
   unit: 'km' | 'miles';
+  targetDistanceKm?: number;
   target6kSec?: number;
   onDeleteRun: (runId: string) => void;
   onUpdateRunCategory: (runId: string, newCategory: RunType) => void;
@@ -42,6 +45,7 @@ interface RunListProps {
 export const RunList: React.FC<RunListProps> = ({
   runs,
   unit,
+  targetDistanceKm = 6.0,
   target6kSec,
   onDeleteRun,
   onUpdateRunCategory,
@@ -60,21 +64,24 @@ export const RunList: React.FC<RunListProps> = ({
 
   const filterOptions = [
     'All',
+    'Time Trial',
     'Aerobic Runs',
     'Interval Training',
-    '6K Time Trial',
     'Tempo',
     'Long Run',
     'Race',
+    'Recovery',
   ];
 
   const categoryChoices: { label: string; value: RunType }[] = [
+    { label: 'Time Trial', value: 'Time Trial' },
+    { label: '6K Time Trial', value: '6K Time Trial' },
     { label: 'Aerobic Run', value: 'Aerobic' },
     { label: 'Interval Training', value: 'Interval Training' },
-    { label: '6K Time Trial', value: '6K Time Trial' },
     { label: 'Tempo / Threshold', value: 'Tempo' },
     { label: 'Aerobic Long Run', value: 'Long Run' },
-    { label: 'XC Race', value: 'Race' },
+    { label: 'Race', value: 'Race' },
+    { label: 'Active Recovery', value: 'Recovery' },
   ];
 
   const filteredRuns = runs.filter((run) => {
@@ -334,10 +341,13 @@ export const RunList: React.FC<RunListProps> = ({
       ) : (
         <div className="space-y-2.5">
           {(isExpanded || isCombineMode ? filteredRuns : filteredRuns.slice(0, 3)).map((run) => {
-            const eq6k =
-              run.best6kTimeSeconds || calculate6kEquivalent(run.distanceKm, run.durationSeconds);
-            const isPr = best6kSec && eq6k === best6kSec;
-            const beatsTarget = Boolean(target6kSec && target6kSec > 0 && eq6k <= target6kSec);
+            const eqTarget =
+              run.targetEquivalentSeconds ||
+              calculateTargetDistanceEquivalent(run.distanceKm, run.durationSeconds, targetDistanceKm) ||
+              run.best6kTimeSeconds ||
+              0;
+            const isPr = best6kSec && eqTarget === best6kSec;
+            const beatsTarget = Boolean(target6kSec && target6kSec > 0 && eqTarget <= target6kSec);
             const isCheckedForCombine = selectedCombineIds.has(run.id);
 
             return (
@@ -439,7 +449,7 @@ export const RunList: React.FC<RunListProps> = ({
                     {/* Distance & Duration */}
                     <div className="text-left sm:text-right">
                       <div className="text-sm font-bold text-neutral-900 dark:text-white">
-                        {run.distanceKm} km
+                        {unit === 'miles' ? `${(run.distanceKm * KM_TO_MILES).toFixed(2)} mi` : `${run.distanceKm} km`}
                       </div>
                       <div className="text-xs text-neutral-500 dark:text-neutral-400">
                         {formatDuration(run.durationSeconds)}
@@ -454,12 +464,14 @@ export const RunList: React.FC<RunListProps> = ({
                       <div className="text-[10px] text-neutral-400 uppercase">Pace</div>
                     </div>
 
-                    {/* 6K Equivalent */}
+                    {/* Target Equivalent */}
                     <div className="text-left sm:text-right">
                       <div className="text-xs font-bold text-[#30d158]">
-                        {formatDuration(eq6k)}
+                        {formatDuration(eqTarget)}
                       </div>
-                      <div className="text-[10px] text-neutral-400 uppercase">6K Time</div>
+                      <div className="text-[10px] text-neutral-400 uppercase">
+                        {targetDistanceKm === 6 ? '6K Time' : `${targetDistanceKm} km Time`}
+                      </div>
                     </div>
 
                     {/* HR Pill */}

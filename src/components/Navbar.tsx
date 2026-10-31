@@ -77,8 +77,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             </span>
           </div>
 
-          {/* Clean Right Actions: Quick Log Run + Unified Tools & Info Dropdown */}
-          <div className="flex items-center space-x-2.5">
+          {/* Clean Right Actions: Sync Garmin + Quick Log Run + Unified Tools & Info Dropdown */}
+          <div className="flex items-center space-x-2">
+            {/* Sync Garmin Action */}
+            <button
+              onClick={onOpenGarminSync}
+              className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#0a84ff] hover:bg-[#0071e3] text-white transition-colors shadow-xs cursor-pointer"
+              aria-label="Sync Garmin"
+            >
+              <UploadCloud className="w-3.5 h-3.5" />
+              <span>Sync Garmin</span>
+            </button>
+
             {/* Quick Log Run Action */}
             <button
               onClick={onOpenAddRun}

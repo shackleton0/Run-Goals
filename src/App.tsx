@@ -36,7 +36,7 @@ import { AddRunModal } from './components/AddRunModal';
 import { GoalSettingsModal } from './components/GoalSettingsModal';
 import { EmptyGarminState } from './components/EmptyGarminState';
 import { WatchTelemetrySection } from './components/WatchTelemetrySection';
-import { Cloud, CloudOff, Loader2 } from 'lucide-react';
+import { Cloud, CloudOff, Loader2, AlertCircle, X } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 const LOCAL_STORAGE_RUNS_KEY = 'xc_6k_user_runs_data';
@@ -46,6 +46,7 @@ const LOCAL_STORAGE_THEME_KEY = 'xc_6k_theme';
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Theme: light / dark
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -132,13 +133,56 @@ export default function App() {
       if (currentUser) {
         try {
           const userProf = await getOrCreateUserProfile(currentUser);
-          setProfile(userProf);
+
+          // Check if user set custom targets or distance goals locally before logging in
+          const savedLocalProf = localStorage.getItem(LOCAL_STORAGE_PROFILE_KEY);
+          let mergedProfile = userProf;
+          if (savedLocalProf) {
+            try {
+              const parsedLocal = JSON.parse(savedLocalProf);
+              if (
+                parsedLocal.targetDistanceKm ||
+                parsedLocal.targetGoalName ||
+                parsedLocal.hasCustomTarget ||
+                parsedLocal.weeklyDistanceGoalKm ||
+                parsedLocal.target6kTimeSeconds
+              ) {
+                mergedProfile = {
+                  ...userProf,
+                  ...parsedLocal,
+                  id: currentUser.uid,
+                  email: currentUser.email || userProf.email,
+                };
+                await saveUserProfile(mergedProfile);
+              }
+            } catch (e) {
+              console.warn('Error merging local profile with cloud profile:', e);
+            }
+          }
+          setProfile(mergedProfile);
+          localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(mergedProfile));
 
           const unsubscribeRuns = subscribeUserRuns(
             currentUser.uid,
-            (cloudRuns) => {
-              if (cloudRuns) {
+            async (cloudRuns) => {
+              if (cloudRuns && cloudRuns.length > 0) {
                 setRuns(cloudRuns);
+                localStorage.setItem(LOCAL_STORAGE_RUNS_KEY, JSON.stringify(cloudRuns));
+              } else {
+                // If cloud has no runs, but user logged local runs, migrate them to cloud
+                const savedLocalRuns = localStorage.getItem(LOCAL_STORAGE_RUNS_KEY);
+                if (savedLocalRuns) {
+                  try {
+                    const parsed: RunRecord[] = JSON.parse(savedLocalRuns);
+                    if (parsed.length > 0) {
+                      const toUpload = parsed.map((r) => ({ ...r, userId: currentUser.uid }));
+                      await batchSaveRuns(toUpload);
+                      setRuns(toUpload);
+                    }
+                  } catch (e) {
+                    console.warn('Error uploading local runs to cloud:', e);
+                  }
+                }
               }
             },
             (error) => {
@@ -159,13 +203,11 @@ export default function App() {
     return () => unsubscribeAuth();
   }, []);
 
-  // Save to local storage when offline
+  // Always keep localStorage updated as immediate local cache
   useEffect(() => {
-    if (!user) {
-      localStorage.setItem(LOCAL_STORAGE_RUNS_KEY, JSON.stringify(runs));
-      localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(profile));
-    }
-  }, [runs, profile, user]);
+    localStorage.setItem(LOCAL_STORAGE_RUNS_KEY, JSON.stringify(runs));
+    localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(profile));
+  }, [runs, profile]);
 
   // Derived metrics
   const { weeklyStats, adherence } = groupRunsByWeek(runs, profile.weeklyRunGoal);
@@ -263,9 +305,10 @@ export default function App() {
 
   const handleSaveRun = async (newRun: RunRecord) => {
     const runToSave = user ? { ...newRun, userId: user.uid } : newRun;
+    const runEquiv = runToSave.targetEquivalentSeconds || runToSave.best6kTimeSeconds;
     const isNewPr =
       best6kSec === undefined ||
-      (runToSave.best6kTimeSeconds && runToSave.best6kTimeSeconds < best6kSec);
+      (runEquiv !== undefined && runEquiv < best6kSec);
 
     setRuns((prev) => [runToSave, ...prev]);
 
@@ -313,10 +356,23 @@ export default function App() {
   };
 
   const handleSignIn = async () => {
+    setAuthError(null);
     try {
       await signInWithGoogle();
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Google sign in error', err);
+      const errorObj = err as { code?: string; message?: string };
+      if (errorObj?.code === 'auth/unauthorized-domain') {
+        setAuthError(
+          'Firebase Authentication domain is provisioning. Please click Retry to connect.'
+        );
+      } else if (errorObj?.code === 'auth/popup-closed-by-user') {
+        // Closed by user, no error banner needed
+      } else if (errorObj?.code === 'auth/popup-blocked') {
+        setAuthError('Sign-in popup was blocked by your browser. Please allow popups for this site.');
+      } else {
+        setAuthError(errorObj?.message || 'Failed to sign in with Google. Please try again.');
+      }
     }
   };
 
@@ -382,6 +438,33 @@ export default function App() {
           </div>
         </div>
 
+        {/* Auth Error Banner */}
+        {authError && (
+          <div className="bg-red-50 dark:bg-red-950/40 border-b border-red-200 dark:border-red-800/80 px-4 py-2 text-xs text-red-700 dark:text-red-300">
+            <div className="max-w-6xl mx-auto flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>{authError}</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleSignIn}
+                  className="px-2.5 py-0.5 rounded-md bg-red-600 hover:bg-red-700 text-white font-medium text-[11px] cursor-pointer"
+                >
+                  Retry
+                </button>
+                <button
+                  onClick={() => setAuthError(null)}
+                  className="p-1 rounded-md text-red-500 hover:text-red-700 dark:hover:text-red-200 cursor-pointer"
+                  aria-label="Dismiss alert"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Main Dashboard */}
         <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-5">
           {runs.length === 0 ? (
@@ -412,12 +495,15 @@ export default function App() {
                 weeklyDistanceGoalKm={profile.weeklyDistanceGoalKm}
               />
 
-              {/* 3. PERFORMANCE ANALYTICS (Progression curves, aerobic base, interval training) */}
+              {/* 3. PERFORMANCE ANALYTICS (Recovery readiness, progression curves, aerobic base, interval training) */}
               <ProgressVisualizer
                 runs={runs}
                 weeklyStats={weeklyStats}
                 target6kSec={profile.target6kTimeSeconds}
+                targetDistanceKm={profile.targetDistanceKm}
+                targetGoalName={profile.targetGoalName}
                 unit={profile.unitPreference}
+                maxHeartRate={profile.maxHeartRate}
                 onOpenGarminSync={handleOpenGarminSync}
                 onOpenAddRun={() => setIsAddRunOpen(true)}
               />
@@ -434,6 +520,7 @@ export default function App() {
               <RunList
                 runs={runs}
                 unit={profile.unitPreference}
+                targetDistanceKm={profile.targetDistanceKm}
                 target6kSec={profile.target6kTimeSeconds}
                 onDeleteRun={handleDeleteRun}
                 onUpdateRunCategory={handleUpdateRunCategory}
@@ -485,6 +572,7 @@ export default function App() {
           userId={user ? user.uid : 'local_user'}
           onSaveRun={handleSaveRun}
           unit={profile.unitPreference}
+          targetDistanceKm={profile.targetDistanceKm}
         />
 
         <GoalSettingsModal

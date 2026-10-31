@@ -2,11 +2,13 @@ export type RunType =
   | 'Aerobic'
   | 'Interval Training'
   | '6K Time Trial'
+  | 'Time Trial'
   | 'Tempo'
   | 'Long Run'
   | 'Race'
   | 'Easy'
-  | 'Intervals';
+  | 'Intervals'
+  | 'Recovery';
 
 export interface RunRecord {
   id: string;
@@ -17,6 +19,7 @@ export interface RunRecord {
   durationSeconds: number;
   averagePaceSecPerKm: number;
   best6kTimeSeconds?: number;
+  targetEquivalentSeconds?: number;
   runType: RunType;
   avgHeartRate?: number;
   maxHeartRate?: number;

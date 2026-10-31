@@ -6,6 +6,7 @@ import {
   calculatePaceSecPerKm,
   formatPace,
   calculate6kEquivalent,
+  calculateTargetDistanceEquivalent,
 } from '../utils/runningCalculations';
 import { X, Plus } from 'lucide-react';
 
@@ -15,6 +16,7 @@ interface AddRunModalProps {
   userId: string;
   onSaveRun: (run: RunRecord) => void;
   unit: 'km' | 'miles';
+  targetDistanceKm?: number;
 }
 
 export const AddRunModal: React.FC<AddRunModalProps> = ({
@@ -23,6 +25,7 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
   userId,
   onSaveRun,
   unit,
+  targetDistanceKm = 6.0,
 }) => {
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [title, setTitle] = useState<string>('');
@@ -37,10 +40,13 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
 
   if (!isOpen) return null;
 
-  const distNum = parseFloat(distanceKm) || 0;
+  const rawDist = parseFloat(distanceKm) || 0;
+  // If unit is miles, convert user input to km for internal standard representation
+  const distNum = unit === 'miles' ? rawDist * 1.60934 : rawDist;
   const durationSec = parseDuration(durationStr);
   const avgPaceSec = calculatePaceSecPerKm(distNum, durationSec);
   const eq6kSec = calculate6kEquivalent(distNum, durationSec);
+  const eqTargetSec = calculateTargetDistanceEquivalent(distNum, durationSec, targetDistanceKm);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,11 +56,12 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
       id: `run_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       userId,
       date,
-      title: title.trim() || 'Cross Country Run',
+      title: title.trim() || 'Running Workout',
       distanceKm: Number(distNum.toFixed(2)),
       durationSeconds: durationSec,
       averagePaceSecPerKm: Math.round(avgPaceSec),
       best6kTimeSeconds: eq6kSec,
+      targetEquivalentSeconds: eqTargetSec,
       runType,
       avgHeartRate: avgHeartRate ? parseInt(avgHeartRate, 10) : undefined,
       maxHeartRate: maxHeartRate ? parseInt(maxHeartRate, 10) : undefined,
@@ -110,12 +117,14 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
                 onChange={(e) => setRunType(e.target.value as RunType)}
                 className="w-full px-3 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-[#30d158]"
               >
+                <option value="Time Trial">Time Trial</option>
                 <option value="6K Time Trial">6K Time Trial</option>
                 <option value="Race">Race</option>
                 <option value="Tempo">Tempo / Threshold</option>
                 <option value="Intervals">Track / Hill Intervals</option>
                 <option value="Long Run">Long Run</option>
-                <option value="Easy">Easy / Recovery</option>
+                <option value="Easy">Easy / Aerobic</option>
+                <option value="Recovery">Active Recovery</option>
               </select>
             </div>
           </div>
@@ -169,14 +178,14 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
           {distNum > 0 && durationSec > 0 && (
             <div className="p-3 rounded-xl bg-neutral-50 dark:bg-black/50 border border-neutral-200 dark:border-neutral-800 flex items-center justify-between text-xs tabular-nums">
               <div>
-                <span className="text-neutral-400 block text-[10px] uppercase">Pace</span>
+                <span className="text-neutral-400 block text-[10px] uppercase">Calculated Pace</span>
                 <span className="text-neutral-900 dark:text-white font-semibold">
                   {formatPace(avgPaceSec, unit)}
                 </span>
               </div>
               <div>
-                <span className="text-neutral-400 block text-[10px] uppercase">6K Equivalent</span>
-                <span className="text-[#30d158] font-bold">{formatDuration(eq6kSec)}</span>
+                <span className="text-neutral-400 block text-[10px] uppercase">{targetDistanceKm} km Equivalent</span>
+                <span className="text-[#30d158] font-bold">{formatDuration(eqTargetSec)}</span>
               </div>
             </div>
           )}

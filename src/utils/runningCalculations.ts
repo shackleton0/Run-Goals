@@ -816,3 +816,218 @@ export function calculateCategoryBreakdown(
   };
 }
 
+export type EffortLevel = 'Light' | 'Moderate' | 'Hard' | 'Extreme';
+
+export type ReadinessState = 'Fully Rested' | 'Optimal' | 'Good' | 'Moderate Fatigue' | 'Deep Recovery';
+
+export interface RecoveryCalculationResult {
+  hasRuns: boolean;
+  recoveryPercentage: number; // 0 to 100
+  readinessState: ReadinessState;
+  color: string;
+  hoursSinceLastRun: number;
+  recommendedRecoveryHours: number;
+  remainingRecoveryHours: number;
+  lastRun?: RunRecord;
+  effortScore: number;
+  effortLevel: EffortLevel;
+  trainingStressMultiplier: number;
+  explanation: string;
+  nextSessionRecommendation: string;
+}
+
+/**
+ * Pure mathematical running recovery calculation based on:
+ * 1. Elapsed time since the most recent workout
+ * 2. Physiological workout load (duration, distance, category multiplier, and HR intensity)
+ * 3. Exponential restorative recovery curve
+ */
+export function calculateRecoveryStatus(
+  runs: RunRecord[],
+  now: Date = new Date(),
+  maxHeartRate: number = 190
+): RecoveryCalculationResult {
+  if (!runs || runs.length === 0) {
+    return {
+      hasRuns: false,
+      recoveryPercentage: 100,
+      readinessState: 'Fully Rested',
+      color: '#30d158',
+      hoursSinceLastRun: 0,
+      recommendedRecoveryHours: 0,
+      remainingRecoveryHours: 0,
+      effortScore: 0,
+      effortLevel: 'Light',
+      trainingStressMultiplier: 1.0,
+      explanation: 'No runs recorded yet. Your legs and cardiovascular system are completely rested.',
+      nextSessionRecommendation: 'Ready to log your first run, time trial, or fitness tracker sync.',
+    };
+  }
+
+  // Find the most recent run
+  const sortedRuns = [...runs].sort((a, b) => {
+    const timeA = new Date(a.date).getTime();
+    const timeB = new Date(b.date).getTime();
+    if (timeA !== timeB) return timeB - timeA;
+    // secondary sort by duration or id if same date
+    return (b.durationSeconds || 0) - (a.durationSeconds || 0);
+  });
+
+  const lastRun = sortedRuns[0];
+
+  // Calculate elapsed hours since the last run
+  let runTimestamp = new Date(lastRun.date).getTime();
+  if (isNaN(runTimestamp)) {
+    runTimestamp = now.getTime() - 24 * 60 * 60 * 1000;
+  } else if (!lastRun.date.includes('T')) {
+    // If date string is YYYY-MM-DD, set to 12:00 PM local so runs today have a sensible elapsed time
+    const parsed = new Date(lastRun.date + 'T12:00:00');
+    if (!isNaN(parsed.getTime())) {
+      runTimestamp = parsed.getTime();
+    }
+  }
+
+  const rawElapsedMs = now.getTime() - runTimestamp;
+  const hoursSinceLastRun = Math.max(0.5, Math.round((rawElapsedMs / (1000 * 60 * 60)) * 10) / 10);
+
+  // 1. Base Duration & Distance Load
+  const durationMin = (lastRun.durationSeconds || 0) / 60;
+  const distanceKm = lastRun.distanceKm || 0;
+
+  // 2. Run Type Intensity Multiplier
+  let typeMultiplier = 1.0;
+  switch (lastRun.runType) {
+    case 'Race':
+      typeMultiplier = 1.55;
+      break;
+    case '6K Time Trial':
+      typeMultiplier = 1.50;
+      break;
+    case 'Interval Training':
+    case 'Intervals':
+      typeMultiplier = 1.40;
+      break;
+    case 'Tempo':
+      typeMultiplier = 1.25;
+      break;
+    case 'Long Run':
+      typeMultiplier = 1.20;
+      break;
+    case 'Easy':
+    case 'Aerobic':
+    default:
+      typeMultiplier = 0.90;
+      break;
+  }
+
+  // 3. Heart Rate Intensity Factor
+  let hrFactor = 1.0;
+  if (lastRun.avgHeartRate && lastRun.avgHeartRate > 50) {
+    const hrRatio = lastRun.avgHeartRate / maxHeartRate;
+    if (hrRatio >= 0.90) {
+      hrFactor = 1.35; // Zone 5 / race peak
+    } else if (hrRatio >= 0.82) {
+      hrFactor = 1.20; // Zone 4 / threshold
+    } else if (hrRatio >= 0.72) {
+      hrFactor = 1.05; // Zone 3 / moderate
+    } else {
+      hrFactor = 0.85; // Zone 1-2 / easy aerobic
+    }
+  }
+
+  // 4. Pace Factor (speed stress)
+  let paceFactor = 1.0;
+  if (lastRun.averagePaceSecPerKm && lastRun.averagePaceSecPerKm > 0) {
+    if (lastRun.averagePaceSecPerKm < 240) {
+      paceFactor = 1.15; // sub-4:00/km fast turnover
+    } else if (lastRun.averagePaceSecPerKm < 270) {
+      paceFactor = 1.08; // sub-4:30/km
+    }
+  }
+
+  // Composite Training Stress Score (Math calculation)
+  const trainingStressMultiplier = Number((typeMultiplier * hrFactor * paceFactor).toFixed(2));
+  const rawLoad = (durationMin * 0.85 + distanceKm * 2.6) * trainingStressMultiplier;
+  const effortScore = Math.max(10, Math.round(rawLoad));
+
+  // Effort Classification
+  let effortLevel: EffortLevel = 'Moderate';
+  if (effortScore < 35) {
+    effortLevel = 'Light';
+  } else if (effortScore <= 65) {
+    effortLevel = 'Moderate';
+  } else if (effortScore <= 95) {
+    effortLevel = 'Hard';
+  } else {
+    effortLevel = 'Extreme';
+  }
+
+  // 5. Recommended Recovery Hours Formula:
+  // Math: 12h baseline + load scaling, bounded between 12 and 72 hours
+  const recommendedRecoveryHours = Math.min(
+    72,
+    Math.max(12, Math.round(effortScore * 0.46 + 4))
+  );
+
+  // 6. Exponential Restorative Recovery Curve
+  // Math: recoveryPercentage = Math.min(100, (elapsed / recommended)^0.85 * 100)
+  const progressRatio = hoursSinceLastRun / recommendedRecoveryHours;
+  let recoveryPercentage = 100;
+  let remainingRecoveryHours = 0;
+
+  if (progressRatio < 1.0) {
+    recoveryPercentage = Math.min(
+      99,
+      Math.max(5, Math.round(Math.pow(progressRatio, 0.85) * 100))
+    );
+    remainingRecoveryHours = Math.max(
+      0.5,
+      Math.round((recommendedRecoveryHours - hoursSinceLastRun) * 10) / 10
+    );
+  }
+
+  // 7. Readiness State, Color, and Scientific Guidance
+  let readinessState: ReadinessState;
+  let color: string;
+  let explanation: string;
+  let nextSessionRecommendation: string;
+
+  if (recoveryPercentage >= 90) {
+    readinessState = progressRatio >= 1.2 ? 'Fully Rested' : 'Optimal';
+    color = '#30d158'; // Emerald green
+    explanation = `Your cardiovascular system and glycogen stores are fully recovered after ${hoursSinceLastRun}h since ${lastRun.title}.`;
+    nextSessionRecommendation = 'Prime condition for high-intensity intervals, race pace trial, or long endurance run.';
+  } else if (recoveryPercentage >= 70) {
+    readinessState = 'Good';
+    color = '#0a84ff'; // Blue
+    explanation = `Substantial recovery achieved (${recoveryPercentage}%). ${remainingRecoveryHours}h until complete cellular recovery from ${lastRun.title}.`;
+    nextSessionRecommendation = 'Safe for aerobic base miles, easy recovery running, or moderate tempo work.';
+  } else if (recoveryPercentage >= 45) {
+    readinessState = 'Moderate Fatigue';
+    color = '#ff9f0a'; // Amber
+    explanation = `Moderate residual muscle and metabolic fatigue (${hoursSinceLastRun}h elapsed of ${recommendedRecoveryHours}h recommended window).`;
+    nextSessionRecommendation = 'Prioritize light recovery jog, dynamic stretching, cross-training, or rest.';
+  } else {
+    readinessState = 'Deep Recovery';
+    color = '#ff453a'; // Red
+    explanation = `High physiological strain detected from ${lastRun.title} (${lastRun.runType}, Load: ${effortScore}). Muscles are repairing.`;
+    nextSessionRecommendation = 'Rest day recommended. Focus on hydration, nutrition, and sleep before next quality workout.';
+  }
+
+  return {
+    hasRuns: true,
+    recoveryPercentage,
+    readinessState,
+    color,
+    hoursSinceLastRun,
+    recommendedRecoveryHours,
+    remainingRecoveryHours,
+    lastRun,
+    effortScore,
+    effortLevel,
+    trainingStressMultiplier,
+    explanation,
+    nextSessionRecommendation,
+  };
+}
+

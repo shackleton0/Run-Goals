@@ -140,11 +140,23 @@ export async function getOrCreateUserProfile(user: User): Promise<UserProfile> {
   }
 }
 
+// Helper to remove undefined fields which Firestore rejects
+export function cleanObjectForFirestore<T extends Record<string, any>>(obj: T): Partial<T> {
+  const result: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
+  const cleanProfile = cleanObjectForFirestore(profile);
   const path = `users/${profile.id}`;
   try {
     const userDocRef = doc(db, 'users', profile.id);
-    await setDoc(userDocRef, { ...profile, updatedAt: new Date().toISOString() }, { merge: true });
+    await setDoc(userDocRef, { ...cleanProfile, updatedAt: new Date().toISOString() }, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
@@ -178,10 +190,11 @@ export function subscribeUserRuns(
 }
 
 export async function saveRunRecord(run: RunRecord): Promise<void> {
+  const cleanRun = cleanObjectForFirestore(run);
   const path = `runs/${run.id}`;
   try {
     const docRef = doc(db, 'runs', run.id);
-    await setDoc(docRef, { ...run, updatedAt: new Date().toISOString() });
+    await setDoc(docRef, { ...cleanRun, updatedAt: new Date().toISOString() });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -201,8 +214,9 @@ export async function batchSaveRuns(runs: RunRecord[]): Promise<void> {
   if (runs.length === 0) return;
   const batch = writeBatch(db);
   runs.forEach((r) => {
+    const cleanRun = cleanObjectForFirestore(r);
     const docRef = doc(db, 'runs', r.id);
-    batch.set(docRef, { ...r, updatedAt: new Date().toISOString() });
+    batch.set(docRef, { ...cleanRun, updatedAt: new Date().toISOString() });
   });
   try {
     await batch.commit();

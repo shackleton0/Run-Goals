@@ -27,10 +27,15 @@ service cloud.firestore {
       return data.id is string && data.id.size() <= 128
         && data.email is string && data.email.size() <= 256
         && (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 128))
+        && (!('targetDistanceKm' in data) || (data.targetDistanceKm is number && data.targetDistanceKm > 0 && data.targetDistanceKm <= 100))
+        && (!('targetGoalName' in data) || (data.targetGoalName is string && data.targetGoalName.size() <= 128))
+        && (!('targetTimeSeconds' in data) || (data.targetTimeSeconds is number && data.targetTimeSeconds > 0))
+        && (!('targetPaceSecPerKm' in data) || (data.targetPaceSecPerKm is number && data.targetPaceSecPerKm > 0))
         && (!('target6kTimeSeconds' in data) || (data.target6kTimeSeconds is number && data.target6kTimeSeconds > 0))
         && (!('hasCustomTarget' in data) || (data.hasCustomTarget is bool))
         && (!('current6kPrSeconds' in data) || (data.current6kPrSeconds is number && data.current6kPrSeconds > 0))
         && data.weeklyRunGoal is number && data.weeklyRunGoal >= 1 && data.weeklyRunGoal <= 14
+        && (!('weeklyDistanceGoalKm' in data) || (data.weeklyDistanceGoalKm is number && data.weeklyDistanceGoalKm >= 0 && data.weeklyDistanceGoalKm <= 500))
         && (!('unitPreference' in data) || (data.unitPreference in ['km', 'miles']))
         && (!('athleteLevel' in data) || (data.athleteLevel in ['Beginner', 'High School XC', 'Collegiate / Advanced', 'Masters']))
         && (!('maxHeartRate' in data) || (data.maxHeartRate is number && data.maxHeartRate >= 100 && data.maxHeartRate <= 250))
@@ -47,7 +52,8 @@ service cloud.firestore {
         && data.durationSeconds is number && data.durationSeconds >= 0
         && (!('averagePaceSecPerKm' in data) || (data.averagePaceSecPerKm is number))
         && (!('best6kTimeSeconds' in data) || (data.best6kTimeSeconds is number))
-        && data.runType in ['Aerobic', 'Interval Training', '6K Time Trial', 'Tempo', 'Long Run', 'Race', 'Easy', 'Intervals']
+        && (!('targetEquivalentSeconds' in data) || (data.targetEquivalentSeconds is number))
+        && data.runType in ['Aerobic', 'Interval Training', '6K Time Trial', 'Time Trial', 'Tempo', 'Long Run', 'Race', 'Easy', 'Intervals', 'Recovery']
         && (!('avgHeartRate' in data) || (data.avgHeartRate is number))
         && (!('maxHeartRate' in data) || (data.maxHeartRate is number))
         && (!('avgCadence' in data) || (data.avgCadence is number))

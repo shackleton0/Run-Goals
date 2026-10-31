@@ -11,11 +11,13 @@ interface GoalSettingsModalProps {
 }
 
 const DISTANCE_PRESETS = [
+  { label: '1 Mile', km: 1.60934, name: '1 Mile' },
   { label: '5K', km: 5.0, name: '5K Race' },
   { label: '6K (XC)', km: 6.0, name: '6K Cross Country' },
   { label: '8K', km: 8.0, name: '8K Race' },
   { label: '10K', km: 10.0, name: '10K Race' },
   { label: 'Half Marathon', km: 21.0975, name: 'Half Marathon' },
+  { label: 'Marathon', km: 42.195, name: 'Marathon' },
   { label: 'Custom', km: 0, name: 'Custom Distance' },
 ];
 
