@@ -54,7 +54,7 @@ export const MotivationalGreeting: React.FC<MotivationalGreetingProps> = ({
   const message = MOTIVATIONAL_MESSAGES[quoteIndex];
 
   return (
-    <div className="rounded-2xl bg-gradient-to-r from-[#FF6B00] via-[#F25C00] to-[#E05000] text-[#FCFFFF] p-4 sm:p-5 shadow-sm border border-orange-500/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 relative overflow-hidden">
+    <div className="rounded-2xl bg-gradient-to-r from-[#0593C6] via-[#0D9488] to-[#10B981] text-[#FCFFFF] p-4 sm:p-5 shadow-sm border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 relative overflow-hidden">
       {/* Decorative subtle texture glow */}
       <div className="absolute top-0 right-0 -mt-4 -mr-4 w-36 h-36 bg-white/10 rounded-full blur-2xl pointer-events-none" />
 

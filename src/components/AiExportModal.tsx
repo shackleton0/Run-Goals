@@ -332,7 +332,7 @@ To maximize 6K race performance while staying strictly within your 3 runs/week s
               <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-800 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center space-x-2 font-semibold text-neutral-900 dark:text-white mb-1">
-                    <FileJson className="w-4 h-4 text-[#ff9f0a]" />
+                    <FileJson className="w-4 h-4 text-[#0593C6]" />
                     <span>Raw JSON Export</span>
                   </div>
                   <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4">

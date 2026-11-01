@@ -231,7 +231,7 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
             className="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 hover:bg-neutral-100 dark:hover:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-800 text-left transition-colors cursor-pointer group"
           >
             <div className="flex items-center space-x-2 text-xs font-semibold text-neutral-900 dark:text-white mb-1">
-              <Target className="w-4 h-4 text-[#ff9f0a]" />
+              <Target className="w-4 h-4 text-[#10B981]" />
               <span>Set 6K Goal Time</span>
             </div>
             <p className="text-[11px] text-neutral-500 dark:text-neutral-400">

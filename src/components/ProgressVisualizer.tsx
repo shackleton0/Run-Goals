@@ -217,7 +217,7 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
                   : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-[#FCFFFF]'
               }`}
             >
-              <TrendingUp className={`w-3.5 h-3.5 ${activeTab === '6k_progression' ? 'text-[#FCFFFF]' : 'text-[#FF6B00]'}`} />
+              <TrendingUp className={`w-3.5 h-3.5 ${activeTab === '6k_progression' ? 'text-[#FCFFFF]' : 'text-[#0593C6]'}`} />
               <span>Goal Race Curve</span>
             </button>
 
@@ -247,7 +247,7 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
                   : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-[#FCFFFF]'
               }`}
             >
-              <Zap className={`w-3.5 h-3.5 ${activeTab === 'interval_training' ? 'text-[#FCFFFF]' : 'text-[#FF6B00]'}`} />
+              <Zap className={`w-3.5 h-3.5 ${activeTab === 'interval_training' ? 'text-[#FCFFFF]' : 'text-[#10B981]'}`} />
               <span>Intervals ({intervalRuns.length})</span>
             </button>
 
@@ -318,7 +318,7 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
                 <div className="flex items-center space-x-4">
                   {target6kSec && (
                     <span className="flex items-center space-x-1.5">
-                      <span className="w-3 h-0.5 bg-[#FF6B00] inline-block border-t border-[#FF6B00] border-dashed" />
+                      <span className="w-3 h-0.5 bg-[#10B981] inline-block border-t border-[#10B981] border-dashed" />
                       <span className="text-neutral-700 dark:text-neutral-300 font-medium">
                         Goal: {formatDuration(target6kSec)}
                       </span>
@@ -346,14 +346,14 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
                         y1={targetY}
                         x2={width - padding.right}
                         y2={targetY}
-                        stroke="#FF6B00"
+                        stroke="#10B981"
                         strokeWidth="1.5"
                         strokeDasharray="4,4"
                       />
                       <text
                         x={width - padding.right}
                         y={targetY - 5}
-                        fill="#FF6B00"
+                        fill="#10B981"
                         fontSize="11"
                         fontWeight="600"
                         textAnchor="end"
@@ -498,7 +498,7 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
         <div>
           {intervalRuns.length === 0 ? (
             <div className="py-12 px-4 text-center rounded-xl bg-neutral-50 dark:bg-neutral-900/40 border border-neutral-200 dark:border-neutral-800">
-              <Zap className="w-8 h-8 text-[#FF6B00] mx-auto mb-2 opacity-60" />
+              <Zap className="w-8 h-8 text-[#10B981] mx-auto mb-2 opacity-60" />
               <h3 className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
                 No Interval Sessions Logged
               </h3>
@@ -535,7 +535,7 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
                     <path
                       d={linePathInterval}
                       fill="none"
-                      stroke="#FF6B00"
+                      stroke="#10B981"
                       strokeWidth="2.5"
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -553,7 +553,7 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
                         cx={pt.x}
                         cy={pt.y}
                         r={selectedRun?.id === pt.run.id ? 7 : 4.5}
-                        fill="#FF6B00"
+                        fill="#10B981"
                         stroke="currentColor"
                         className="text-[#FCFFFF] dark:text-[#12222f] transition-all"
                         strokeWidth="2"

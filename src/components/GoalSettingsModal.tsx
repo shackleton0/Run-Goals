@@ -245,7 +245,7 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
                 Weekly Runs Target
               </label>
               <div className="relative">
-                <Calendar className="w-4 h-4 text-[#ff9f0a] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <Calendar className="w-4 h-4 text-[#10B981] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="number"
                   min="1"
@@ -253,7 +253,7 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
                   required
                   value={weeklyRunGoal}
                   onChange={(e) => setWeeklyRunGoal(parseInt(e.target.value, 10))}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs font-semibold text-neutral-900 dark:text-white tabular-nums focus:outline-none focus:border-[#ff9f0a]"
+                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs font-semibold text-neutral-900 dark:text-white tabular-nums focus:outline-none focus:border-[#10B981]"
                 />
               </div>
               <p className="text-[10px] text-neutral-500 mt-0.5">Runs per week</p>

@@ -74,7 +74,7 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
       name: 'Interval',
       expectedLabel: 'Speed / Intervals',
       expectedDescription: '5x1000m or 4x1200m repetitions at 6K goal race pace',
-      accentColor: 'text-[#FF6B00]',
+      accentColor: 'text-[#10B981]',
       icon: Zap,
       matcher: (r: RunRecord) =>
         r.runType === 'Interval Training' ||
@@ -155,7 +155,7 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
               {completedCount} of 3 Completed
             </span>
             {weeklyDistGoalFormatted && (
-              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#FF6B00]/10 text-[#FF6B00] tabular-nums">
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#10B981]/10 text-[#10B981] dark:text-[#34d399] tabular-nums">
                 {currentWeekDistFormatted} / {weeklyDistGoalFormatted} {unit}
               </span>
             )}
@@ -187,7 +187,7 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
             <div className="p-3 rounded-lg bg-[#FCFFFF] dark:bg-[#12222f] border border-neutral-200/80 dark:border-neutral-800">
-              <span className="font-semibold text-[#FF6B00] block mb-1">1. Interval</span>
+              <span className="font-semibold text-[#10B981] block mb-1">1. Interval</span>
               <p className="text-neutral-500 dark:text-neutral-400 text-[11px]">
                 5x1000m or 4x1200m at goal 6K pace to sharpen turnover and race efficiency.
               </p>

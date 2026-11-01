@@ -211,7 +211,7 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
             {onOpenGarminSync && (
               <button
                 onClick={onOpenGarminSync}
-                className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-[#0a84ff] text-white cursor-pointer hover:bg-[#0071e3]"
+                className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-[#0593C6] text-white cursor-pointer hover:bg-[#047da8]"
               >
                 <Activity className="w-3.5 h-3.5" />
                 <span>Upload Garmin Activities</span>

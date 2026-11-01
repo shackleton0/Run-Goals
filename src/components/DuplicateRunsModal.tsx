@@ -30,7 +30,7 @@ export const DuplicateRunsModal: React.FC<DuplicateRunsModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-neutral-800 flex-shrink-0">
           <div className="flex items-center space-x-2.5">
-            <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-full bg-sky-500/10 text-[#0593C6] flex items-center justify-center">
               <AlertCircle className="w-4 h-4" />
             </div>
             <div>
@@ -60,7 +60,7 @@ export const DuplicateRunsModal: React.FC<DuplicateRunsModalProps> = ({
             >
               <div className="flex items-center justify-between font-semibold text-neutral-700 dark:text-neutral-300">
                 <span>{incoming.date}</span>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-sky-500/15 text-[#0593C6] dark:text-[#38bdf8]">
                   Duplicate Match
                 </span>
               </div>

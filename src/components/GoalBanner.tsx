@@ -64,7 +64,7 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
     confetti({
       particleCount: 80,
       spread: 60,
-      colors: ['#0593C6', '#FF6B00', '#FCFFFF'],
+      colors: ['#0593C6', '#10B981', '#FCFFFF'],
       origin: { y: 0.6 },
     });
   };
@@ -127,7 +127,7 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
         <div className="p-4 rounded-xl bg-[#F2F8FB]/80 dark:bg-[#0e1b25]/80 border border-[#0593C6]/15 dark:border-neutral-800/80">
           <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">
             <span>Current PR</span>
-            <Trophy className="w-3.5 h-3.5 text-[#FF6B00]" />
+            <Trophy className="w-3.5 h-3.5 text-[#10B981]" />
           </div>
           <div className="text-2xl sm:text-3xl font-bold text-[#0593C6] tracking-tight tabular-nums">
             {currentSec ? formatDuration(currentSec) : '--:--'}
@@ -159,16 +159,16 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
           </div>
         </div>
 
-        {/* Consistency Streak with touch of energetic orange */}
+        {/* Consistency Streak with green accent */}
         <div className="p-4 rounded-xl bg-[#F2F8FB]/80 dark:bg-[#0e1b25]/80 border border-[#0593C6]/15 dark:border-neutral-800/80">
           <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">
             <span>Weekly Streak</span>
-            <Flame className="w-3.5 h-3.5 text-[#FF6B00]" />
+            <Flame className="w-3.5 h-3.5 text-[#10B981]" />
           </div>
           <div className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight tabular-nums">
             {adherence.currentStreakWeeks > 0 ? (
               <>
-                {adherence.currentStreakWeeks} <span className="text-sm font-medium text-[#FF6B00]">wks</span>
+                {adherence.currentStreakWeeks} <span className="text-sm font-medium text-[#10B981]">wks</span>
               </>
             ) : (
               '--'
@@ -215,7 +215,7 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
             {cutoff ? (
               !cutoff.isAchieved ? (
                 <div className="space-y-1">
-                  <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-[#FF6B00]/10 text-[#FF6B00] text-xs font-bold border border-[#FF6B00]/20">
+                  <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-[#10B981]/10 text-[#10B981] dark:text-[#34d399] text-xs font-bold border border-[#10B981]/20">
                     <TrendingDown className="w-3.5 h-3.5" />
                     <span>Cut off: {cutoff.paceCutoffSeconds} {cutoff.paceCutoffSeconds === 1 ? 'second' : 'seconds'}</span>
                   </div>
@@ -258,7 +258,7 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
             </div>
             <div className="w-full bg-neutral-200 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
               <div
-                className="bg-gradient-to-r from-[#0593C6] to-[#FF6B00] h-2 rounded-full transition-all duration-500 ease-out"
+                className="bg-gradient-to-r from-[#0593C6] to-[#10B981] h-2 rounded-full transition-all duration-500 ease-out"
                 style={{ width: `${progressPct}%` }}
               />
             </div>

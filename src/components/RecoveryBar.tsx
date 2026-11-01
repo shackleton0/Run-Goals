@@ -24,30 +24,30 @@ export const RecoveryBar: React.FC<RecoveryBarProps> = ({ runs, maxHeartRate = 1
 
   // Gradient styles based on recovery percentage
   const getGradientClass = (pct: number) => {
-    if (pct >= 90) return 'from-emerald-500 to-[#30d158]';
-    if (pct >= 70) return 'from-blue-600 to-[#0a84ff]';
-    if (pct >= 45) return 'from-amber-600 to-[#ff9f0a]';
-    return 'from-rose-600 to-[#ff453a]';
+    if (pct >= 90) return 'from-emerald-500 to-[#10b981]';
+    if (pct >= 70) return 'from-blue-600 to-[#0593C6]';
+    if (pct >= 45) return 'from-teal-600 to-[#0d9488]';
+    return 'from-slate-600 to-[#0369a1]';
   };
 
   const getGlowColor = (pct: number) => {
-    if (pct >= 90) return 'rgba(48, 209, 88, 0.35)';
-    if (pct >= 70) return 'rgba(10, 132, 255, 0.35)';
-    if (pct >= 45) return 'rgba(255, 159, 10, 0.35)';
-    return 'rgba(255, 69, 58, 0.35)';
+    if (pct >= 90) return 'rgba(16, 185, 129, 0.35)';
+    if (pct >= 70) return 'rgba(5, 147, 198, 0.35)';
+    if (pct >= 45) return 'rgba(13, 148, 136, 0.35)';
+    return 'rgba(3, 105, 161, 0.35)';
   };
 
   const getBadgeStyle = (pct: number) => {
     if (pct >= 90) {
-      return 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-[#30d158] border-emerald-200 dark:border-emerald-800/60';
+      return 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-[#34d399] border-emerald-200 dark:border-emerald-800/60';
     }
     if (pct >= 70) {
-      return 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-[#0a84ff] border-blue-200 dark:border-blue-800/60';
+      return 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-[#38bdf8] border-sky-200 dark:border-sky-800/60';
     }
     if (pct >= 45) {
-      return 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-[#ff9f0a] border-amber-200 dark:border-amber-800/60';
+      return 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-[#2dd4bf] border-teal-200 dark:border-teal-800/60';
     }
-    return 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-[#ff453a] border-rose-200 dark:border-rose-800/60';
+    return 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700';
   };
 
   return (
@@ -161,7 +161,7 @@ export const RecoveryBar: React.FC<RecoveryBarProps> = ({ runs, maxHeartRate = 1
           {/* Workout Strain & Effort */}
           <div className="p-2.5 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800 flex flex-col justify-between">
             <div className="flex items-center space-x-1.5 text-neutral-400 dark:text-neutral-500 text-[11px] mb-1">
-              <Flame className="w-3.5 h-3.5 text-amber-500" />
+              <Flame className="w-3.5 h-3.5 text-[#0593C6]" />
               <span>Session Strain</span>
             </div>
             <div className="font-bold text-xs text-neutral-900 dark:text-white flex items-center space-x-1">
@@ -179,9 +179,9 @@ export const RecoveryBar: React.FC<RecoveryBarProps> = ({ runs, maxHeartRate = 1
           <div className="p-2.5 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800 flex flex-col justify-between">
             <div className="flex items-center space-x-1.5 text-neutral-400 dark:text-neutral-500 text-[11px] mb-1">
               {recovery.remainingRecoveryHours === 0 ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-[#30d158]" />
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#10b981]" />
               ) : (
-                <AlertTriangle className="w-3.5 h-3.5 text-[#ff9f0a]" />
+                <AlertTriangle className="w-3.5 h-3.5 text-[#0593C6]" />
               )}
               <span>Status to 100%</span>
             </div>

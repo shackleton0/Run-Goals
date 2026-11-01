@@ -155,13 +155,13 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
             </div>
           </div>
 
-          {/* Time Remaining to Cut Off with touch of orange */}
-          <div className="p-4 rounded-xl bg-[#F2F8FB]/80 dark:bg-[#0e1b25]/80 border border-[#FF6B00]/20 dark:border-neutral-800 flex flex-col justify-between">
+          {/* Time Remaining to Cut Off with green accent */}
+          <div className="p-4 rounded-xl bg-[#F2F8FB]/80 dark:bg-[#0e1b25]/80 border border-[#10B981]/25 dark:border-neutral-800 flex flex-col justify-between">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-1 flex items-center justify-between">
               <span>Gap to Goal</span>
-              <TrendingDown className="w-3.5 h-3.5 text-[#FF6B00]" />
+              <TrendingDown className="w-3.5 h-3.5 text-[#10B981]" />
             </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-[#FF6B00] tabular-nums tracking-tight">
+            <div className="text-2xl sm:text-3xl font-extrabold text-[#10B981] dark:text-[#34d399] tabular-nums tracking-tight">
               {formatDuration(projection.gapSeconds)}
             </div>
             <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 tabular-nums">
@@ -226,7 +226,7 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
                 onClick={() => setSelectedScenario('accelerated')}
                 className={`px-3 py-1 rounded-md font-semibold transition-all cursor-pointer ${
                   selectedScenario === 'accelerated'
-                    ? 'bg-[#FF6B00] text-[#FCFFFF] shadow-xs'
+                    ? 'bg-[#10B981] text-[#FCFFFF] shadow-xs'
                     : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-[#FCFFFF]'
                 }`}
               >
@@ -267,13 +267,13 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
               onClick={() => setSelectedScenario('accelerated')}
               className={`p-3 rounded-lg border transition-all cursor-pointer ${
                 selectedScenario === 'accelerated'
-                  ? 'border-[#FF6B00] bg-[#FF6B00]/10 ring-1 ring-[#FF6B00]/30'
+                  ? 'border-[#10B981] bg-[#10B981]/10 ring-1 ring-[#10B981]/30'
                   : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900'
               }`}
             >
               <div className="font-semibold text-neutral-900 dark:text-[#FCFFFF] flex items-center justify-between">
                 <span>Accelerated Focus</span>
-                <span className="text-[#FF6B00] tabular-nums font-bold">~{projection.scenarios.accelerated.weeks} wks</span>
+                <span className="text-[#10B981] dark:text-[#34d399] tabular-nums font-bold">~{projection.scenarios.accelerated.weeks} wks</span>
               </div>
               <p className="text-[11px] text-neutral-500 mt-1">
                 Optimal recovery nutrition, race pace repeat intervals, and high weekly adherence.

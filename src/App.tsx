@@ -495,7 +495,7 @@ export default function App() {
                 </span>
               ) : isGuest ? (
                 <span className="flex items-center space-x-1.5 text-neutral-700 dark:text-neutral-300 font-medium">
-                  <FlaskConical className="w-4 h-4 text-[#FF6B00]" />
+                  <FlaskConical className="w-4 h-4 text-[#10B981]" />
                   <span>Guest Testing Mode · Local storage only ·</span>
                   <button
                     onClick={handleSignIn}
@@ -506,7 +506,7 @@ export default function App() {
                 </span>
               ) : (
                 <span className="flex items-center space-x-1.5">
-                  <CloudOff className="w-3.5 h-3.5 text-[#FF6B00]" />
+                  <CloudOff className="w-3.5 h-3.5 text-[#10B981]" />
                   <span>Local Session</span>
                 </span>
               )}

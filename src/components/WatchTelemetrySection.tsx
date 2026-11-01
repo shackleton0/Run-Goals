@@ -101,12 +101,12 @@ export const HR_ZONES: HrZoneDefinition[] = [
     shortName: 'Tempo',
     minPct: 70,
     maxPct: 80,
-    color: '#ff9f0a', // amber/orange
-    bgLight: 'bg-amber-50',
-    bgDark: 'dark:bg-amber-950/30',
-    borderLight: 'border-amber-200',
-    borderDark: 'dark:border-amber-800/60',
-    textColor: 'text-amber-600 dark:text-amber-400',
+    color: '#0284c7', // sky blue
+    bgLight: 'bg-sky-50',
+    bgDark: 'dark:bg-sky-950/30',
+    borderLight: 'border-sky-200',
+    borderDark: 'dark:border-sky-800/60',
+    textColor: 'text-sky-600 dark:text-sky-400',
     description: 'Comfortably hard tempo effort. Breathing is controlled but speaking requires pauses.',
     benefit: 'Improves muscular glycogen storage and sustained pace endurance',
   },
@@ -477,7 +477,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
               className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 transition-colors cursor-pointer"
               title="Calibrate your physiological Max Heart Rate"
             >
-              <Sliders className="w-3.5 h-3.5 text-[#FF6B00]" />
+              <Sliders className="w-3.5 h-3.5 text-[#10B981]" />
               <span>
                 Max HR: <strong className="font-bold text-neutral-900 dark:text-[#FCFFFF] tabular-nums">{maxHrToUse} bpm</strong>
               </span>
@@ -537,14 +537,14 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
 
         {/* Card 2: Highest Heart Rate Recorded */}
         <div className="p-4 rounded-xl bg-gradient-to-br from-neutral-50 to-neutral-100/60 dark:from-neutral-900/80 dark:to-neutral-900/30 border border-neutral-200/80 dark:border-neutral-800/80 flex flex-col justify-between relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-[#FF6B00]/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="absolute top-0 right-0 w-24 h-24 bg-[#10B981]/10 rounded-full blur-2xl pointer-events-none" />
           <div>
             <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1.5">
               <span>Peak Heartbeat Recorded</span>
-              <Heart className="w-4 h-4 text-[#FF6B00] fill-[#FF6B00]/30" />
+              <Heart className="w-4 h-4 text-[#10B981] fill-[#10B981]/30" />
             </div>
 
-            <div className="text-3xl font-bold text-[#FF6B00] tracking-tight tabular-nums mt-1 flex items-baseline space-x-1.5">
+            <div className="text-3xl font-bold text-[#10B981] dark:text-[#34d399] tracking-tight tabular-nums mt-1 flex items-baseline space-x-1.5">
               <span>{metrics.peakHeartRate > 0 ? metrics.peakHeartRate : '--'}</span>
               <span className="text-sm font-semibold text-neutral-500">BPM</span>
             </div>
@@ -613,7 +613,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
           <div>
             <h3 className="text-sm font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight flex items-center space-x-1.5">
-              <Activity className="w-4 h-4 text-[#FF6B00]" />
+              <Activity className="w-4 h-4 text-[#10B981]" />
               <span>Training Zones (Based on {maxHrToUse} BPM Max)</span>
             </h3>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">

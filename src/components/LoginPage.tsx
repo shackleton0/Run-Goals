@@ -155,12 +155,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 </span>
               </div>
 
-              {/* Secondary / Testing: Guest Option with subtle orange accent */}
+              {/* Secondary / Testing: Guest Option with subtle green accent */}
               <button
                 onClick={onContinueAsGuest}
                 className="w-full py-3 px-4 rounded-2xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-900 dark:hover:bg-neutral-800 border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-[#FCFFFF] font-bold text-sm flex items-center justify-center space-x-2 transition-all cursor-pointer group"
               >
-                <FlaskConical className="w-4 h-4 text-[#FF6B00] group-hover:scale-110 transition-transform" />
+                <FlaskConical className="w-4 h-4 text-[#10B981] group-hover:scale-110 transition-transform" />
                 <span>Continue as Guest (for testing)</span>
                 <ArrowRight className="w-3.5 h-3.5 text-neutral-400 group-hover:translate-x-0.5 transition-transform" />
               </button>
@@ -177,7 +177,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 <span>Upload Garmin .TCX, .GPX, and .CSV files directly</span>
               </div>
               <div className="flex items-center space-x-2.5 text-xs text-neutral-600 dark:text-neutral-300">
-                <TrendingDown className="w-4 h-4 text-[#FF6B00] shrink-0" />
+                <TrendingDown className="w-4 h-4 text-[#10B981] shrink-0" />
                 <span>Calculates empirical 6K splits and weeks remaining</span>
               </div>
               <div className="flex items-center space-x-2.5 text-xs text-neutral-600 dark:text-neutral-300">

@@ -741,9 +741,9 @@ export function calculateCategoryBreakdown(
     Interval: {
       name: 'Intervals',
       description: 'Track repeats, VO2 max speed, and race turnover',
-      color: '#FF6B00', // Brand Orange
-      darkColor: '#ff8533', // Brand Orange light
-      badgeBg: 'bg-orange-50 dark:bg-orange-950/40 text-[#FF6B00] dark:text-[#ff8533]',
+      color: '#10B981', // Emerald Green brand
+      darkColor: '#34d399', // Emerald Green light
+      badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40 text-[#10B981] dark:text-[#34d399]',
     },
     Tempo: {
       name: 'Tempo',
@@ -755,9 +755,9 @@ export function calculateCategoryBreakdown(
     Race: {
       name: 'Race & Trials',
       description: 'Cross country races and goal distance time trials',
-      color: '#e05e00', // Deep Orange
-      darkColor: '#ff944d', // Bright Orange
-      badgeBg: 'bg-orange-50 dark:bg-orange-950/40 text-[#e05e00] dark:text-[#ff944d]',
+      color: '#059669', // Forest Green
+      darkColor: '#6ee7b7', // Mint Green
+      badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40 text-[#059669] dark:text-[#6ee7b7]',
     },
   };
 
@@ -1004,7 +1004,7 @@ export function calculateRecoveryStatus(
     nextSessionRecommendation = 'Safe for aerobic base miles, easy recovery running, or moderate tempo work.';
   } else if (recoveryPercentage >= 45) {
     readinessState = 'Moderate Fatigue';
-    color = '#ff9f0a'; // Amber
+    color = '#0284c7'; // Deep Sky Blue
     explanation = `Moderate residual muscle and metabolic fatigue (${hoursSinceLastRun}h elapsed of ${recommendedRecoveryHours}h recommended window).`;
     nextSessionRecommendation = 'Prioritize light recovery jog, dynamic stretching, cross-training, or rest.';
   } else {

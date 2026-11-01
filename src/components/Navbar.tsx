@@ -86,10 +86,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Sync Garmin</span>
             </button>
 
-            {/* Quick Log Run Action: Touch of energetic Orange #FF6B00 */}
+            {/* Quick Log Run Action: Fresh athletic Green #10B981 */}
             <button
               onClick={onOpenAddRun}
-              className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#FF6B00] hover:bg-[#e05e00] text-[#FCFFFF] transition-colors shadow-xs cursor-pointer"
+              className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#10B981] hover:bg-[#059669] text-[#FCFFFF] transition-colors shadow-xs cursor-pointer"
               aria-label="Log Run"
             >
               <Plus className="w-3.5 h-3.5 stroke-[3]" />
@@ -151,9 +151,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                         setIsDropdownOpen(false);
                         onOpenAiExport();
                       }}
-                      className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-neutral-800 dark:text-neutral-200 hover:bg-[#FF6B00]/10 transition-colors text-left cursor-pointer"
+                      className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-neutral-800 dark:text-neutral-200 hover:bg-[#10B981]/10 transition-colors text-left cursor-pointer"
                     >
-                      <div className="w-6 h-6 rounded-lg bg-[#FF6B00]/10 text-[#FF6B00] flex items-center justify-center">
+                      <div className="w-6 h-6 rounded-lg bg-[#10B981]/10 text-[#10B981] flex items-center justify-center">
                         <Sparkles className="w-3.5 h-3.5" />
                       </div>
                       <div className="flex-1">
@@ -186,7 +186,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800/80 transition-colors cursor-pointer"
                     >
                       <div className="flex items-center space-x-2.5">
-                        <div className="w-6 h-6 rounded-lg bg-[#FF6B00]/10 text-[#FF6B00] flex items-center justify-center">
+                        <div className="w-6 h-6 rounded-lg bg-[#0593C6]/10 text-[#0593C6] flex items-center justify-center">
                           {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
                         </div>
                         <span className="font-medium text-neutral-800 dark:text-neutral-200">

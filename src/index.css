@@ -8,9 +8,10 @@
   --color-sky-brand-light: #2eb4e6;
   --color-sky-brand-subtle: #e8f6fc;
   --color-white-brand: #FCFFFF;
-  --color-orange-brand: #FF6B00;
-  --color-orange-brand-dark: #e05e00;
-  --color-orange-brand-light: #ff8533;
+  --color-green-brand: #10B981;
+  --color-green-brand-dark: #059669;
+  --color-green-brand-light: #34d399;
+  --color-green-brand-subtle: #ecfdf5;
 }
 
 @layer base {
