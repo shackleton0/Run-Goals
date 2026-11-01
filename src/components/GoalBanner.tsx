@@ -6,7 +6,7 @@ import {
   calculateTargetCutoff,
   KM_TO_MILES,
 } from '../utils/runningCalculations';
-import { Trophy, Target, Edit2, Calendar, Clock, TrendingDown, CheckCircle2 } from 'lucide-react';
+import { Trophy, Target, Edit2, Calendar, Clock, TrendingDown, CheckCircle2, Flame } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface GoalBannerProps {
@@ -64,6 +64,7 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
     confetti({
       particleCount: 80,
       spread: 60,
+      colors: ['#0593C6', '#FF6B00', '#FCFFFF'],
       origin: { y: 0.6 },
     });
   };
@@ -73,17 +74,17 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
   const projectedCardLabel = targetDistKm === 6 ? 'Fastest Current Projected 6K Time' : `Fastest Current Projected ${targetDistKm}K Time`;
 
   return (
-    <div className="rounded-2xl bg-white dark:bg-[#1c1c1e] border border-neutral-200 dark:border-neutral-800/80 shadow-xs p-5 sm:p-6 transition-colors">
+    <div className="rounded-2xl bg-[#FCFFFF] dark:bg-[#12222f] border border-neutral-200/90 dark:border-neutral-800 shadow-xs p-5 sm:p-6 transition-colors">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <div>
           <div className="flex items-center space-x-2">
-            <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight">
               {distTitle}
             </h1>
             <button
               onClick={onEditGoal}
-              className="p-1 rounded-full text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+              className="p-1 rounded-full text-neutral-400 hover:text-[#0593C6] dark:hover:text-[#0593C6] hover:bg-[#0593C6]/10 transition-colors cursor-pointer"
               title="Edit Target Distance, Time or Units"
               aria-label="Edit Target"
             >
@@ -98,7 +99,7 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
         {goalAchieved && (
           <button
             onClick={triggerCelebrate}
-            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-[#30d158]/15 text-[#30d158] text-xs font-semibold hover:bg-[#30d158]/25 transition-colors cursor-pointer self-start sm:self-auto"
+            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-[#0593C6]/15 text-[#0593C6] text-xs font-semibold hover:bg-[#0593C6]/25 transition-colors cursor-pointer self-start sm:self-auto"
           >
             <Trophy className="w-3.5 h-3.5" />
             <span>Target Goal Achieved</span>
@@ -109,12 +110,12 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
       {/* Primary Metrics Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
         {/* Target Distance Time */}
-        <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200/80 dark:border-neutral-800/60">
+        <div className="p-4 rounded-xl bg-[#F2F8FB]/80 dark:bg-[#0e1b25]/80 border border-[#0593C6]/15 dark:border-neutral-800/80">
           <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">
             <span>{distCardLabel}</span>
-            <Target className="w-3.5 h-3.5 text-[#0a84ff]" />
+            <Target className="w-3.5 h-3.5 text-[#0593C6]" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-white tracking-tight tabular-nums">
+          <div className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight tabular-nums">
             {targetTotalTimeSec ? formatDuration(targetTotalTimeSec) : '--:--'}
           </div>
           <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 tabular-nums">
@@ -123,12 +124,12 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
         </div>
 
         {/* Current PR / Best */}
-        <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200/80 dark:border-neutral-800/60">
+        <div className="p-4 rounded-xl bg-[#F2F8FB]/80 dark:bg-[#0e1b25]/80 border border-[#0593C6]/15 dark:border-neutral-800/80">
           <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">
             <span>Current PR</span>
-            <Trophy className="w-3.5 h-3.5 text-[#30d158]" />
+            <Trophy className="w-3.5 h-3.5 text-[#FF6B00]" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold text-[#30d158] tracking-tight tabular-nums">
+          <div className="text-2xl sm:text-3xl font-bold text-[#0593C6] tracking-tight tabular-nums">
             {currentSec ? formatDuration(currentSec) : '--:--'}
           </div>
           <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 tabular-nums">
@@ -143,12 +144,12 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
         </div>
 
         {/* Weekly Target */}
-        <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200/80 dark:border-neutral-800/60">
+        <div className="p-4 rounded-xl bg-[#F2F8FB]/80 dark:bg-[#0e1b25]/80 border border-[#0593C6]/15 dark:border-neutral-800/80">
           <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">
             <span>This Week</span>
-            <Calendar className="w-3.5 h-3.5 text-[#ff9f0a]" />
+            <Calendar className="w-3.5 h-3.5 text-[#0593C6]" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-white tracking-tight tabular-nums">
+          <div className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight tabular-nums">
             {adherence.currentWeekRuns} / {profile.weeklyRunGoal}
           </div>
           <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
@@ -158,16 +159,16 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
           </div>
         </div>
 
-        {/* Consistency Streak */}
-        <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200/80 dark:border-neutral-800/60">
+        {/* Consistency Streak with touch of energetic orange */}
+        <div className="p-4 rounded-xl bg-[#F2F8FB]/80 dark:bg-[#0e1b25]/80 border border-[#0593C6]/15 dark:border-neutral-800/80">
           <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">
             <span>Weekly Streak</span>
-            <TrendingDown className="w-3.5 h-3.5 text-[#ff9f0a] rotate-180" />
+            <Flame className="w-3.5 h-3.5 text-[#FF6B00]" />
           </div>
-          <div className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-white tracking-tight tabular-nums">
+          <div className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight tabular-nums">
             {adherence.currentStreakWeeks > 0 ? (
               <>
-                {adherence.currentStreakWeeks} <span className="text-sm font-medium text-neutral-500">wks</span>
+                {adherence.currentStreakWeeks} <span className="text-sm font-medium text-[#FF6B00]">wks</span>
               </>
             ) : (
               '--'
@@ -182,17 +183,17 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
       </div>
 
       {/* Under Target: Fastest Current Benchmark & Time to Cut Off */}
-      <div className="p-4 rounded-xl bg-neutral-50/70 dark:bg-neutral-900/50 border border-neutral-200/80 dark:border-neutral-800">
+      <div className="p-4 rounded-xl bg-[#F2F8FB]/50 dark:bg-[#0e1b25]/60 border border-neutral-200/80 dark:border-neutral-800">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           {/* Left: Fastest Current Projected Time */}
           <div className="space-y-1">
             <div className="flex items-center space-x-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-              <Clock className="w-3.5 h-3.5 text-[#0a84ff]" />
+              <Clock className="w-3.5 h-3.5 text-[#0593C6]" />
               <span>{projectedCardLabel}</span>
             </div>
 
             <div className="flex items-baseline space-x-3">
-              <span className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-white tracking-tight tabular-nums">
+              <span className="text-2xl sm:text-3xl font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight tabular-nums">
                 {currentSec ? formatDuration(currentSec) : '--:--'}
               </span>
               {currentPacePerKm && (
@@ -214,7 +215,7 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
             {cutoff ? (
               !cutoff.isAchieved ? (
                 <div className="space-y-1">
-                  <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 text-xs font-bold">
+                  <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-[#FF6B00]/10 text-[#FF6B00] text-xs font-bold border border-[#FF6B00]/20">
                     <TrendingDown className="w-3.5 h-3.5" />
                     <span>Cut off: {cutoff.paceCutoffSeconds} {cutoff.paceCutoffSeconds === 1 ? 'second' : 'seconds'}</span>
                   </div>
@@ -224,19 +225,19 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
                 </div>
               ) : (
                 <div className="space-y-1">
-                  <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-[#30d158]/15 text-[#30d158] text-xs font-bold">
+                  <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-[#0593C6]/15 text-[#0593C6] text-xs font-bold border border-[#0593C6]/20">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>Target Achieved ({Math.abs(cutoff.paceCutoffSeconds)}s ahead of target pace!)</span>
                   </div>
                   <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                    Surpassed your <strong className="text-neutral-900 dark:text-white">{formatPace(cutoff.targetPaceSecPerKm, profile.unitPreference)}</strong> pace goal
+                    Surpassed your <strong className="text-neutral-900 dark:text-[#FCFFFF]">{formatPace(cutoff.targetPaceSecPerKm, profile.unitPreference)}</strong> pace goal
                   </p>
                 </div>
               )
             ) : !targetSec ? (
               <button
                 onClick={onEditGoal}
-                className="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-neutral-900 hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#0593C6] hover:bg-[#047da8] text-[#FCFFFF] transition-colors cursor-pointer shadow-xs"
               >
                 Set Target to See Gap
               </button>
@@ -253,11 +254,11 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
           <div className="mt-4 pt-3 border-t border-neutral-200/80 dark:border-neutral-800/80">
             <div className="flex items-center justify-between text-[11px] text-neutral-500 mb-1.5 tabular-nums">
               <span>Goal Progress</span>
-              <span className="font-semibold text-neutral-900 dark:text-white">{progressPct}%</span>
+              <span className="font-semibold text-neutral-900 dark:text-[#FCFFFF]">{progressPct}%</span>
             </div>
             <div className="w-full bg-neutral-200 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
               <div
-                className="bg-[#30d158] h-2 rounded-full transition-all duration-500 ease-out"
+                className="bg-gradient-to-r from-[#0593C6] to-[#FF6B00] h-2 rounded-full transition-all duration-500 ease-out"
                 style={{ width: `${progressPct}%` }}
               />
             </div>

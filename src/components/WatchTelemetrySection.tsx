@@ -1,11 +1,20 @@
 import React, { useState, useMemo } from 'react';
-import { RunRecord } from '../types/running';
-import { formatDuration, formatPace, MILES_TO_KM, KM_TO_MILES } from '../utils/runningCalculations';
+import { RunRecord, RunType } from '../types/running';
+import {
+  formatDuration,
+  formatPace,
+  calculate6kEquivalent,
+  calculateTargetDistanceEquivalent,
+  calculatePaceSecPerKm,
+  isAerobicRun,
+  isIntervalRun,
+  MILES_TO_KM,
+  KM_TO_MILES,
+} from '../utils/runningCalculations';
 import {
   Watch,
   Heart,
   Zap,
-  Flame,
   Activity,
   Gauge,
   Trophy,
@@ -13,15 +22,30 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
-  ArrowUpRight,
-  Sparkles,
+  Search,
+  Trash2,
+  Check,
+  Merge,
+  CheckSquare,
+  Square,
+  UploadCloud,
+  PlusCircle,
+  Clock,
 } from 'lucide-react';
 
 interface WatchTelemetrySectionProps {
   runs: RunRecord[];
   unit: 'km' | 'miles';
+  targetDistanceKm?: number;
+  target6kSec?: number;
+  best6kSec?: number;
   customMaxHr?: number;
   onUpdateMaxHr?: (maxHr: number) => void;
+  onDeleteRun: (runId: string) => void;
+  onUpdateRunCategory: (runId: string, newCategory: RunType) => void;
+  onCombineRuns?: (combinedRun: RunRecord, sourceRunIds: string[]) => void;
+  onOpenGarminSync?: () => void;
+  onOpenAddRun?: () => void;
 }
 
 export interface HrZoneDefinition {
@@ -98,7 +122,7 @@ export const HR_ZONES: HrZoneDefinition[] = [
     borderLight: 'border-rose-200',
     borderDark: 'dark:border-rose-800/60',
     textColor: 'text-rose-600 dark:text-rose-400',
-    description: 'Hard, rhythmic effort (6K race velocity). The highest intensity you can maintain before rapid lactic buildup.',
+    description: 'Hard, rhythmic effort (6K race velocity). Highest intensity before rapid lactic buildup.',
     benefit: 'Shifts lactate turnpoint higher to hold aggressive 6K splits',
   },
   {
@@ -118,17 +142,43 @@ export const HR_ZONES: HrZoneDefinition[] = [
   },
 ];
 
+const CATEGORY_CHOICES: { label: string; value: RunType }[] = [
+  { label: 'Time Trial', value: 'Time Trial' },
+  { label: '6K Time Trial', value: '6K Time Trial' },
+  { label: 'Aerobic Run', value: 'Aerobic' },
+  { label: 'Interval Training', value: 'Interval Training' },
+  { label: 'Tempo / Threshold', value: 'Tempo' },
+  { label: 'Aerobic Long Run', value: 'Long Run' },
+  { label: 'Race', value: 'Race' },
+  { label: 'Active Recovery', value: 'Recovery' },
+];
+
 export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
   runs,
   unit,
+  targetDistanceKm = 6.0,
+  target6kSec,
+  best6kSec,
   customMaxHr,
   onUpdateMaxHr,
+  onDeleteRun,
+  onUpdateRunCategory,
+  onCombineRuns,
+  onOpenGarminSync,
+  onOpenAddRun,
 }) => {
   const [selectedZoneFilter, setSelectedZoneFilter] = useState<number | 'all'>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [isEditingMaxHr, setIsEditingMaxHr] = useState(false);
   const [tempMaxHr, setTempMaxHr] = useState<number>(195);
   const [showZoneDetails, setShowZoneDetails] = useState(false);
   const [showAllActivityLogs, setShowAllActivityLogs] = useState(false);
+
+  // Combine Workouts Mode State
+  const [isCombineMode, setIsCombineMode] = useState(false);
+  const [selectedCombineIds, setSelectedCombineIds] = useState<Set<string>>(new Set());
+  const [combinedTitle, setCombinedTitle] = useState('');
+  const [combinedCategory, setCombinedCategory] = useState<RunType>('Aerobic');
 
   // Watch activities (from Garmin or with telemetry)
   const watchRuns = useMemo(() => {
@@ -155,7 +205,6 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
       };
     }
 
-    // 1. Fastest Pace Ran Before
     const runsWithValidPace = [...runs].filter(
       (r) => r.averagePaceSecPerKm && r.averagePaceSecPerKm > 60 && r.averagePaceSecPerKm < 900
     );
@@ -168,7 +217,6 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
     const fastestPaceSec = fastestRun ? fastestRun.averagePaceSecPerKm : 0;
     const topPaces = sortedByPace.slice(0, 3);
 
-    // 2. Heart Rate Highs
     let peakHeartRate = 0;
     let peakHeartRateRun: RunRecord | null = null;
     let highestAvgHeartRate = 0;
@@ -177,14 +225,11 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
     let hrCount = 0;
 
     runs.forEach((r) => {
-      // Check max heart rate
       if (r.maxHeartRate && r.maxHeartRate > peakHeartRate) {
         peakHeartRate = r.maxHeartRate;
         peakHeartRateRun = r;
       }
-      // If no maxHeartRate was provided but avgHeartRate is high, also compare
       if (r.avgHeartRate && r.avgHeartRate > peakHeartRate) {
-        // peak might be at least average
         if (!r.maxHeartRate) {
           peakHeartRate = Math.round(r.avgHeartRate * 1.08);
           peakHeartRateRun = r;
@@ -203,7 +248,6 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
 
     const overallAvgHeartRate = hrCount > 0 ? Math.round(hrSum / hrCount) : 0;
 
-    // 3. Cadence & Elevation
     let cadSum = 0;
     let cadCount = 0;
     let totalElevationMeters = 0;
@@ -219,8 +263,6 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
     });
 
     const overallAvgCadence = cadCount > 0 ? Math.round(cadSum / cadCount) : 0;
-
-    // Calculated baseline Max HR (use highest recorded max HR, or 195 default)
     const detectedMaxHr = customMaxHr || (peakHeartRate > 150 ? peakHeartRate : 195);
 
     return {
@@ -240,7 +282,6 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
 
   const maxHrToUse = customMaxHr || metrics.detectedMaxHr;
 
-  // Helper to determine which Zone a specific heart rate falls into
   const getZoneForHr = (hr: number, maxHr: number): HrZoneDefinition => {
     const pct = (hr / maxHr) * 100;
     if (pct < 60) return HR_ZONES[0];
@@ -250,7 +291,6 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
     return HR_ZONES[4];
   };
 
-  // Group activities by their primary training zone
   const zoneDistribution = useMemo(() => {
     const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
     const zoneRunsMap: Record<number, RunRecord[]> = { 1: [], 2: [], 3: [], 4: [], 5: [] };
@@ -269,13 +309,100 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
 
   const totalZoneRuns = Object.values(zoneDistribution.counts).reduce((a, b) => a + b, 0);
 
-  // Filtered runs for the watch telemetry list
-  const filteredWatchRuns = useMemo(() => {
-    if (selectedZoneFilter === 'all') return runs;
-    return zoneDistribution.zoneRunsMap[selectedZoneFilter] || [];
-  }, [runs, selectedZoneFilter, zoneDistribution]);
+  // Search and Zone Filtered Runs
+  const filteredRuns = useMemo(() => {
+    return runs.filter((run) => {
+      // Zone filter
+      if (selectedZoneFilter !== 'all') {
+        const repHr = run.avgHeartRate || (run.maxHeartRate ? Math.round(run.maxHeartRate * 0.88) : null);
+        if (!repHr) return false;
+        const zone = getZoneForHr(repHr, maxHrToUse).zone;
+        if (zone !== selectedZoneFilter) return false;
+      }
 
-  // Speed calculation for fastest pace (km/h and mph)
+      // Search filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchesTitle = run.title.toLowerCase().includes(q);
+        const matchesNotes = run.notes ? run.notes.toLowerCase().includes(q) : false;
+        const matchesDate = run.date.includes(q);
+        const matchesType = run.runType.toLowerCase().includes(q);
+        if (!matchesTitle && !matchesNotes && !matchesDate && !matchesType) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [runs, selectedZoneFilter, searchQuery, maxHrToUse]);
+
+  // Combine selection logic
+  const toggleSelectRunForCombine = (id: string) => {
+    const next = new Set(selectedCombineIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedCombineIds(next);
+  };
+
+  const selectedRunsForMerge = useMemo(() => {
+    return runs.filter((r) => selectedCombineIds.has(r.id));
+  }, [runs, selectedCombineIds]);
+
+  const mergedDistanceKm = selectedRunsForMerge.reduce((sum, r) => sum + r.distanceKm, 0);
+  const mergedDurationSec = selectedRunsForMerge.reduce((sum, r) => sum + r.durationSeconds, 0);
+  const mergedPaceSec = calculatePaceSecPerKm(mergedDistanceKm, mergedDurationSec);
+  const merged6kSec = calculate6kEquivalent(mergedDistanceKm, mergedDurationSec);
+
+  const runsWithHr = selectedRunsForMerge.filter((r) => r.avgHeartRate);
+  const mergedAvgHr =
+    runsWithHr.length > 0
+      ? Math.round(runsWithHr.reduce((sum, r) => sum + (r.avgHeartRate || 0), 0) / runsWithHr.length)
+      : undefined;
+  const mergedMaxHr = Math.max(
+    ...selectedRunsForMerge.map((r) => r.maxHeartRate || 0).filter((h) => h > 0),
+    0
+  );
+  const mergedElevation = selectedRunsForMerge.reduce(
+    (sum, r) => sum + (r.elevationGainMeters || 0),
+    0
+  );
+
+  const handleExecuteCombine = () => {
+    if (selectedRunsForMerge.length < 2 || !onCombineRuns) return;
+
+    const latestDate = [...selectedRunsForMerge].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    )[0].date;
+
+    const defaultTitle = `Combined Workout (${selectedRunsForMerge.map((r) => r.title).join(' + ')})`;
+
+    const combinedRecord: RunRecord = {
+      id: `run_combined_${Date.now()}`,
+      userId: selectedRunsForMerge[0].userId || 'local_user',
+      date: latestDate,
+      title: combinedTitle.trim() || defaultTitle,
+      distanceKm: Number(mergedDistanceKm.toFixed(2)),
+      durationSeconds: Math.round(mergedDurationSec),
+      averagePaceSecPerKm: Math.round(mergedPaceSec),
+      best6kTimeSeconds: merged6kSec,
+      runType: combinedCategory,
+      avgHeartRate: mergedAvgHr,
+      maxHeartRate: mergedMaxHr > 0 ? mergedMaxHr : undefined,
+      elevationGainMeters: mergedElevation > 0 ? mergedElevation : undefined,
+      source: 'manual',
+      notes: `Combined from ${selectedRunsForMerge.length} workouts: ${selectedRunsForMerge.map((r) => r.title).join(', ')}`,
+      createdAt: new Date().toISOString(),
+    };
+
+    onCombineRuns(combinedRecord, Array.from(selectedCombineIds));
+    setSelectedCombineIds(new Set());
+    setIsCombineMode(false);
+    setCombinedTitle('');
+  };
+
   const speedKmh = metrics.fastestPaceSec > 0 ? (3600 / metrics.fastestPaceSec).toFixed(1) : '0.0';
   const speedMph = metrics.fastestPaceSec > 0 ? ((3600 / metrics.fastestPaceSec) * KM_TO_MILES).toFixed(1) : '0.0';
 
@@ -289,21 +416,27 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
     }
   };
 
+  // Determine which runs to render in list
+  // Default: 1 most recent.
+  // Expanded or in combine mode or searching: show all filtered
+  const shouldShowAll = showAllActivityLogs || isCombineMode || searchQuery.trim().length > 0;
+  const displayedRuns = shouldShowAll ? filteredRuns : filteredRuns.slice(0, 1);
+
   return (
-    <div className="rounded-2xl bg-white dark:bg-[#1c1c1e] border border-neutral-200 dark:border-neutral-800/80 shadow-xs p-5 sm:p-6 transition-colors">
+    <div className="rounded-2xl bg-[#FCFFFF] dark:bg-[#12222f] border border-neutral-200/90 dark:border-neutral-800 shadow-xs p-5 sm:p-6 transition-colors">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <div>
           <div className="flex items-center space-x-2.5">
-            <div className="w-8 h-8 rounded-full bg-[#0a84ff]/10 text-[#0a84ff] flex items-center justify-center">
+            <div className="w-8 h-8 rounded-full bg-[#0593C6]/10 text-[#0593C6] flex items-center justify-center">
               <Watch className="w-4 h-4" />
             </div>
-            <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white tracking-tight">
-              Fitness Tracker Data
+            <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight">
+              Fitness Tracker Data & Activity Logs
             </h2>
           </div>
           <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-            Fastest historical pace, peak heartbeat, and 5-zone cardiovascular training distribution
+            Fastest historical pace, peak heartbeat, 5-zone cardiovascular training distribution, and unified activity logs
           </p>
         </div>
 
@@ -323,7 +456,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
               />
               <button
                 type="submit"
-                className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#30d158] text-black cursor-pointer"
+                className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#0593C6] text-[#FCFFFF] cursor-pointer"
               >
                 Save
               </button>
@@ -344,8 +477,10 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
               className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 transition-colors cursor-pointer"
               title="Calibrate your physiological Max Heart Rate"
             >
-              <Sliders className="w-3.5 h-3.5 text-[#ff375f]" />
-              <span>Max HR: <strong className="font-bold text-neutral-900 dark:text-white tabular-nums">{maxHrToUse} bpm</strong></span>
+              <Sliders className="w-3.5 h-3.5 text-[#FF6B00]" />
+              <span>
+                Max HR: <strong className="font-bold text-neutral-900 dark:text-[#FCFFFF] tabular-nums">{maxHrToUse} bpm</strong>
+              </span>
             </button>
           )}
 
@@ -364,14 +499,14 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         {/* Card 1: Fastest Pace Ever Ran */}
         <div className="p-4 rounded-xl bg-gradient-to-br from-neutral-50 to-neutral-100/60 dark:from-neutral-900/80 dark:to-neutral-900/30 border border-neutral-200/80 dark:border-neutral-800/80 flex flex-col justify-between relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-[#30d158]/5 dark:bg-[#30d158]/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="absolute top-0 right-0 w-24 h-24 bg-[#0593C6]/10 rounded-full blur-2xl pointer-events-none" />
           <div>
             <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1.5">
               <span>Fastest Pace Ran Before</span>
-              <Zap className="w-4 h-4 text-[#30d158]" />
+              <Zap className="w-4 h-4 text-[#0593C6]" />
             </div>
 
-            <div className="text-3xl font-bold text-neutral-900 dark:text-white tracking-tight tabular-nums mt-1">
+            <div className="text-3xl font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight tabular-nums mt-1">
               {metrics.fastestPaceSec > 0 ? formatPace(metrics.fastestPaceSec, unit) : '--:--'}
             </div>
 
@@ -394,7 +529,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
               </div>
             ) : (
               <div className="text-[11px] text-neutral-400">
-                Log a workout or sync your fitness tracker to find your fastest velocity.
+                Log a workout or sync your fitness tracker to record your fastest velocity.
               </div>
             )}
           </div>
@@ -402,14 +537,14 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
 
         {/* Card 2: Highest Heart Rate Recorded */}
         <div className="p-4 rounded-xl bg-gradient-to-br from-neutral-50 to-neutral-100/60 dark:from-neutral-900/80 dark:to-neutral-900/30 border border-neutral-200/80 dark:border-neutral-800/80 flex flex-col justify-between relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-[#ff375f]/5 dark:bg-[#ff375f]/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="absolute top-0 right-0 w-24 h-24 bg-[#FF6B00]/10 rounded-full blur-2xl pointer-events-none" />
           <div>
             <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1.5">
               <span>Peak Heartbeat Recorded</span>
-              <Heart className="w-4 h-4 text-[#ff375f] fill-[#ff375f]/30" />
+              <Heart className="w-4 h-4 text-[#FF6B00] fill-[#FF6B00]/30" />
             </div>
 
-            <div className="text-3xl font-bold text-[#ff375f] tracking-tight tabular-nums mt-1 flex items-baseline space-x-1.5">
+            <div className="text-3xl font-bold text-[#FF6B00] tracking-tight tabular-nums mt-1 flex items-baseline space-x-1.5">
               <span>{metrics.peakHeartRate > 0 ? metrics.peakHeartRate : '--'}</span>
               <span className="text-sm font-semibold text-neutral-500">BPM</span>
             </div>
@@ -440,13 +575,13 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
           <div>
             <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1.5">
               <span>Fitness Tracker Telemetry</span>
-              <Gauge className="w-4 h-4 text-[#0a84ff]" />
+              <Gauge className="w-4 h-4 text-[#0593C6]" />
             </div>
 
             <div className="grid grid-cols-2 gap-3 mt-2">
               <div>
                 <span className="text-[10px] text-neutral-400 uppercase font-medium">Avg Cadence</span>
-                <div className="text-xl font-bold text-neutral-900 dark:text-white tabular-nums">
+                <div className="text-xl font-bold text-neutral-900 dark:text-[#FCFFFF] tabular-nums">
                   {metrics.overallAvgCadence > 0 ? `${metrics.overallAvgCadence} spm` : '--'}
                 </div>
                 <span className="text-[10px] text-neutral-500">
@@ -456,7 +591,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
 
               <div>
                 <span className="text-[10px] text-neutral-400 uppercase font-medium">Elevation Climb</span>
-                <div className="text-xl font-bold text-neutral-900 dark:text-white tabular-nums">
+                <div className="text-xl font-bold text-neutral-900 dark:text-[#FCFFFF] tabular-nums">
                   {metrics.totalElevationMeters > 0 ? `${metrics.totalElevationMeters} m` : '--'}
                 </div>
                 <span className="text-[10px] text-neutral-500">Total vertical gain</span>
@@ -465,20 +600,20 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
           </div>
 
           <div className="mt-4 pt-3 border-t border-neutral-200/70 dark:border-neutral-800/70 flex items-center justify-between text-[11px] text-neutral-600 dark:text-neutral-300">
-            <span>Tracker Activities:</span>
-            <span className="font-semibold text-[#0a84ff] tabular-nums">
-              {watchRuns.length} workouts synced
+            <span>Tracker Workouts:</span>
+            <span className="font-semibold text-[#0593C6] tabular-nums">
+              {watchRuns.length} synced
             </span>
           </div>
         </div>
       </div>
 
-      {/* Heart Rate Training Zones Breakdown - Simplified to Z1-Z5 */}
+      {/* Heart Rate Training Zones Breakdown - Clean Z1 to Z5 */}
       <div className="mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
           <div>
-            <h3 className="text-sm font-bold text-neutral-900 dark:text-white tracking-tight flex items-center space-x-1.5">
-              <Activity className="w-4 h-4 text-[#ff375f]" />
+            <h3 className="text-sm font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight flex items-center space-x-1.5">
+              <Activity className="w-4 h-4 text-[#FF6B00]" />
               <span>Training Zones (Based on {maxHrToUse} BPM Max)</span>
             </h3>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
@@ -492,7 +627,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                 setSelectedZoneFilter('all');
                 setShowZoneDetails(false);
               }}
-              className="text-xs font-semibold text-[#0a84ff] hover:underline cursor-pointer self-start sm:self-auto"
+              className="text-xs font-semibold text-[#0593C6] hover:underline cursor-pointer self-start sm:self-auto"
             >
               Reset to All Zones
             </button>
@@ -526,11 +661,11 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
             }}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
               selectedZoneFilter === 'all'
-                ? 'bg-neutral-900 text-white dark:bg-white dark:text-black shadow-xs'
+                ? 'bg-[#0593C6] text-[#FCFFFF] shadow-xs'
                 : 'bg-neutral-100 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-800'
             }`}
           >
-            <span>All Activities ({totalZoneRuns})</span>
+            <span>All Zones ({totalZoneRuns})</span>
           </button>
 
           {HR_ZONES.map((zoneDef) => {
@@ -606,7 +741,6 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                   </span>
                 </div>
 
-                {/* The "little button so I can display more" */}
                 <button
                   type="button"
                   onClick={() => setShowZoneDetails(!showZoneDetails)}
@@ -618,7 +752,6 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                 </button>
               </div>
 
-              {/* Expandable zone description shown when user taps the display more button */}
               {showZoneDetails && (
                 <div className="mt-3 pt-3 border-t border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-300 space-y-2 animate-in fade-in duration-150">
                   <p className="text-xs leading-relaxed">
@@ -636,155 +769,366 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
         })()}
       </div>
 
-      {/* Filtered Activities Table / List for Watch Telemetry */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
+      {/* Unified Activity Logs Section (Incorporates all Workout History features) */}
+      <div className="pt-4 border-t border-neutral-200/80 dark:border-neutral-800">
+        {/* Controls: Title, Search, Combine Workouts */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div className="flex items-center space-x-2">
-            <h3 className="text-sm font-bold text-neutral-900 dark:text-white tracking-tight">
+            <h3 className="text-base font-bold text-neutral-900 dark:text-white tracking-tight">
               Fitness Tracker Activity Logs
             </h3>
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 tabular-nums">
-              {filteredWatchRuns.length}
+              {filteredRuns.length}
             </span>
           </div>
 
-          {selectedZoneFilter !== 'all' && (
-            <span className="text-xs text-neutral-500">
-              Filtered by Zone {selectedZoneFilter}
-            </span>
-          )}
+          <div className="flex items-center space-x-2">
+            {/* Combine Workouts Mode Toggle */}
+            {runs.length >= 2 && onCombineRuns && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCombineMode(!isCombineMode);
+                  setSelectedCombineIds(new Set());
+                }}
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                  isCombineMode
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200'
+                }`}
+              >
+                <Merge className="w-3.5 h-3.5" />
+                <span>{isCombineMode ? 'Cancel Combine' : 'Combine Workouts'}</span>
+              </button>
+            )}
+
+            {/* Search Input */}
+            <div className="relative min-w-[170px]">
+              <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search activities..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 rounded-full bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-none focus:border-[#30d158]"
+              />
+            </div>
+          </div>
         </div>
 
-        {filteredWatchRuns.length === 0 ? (
+        {/* Combine Workouts Banner */}
+        {isCombineMode && (
+          <div className="mb-4 p-4 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/80 transition-all">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <Merge className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <span className="font-bold text-xs text-purple-950 dark:text-purple-200">
+                    Combine Multiple Workouts
+                  </span>
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-200/70 dark:bg-purple-800 text-purple-900 dark:text-purple-100 font-semibold tabular-nums">
+                    {selectedCombineIds.size} selected
+                  </span>
+                </div>
+                <p className="text-[11px] text-purple-700 dark:text-purple-300 mt-1">
+                  Select 2 or more activities to merge their distances, times, and biometrics into a single unified session.
+                </p>
+              </div>
+
+              {selectedRunsForMerge.length >= 2 && (
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={handleExecuteCombine}
+                    className="px-4 py-2 rounded-full bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs transition-colors cursor-pointer flex items-center space-x-1.5 shadow-xs"
+                  >
+                    <Check className="w-3.5 h-3.5 stroke-[3]" />
+                    <span>Merge {selectedCombineIds.size} Workouts</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Merge Live Preview Card */}
+            {selectedRunsForMerge.length >= 2 && (
+              <div className="mt-3 pt-3 border-t border-purple-200 dark:border-purple-800 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div className="p-2 rounded-lg bg-white/80 dark:bg-black/50">
+                  <span className="text-[10px] text-neutral-500 block uppercase">Total Distance</span>
+                  <span className="font-bold text-neutral-900 dark:text-white tabular-nums">
+                    {mergedDistanceKm.toFixed(2)} km
+                  </span>
+                </div>
+                <div className="p-2 rounded-lg bg-white/80 dark:bg-black/50">
+                  <span className="text-[10px] text-neutral-500 block uppercase">Total Duration</span>
+                  <span className="font-bold text-neutral-900 dark:text-white tabular-nums">
+                    {formatDuration(mergedDurationSec)}
+                  </span>
+                </div>
+                <div className="p-2 rounded-lg bg-white/80 dark:bg-black/50">
+                  <span className="text-[10px] text-neutral-500 block uppercase">Combined Pace</span>
+                  <span className="font-bold text-neutral-900 dark:text-white tabular-nums">
+                    {formatPace(mergedPaceSec, unit)}
+                  </span>
+                </div>
+                <div className="p-2 rounded-lg bg-white/80 dark:bg-black/50">
+                  <span className="text-[10px] text-neutral-500 block uppercase">New 6K Time</span>
+                  <span className="font-bold text-[#30d158] tabular-nums">
+                    {formatDuration(merged6kSec)}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Empty state vs Activity Items */}
+        {runs.length === 0 ? (
+          <div className="py-10 px-4 text-center rounded-xl bg-neutral-50 dark:bg-neutral-900/40 border border-neutral-200 dark:border-neutral-800">
+            <Activity className="w-8 h-8 text-neutral-400 dark:text-neutral-600 mx-auto mb-2" />
+            <h3 className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
+              No Workouts Recorded Yet
+            </h3>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-md mx-auto mt-1 mb-4">
+              Upload your Garmin Connect workout file or log a run to view cardiovascular training zones and telemetry.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {onOpenGarminSync && (
+                <button
+                  onClick={onOpenGarminSync}
+                  className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-[#0a84ff] hover:bg-[#0071e3] text-white cursor-pointer shadow-xs"
+                >
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  <span>Upload Garmin Data</span>
+                </button>
+              )}
+              {onOpenAddRun && (
+                <button
+                  onClick={onOpenAddRun}
+                  className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-neutral-900 hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black cursor-pointer shadow-xs"
+                >
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  <span>Log Run</span>
+                </button>
+              )}
+            </div>
+          </div>
+        ) : filteredRuns.length === 0 ? (
           <div className="py-8 text-center text-xs text-neutral-400 rounded-xl bg-neutral-50 dark:bg-neutral-900/40 border border-neutral-200 dark:border-neutral-800">
-            No activities recorded in this heart rate training zone.
+            No activities match your search or selected zone filter.
           </div>
         ) : (
-          <div className="space-y-2">
-            {(showAllActivityLogs ? filteredWatchRuns : filteredWatchRuns.slice(0, 1)).map((run) => {
+          <div className="space-y-2.5">
+            {displayedRuns.map((run) => {
               const repHr = run.avgHeartRate || (run.maxHeartRate ? Math.round(run.maxHeartRate * 0.88) : null);
               const zoneDef = repHr ? getZoneForHr(repHr, maxHrToUse) : null;
               const isFastestRun = metrics.fastestRun?.id === run.id;
               const isPeakHrRun = metrics.peakHeartRateRun?.id === run.id;
+              const isCheckedForCombine = selectedCombineIds.has(run.id);
+
+              const eqTarget =
+                run.targetEquivalentSeconds ||
+                calculateTargetDistanceEquivalent(run.distanceKm, run.durationSeconds, targetDistanceKm) ||
+                run.best6kTimeSeconds ||
+                0;
+              const isPr = best6kSec && eqTarget === best6kSec;
+              const beatsTarget = Boolean(target6kSec && target6kSec > 0 && eqTarget <= target6kSec);
 
               return (
                 <div
                   key={run.id}
-                  className="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200/80 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 text-xs"
+                  onClick={() => {
+                    if (isCombineMode) toggleSelectRunForCombine(run.id);
+                  }}
+                  className={`p-3.5 rounded-xl border transition-all ${
+                    isCombineMode ? 'cursor-pointer' : ''
+                  } ${
+                    isCheckedForCombine
+                      ? 'bg-purple-50 dark:bg-purple-950/40 border-purple-400 dark:border-purple-600 shadow-xs'
+                      : 'bg-neutral-50 dark:bg-neutral-900/60 border-neutral-200/80 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                  }`}
                 >
-                  {/* Left: Title & Date & Badges */}
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="font-semibold text-neutral-900 dark:text-white truncate">
-                        {run.title}
-                      </span>
-
-                      {/* Zone Badge */}
-                      {zoneDef && (
-                        <span
-                          className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-2xs"
-                          style={{ backgroundColor: zoneDef.color }}
-                        >
-                          <span>Z{zoneDef.zone} {zoneDef.shortName}</span>
-                        </span>
-                      )}
-
-                      {/* Fastest Pace Badge */}
-                      {isFastestRun && (
-                        <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#30d158]/15 text-[#30d158]">
-                          <Zap className="w-2.5 h-2.5" />
-                          <span>Fastest Pace</span>
-                        </span>
-                      )}
-
-                      {/* Peak HR Badge */}
-                      {isPeakHrRun && (
-                        <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#ff375f]/15 text-[#ff375f]">
-                          <Heart className="w-2.5 h-2.5 fill-[#ff375f]" />
-                          <span>Peak HR</span>
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="text-[11px] text-neutral-500 dark:text-neutral-400 flex items-center space-x-2">
-                      <span>{run.date}</span>
-                      <span>·</span>
-                      <span>{run.runType}</span>
-                      {run.source.startsWith('garmin') && (
-                        <>
-                          <span>·</span>
-                          <span className="text-[#0a84ff] font-medium">Tracker Synced</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Right: Watch Telemetry Stats */}
-                  <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 tabular-nums border-t sm:border-t-0 pt-2 sm:pt-0 border-neutral-200 dark:border-neutral-800">
-                    {/* Distance & Time */}
-                    <div className="text-left sm:text-right">
-                      <div className="font-bold text-neutral-900 dark:text-white">
-                        {run.distanceKm} km
-                      </div>
-                      <div className="text-[11px] text-neutral-500">
-                        {formatDuration(run.durationSeconds)}
-                      </div>
-                    </div>
-
-                    {/* Pace */}
-                    <div className="text-left sm:text-right">
-                      <div className="font-semibold text-neutral-900 dark:text-white">
-                        {formatPace(run.averagePaceSecPerKm, unit)}
-                      </div>
-                      <div className="text-[10px] text-neutral-400 uppercase">Avg Pace</div>
-                    </div>
-
-                    {/* Heart Rate */}
-                    <div className="text-left sm:text-right min-w-[70px]">
-                      {run.avgHeartRate || run.maxHeartRate ? (
-                        <>
-                          <div className="font-bold text-[#ff375f] flex items-center justify-start sm:justify-end space-x-1">
-                            <Heart className="w-3 h-3 fill-[#ff375f]" />
-                            <span>{run.avgHeartRate || '--'} bpm</span>
-                          </div>
-                          <div className="text-[10px] text-neutral-400">
-                            Max: {run.maxHeartRate ? `${run.maxHeartRate} bpm` : '--'}
-                          </div>
-                        </>
-                      ) : (
-                        <div className="text-[11px] text-neutral-400">No HR</div>
-                      )}
-                    </div>
-
-                    {/* Cadence */}
-                    <div className="hidden md:block text-right min-w-[60px]">
-                      <div className="font-semibold text-neutral-800 dark:text-neutral-200">
-                        {run.avgCadence ? `${run.avgCadence} spm` : '--'}
-                      </div>
-                      <div className="text-[10px] text-neutral-400 uppercase">Cadence</div>
-                    </div>
-
-                    {/* Elevation */}
-                    {run.elevationGainMeters !== undefined && (
-                      <div className="hidden lg:block text-right min-w-[50px]">
-                        <div className="font-semibold text-neutral-800 dark:text-neutral-200">
-                          +{run.elevationGainMeters}m
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    {/* Left: Checkbox + Title + Interactive Category Dropdown + Zone Badge */}
+                    <div className="flex items-start space-x-3 min-w-0">
+                      {isCombineMode && (
+                        <div className="mt-1 flex-shrink-0 text-purple-600">
+                          {isCheckedForCombine ? (
+                            <CheckSquare className="w-4 h-4" />
+                          ) : (
+                            <Square className="w-4 h-4 text-neutral-400" />
+                          )}
                         </div>
-                        <div className="text-[10px] text-neutral-400 uppercase">Climb</div>
+                      )}
+
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-semibold text-neutral-900 dark:text-white truncate">
+                            {run.title}
+                          </span>
+
+                          {/* Zone Badge */}
+                          {zoneDef && (
+                            <span
+                              className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-2xs"
+                              style={{ backgroundColor: zoneDef.color }}
+                            >
+                              <span>Z{zoneDef.zone} {zoneDef.shortName}</span>
+                            </span>
+                          )}
+
+                          {/* Interactive Category Selector Dropdown */}
+                          <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                            <select
+                              value={run.runType}
+                              onChange={(e) => onUpdateRunCategory(run.id, e.target.value as RunType)}
+                              aria-label={`Change category for ${run.title}`}
+                              className="appearance-none text-[10px] font-semibold pl-2 pr-5 py-0.5 rounded-full bg-neutral-200/80 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 border-none cursor-pointer focus:outline-none hover:bg-neutral-300 dark:hover:bg-neutral-700 transition-colors"
+                            >
+                              {CATEGORY_CHOICES.map((c) => (
+                                <option key={c.value} value={c.value}>
+                                  {c.label}
+                                </option>
+                              ))}
+                            </select>
+                            <ChevronDown className="w-2.5 h-2.5 text-neutral-500 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          </div>
+
+                          {/* Fastest Pace Badge */}
+                          {isFastestRun && (
+                            <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#30d158]/15 text-[#30d158]">
+                              <Zap className="w-2.5 h-2.5" />
+                              <span>Fastest Pace</span>
+                            </span>
+                          )}
+
+                          {/* Peak HR Badge */}
+                          {isPeakHrRun && (
+                            <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#ff375f]/15 text-[#ff375f]">
+                              <Heart className="w-2.5 h-2.5 fill-[#ff375f]" />
+                              <span>Peak HR</span>
+                            </span>
+                          )}
+
+                          {/* PR / Sub-Goal */}
+                          {isPr && (
+                            <span className="inline-flex items-center space-x-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#30d158]/15 text-[#30d158]">
+                              <Trophy className="w-2.5 h-2.5" />
+                              <span>PR</span>
+                            </span>
+                          )}
+                          {beatsTarget && (
+                            <span className="inline-flex items-center space-x-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#0a84ff]/10 text-[#0a84ff]">
+                              <Check className="w-2.5 h-2.5 stroke-[3]" />
+                              <span>Sub-Goal</span>
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Date, notes, and tracker badge */}
+                        <div className="text-[11px] text-neutral-500 dark:text-neutral-400 flex flex-wrap items-center gap-1.5">
+                          <span>{run.date}</span>
+                          {run.source.startsWith('garmin') && (
+                            <>
+                              <span>·</span>
+                              <span className="text-[#0a84ff] font-medium">Tracker Synced</span>
+                            </>
+                          )}
+                          {run.notes && (
+                            <>
+                              <span>·</span>
+                              <span className="truncate max-w-xs italic text-neutral-600 dark:text-neutral-300">
+                                "{run.notes}"
+                              </span>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    )}
+                    </div>
+
+                    {/* Right: Metrics + Actions */}
+                    <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 tabular-nums border-t sm:border-t-0 pt-2 sm:pt-0 border-neutral-200 dark:border-neutral-800 text-xs">
+                      {/* Distance & Time */}
+                      <div className="text-left sm:text-right">
+                        <div className="font-bold text-neutral-900 dark:text-white">
+                          {unit === 'miles' ? `${(run.distanceKm * KM_TO_MILES).toFixed(2)} mi` : `${run.distanceKm} km`}
+                        </div>
+                        <div className="text-[11px] text-neutral-500">
+                          {formatDuration(run.durationSeconds)}
+                        </div>
+                      </div>
+
+                      {/* Pace */}
+                      <div className="text-left sm:text-right">
+                        <div className="font-semibold text-neutral-900 dark:text-white">
+                          {formatPace(run.averagePaceSecPerKm, unit)}
+                        </div>
+                        <div className="text-[10px] text-neutral-400 uppercase">Avg Pace</div>
+                      </div>
+
+                      {/* 6K / Target Time Equivalent */}
+                      <div className="text-left sm:text-right">
+                        <div className="font-bold text-[#30d158]">
+                          {formatDuration(eqTarget)}
+                        </div>
+                        <div className="text-[10px] text-neutral-400 uppercase">
+                          {targetDistanceKm === 6 ? '6K Time' : `${targetDistanceKm}K Time`}
+                        </div>
+                      </div>
+
+                      {/* Heart Rate */}
+                      <div className="text-left sm:text-right min-w-[65px]">
+                        {run.avgHeartRate || run.maxHeartRate ? (
+                          <>
+                            <div className="font-bold text-[#ff375f] flex items-center justify-start sm:justify-end space-x-1">
+                              <Heart className="w-3 h-3 fill-[#ff375f]" />
+                              <span>{run.avgHeartRate || '--'} bpm</span>
+                            </div>
+                            <div className="text-[10px] text-neutral-400">
+                              Max: {run.maxHeartRate ? `${run.maxHeartRate}` : '--'}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-[11px] text-neutral-400">--</div>
+                        )}
+                      </div>
+
+                      {/* Cadence */}
+                      {run.avgCadence ? (
+                        <div className="hidden md:block text-right min-w-[55px]">
+                          <div className="font-semibold text-neutral-800 dark:text-neutral-200">
+                            {run.avgCadence} spm
+                          </div>
+                          <div className="text-[10px] text-neutral-400 uppercase">Cadence</div>
+                        </div>
+                      ) : null}
+
+                      {/* Delete Action (hidden when in combine mode) */}
+                      {!isCombineMode && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteRun(run.id);
+                          }}
+                          className="p-1.5 rounded-full text-neutral-400 hover:text-rose-500 hover:bg-neutral-200/60 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                          title="Delete workout"
+                          aria-label={`Delete ${run.title}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
             })}
 
-            {/* Click to display more activities button */}
-            {filteredWatchRuns.length > 1 && (
+            {/* Click to display more activities button (when not in search or combine mode) */}
+            {filteredRuns.length > 1 && !isCombineMode && !searchQuery.trim() && (
               <div className="pt-2.5 flex flex-col sm:flex-row items-center justify-between gap-2 border-t border-neutral-100 dark:border-neutral-800/80">
                 <span className="text-xs text-neutral-500 dark:text-neutral-400">
                   {showAllActivityLogs
-                    ? `Showing all ${filteredWatchRuns.length} activities`
-                    : `Showing 1 most recent activity (${filteredWatchRuns.length - 1} older activities collapsed)`}
+                    ? `Showing all ${filteredRuns.length} activities`
+                    : `Showing 1 most recent activity (${filteredRuns.length - 1} older activities collapsed)`}
                 </span>
                 <button
                   type="button"
@@ -794,7 +1138,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                   <span>
                     {showAllActivityLogs
                       ? 'Show Most Recent Only'
-                      : `Show More (${filteredWatchRuns.length - 1} more)`}
+                      : `Show More (${filteredRuns.length - 1} more)`}
                   </span>
                   {showAllActivityLogs ? (
                     <ChevronUp className="w-3.5 h-3.5" />

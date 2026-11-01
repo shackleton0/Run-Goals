@@ -56,14 +56,14 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
   // If no target set, render clean prompt card
   if (!projection.hasTarget) {
     return (
-      <div className="rounded-2xl bg-white dark:bg-[#1c1c1e] border border-neutral-200 dark:border-neutral-800/80 shadow-xs p-5 sm:p-6 transition-colors">
+      <div className="rounded-2xl bg-[#FCFFFF] dark:bg-[#12222f] border border-neutral-200/90 dark:border-neutral-800 shadow-xs p-5 sm:p-6 transition-colors">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-start space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-[#0a84ff]/10 text-[#0a84ff] flex items-center justify-center shrink-0 mt-0.5">
+            <div className="w-10 h-10 rounded-xl bg-[#0593C6]/10 text-[#0593C6] flex items-center justify-center shrink-0 mt-0.5">
               <Target className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-neutral-900 dark:text-white tracking-tight">
+              <h2 className="text-base font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight">
                 Goal Progression & Estimated Time to Goal
               </h2>
               <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 max-w-xl">
@@ -74,7 +74,7 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
 
           <button
             onClick={onOpenSettings}
-            className="px-4 py-2 rounded-full bg-neutral-900 hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black font-semibold text-xs transition-colors cursor-pointer shrink-0"
+            className="px-4 py-2 rounded-full bg-[#0593C6] hover:bg-[#047da8] text-[#FCFFFF] font-semibold text-xs transition-colors cursor-pointer shrink-0 shadow-xs"
           >
             Set Goal Time
           </button>
@@ -86,18 +86,18 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
   const activeScenarioData = projection.scenarios[selectedScenario];
 
   return (
-    <div className="rounded-2xl bg-white dark:bg-[#1c1c1e] border border-neutral-200 dark:border-neutral-800/80 shadow-xs p-5 sm:p-6 transition-colors">
+    <div className="rounded-2xl bg-[#FCFFFF] dark:bg-[#12222f] border border-neutral-200/90 dark:border-neutral-800 shadow-xs p-5 sm:p-6 transition-colors">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
         <div>
           <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-xl bg-[#30d158]/10 text-[#30d158] flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-xl bg-[#0593C6]/15 text-[#0593C6] flex items-center justify-center shrink-0">
               <TrendingDown className="w-4 h-4 stroke-[2.5]" />
             </div>
-            <h2 className="text-lg font-bold text-neutral-900 dark:text-white tracking-tight">
+            <h2 className="text-lg font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight">
               Goal Projection & Timeframe
             </h2>
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#0593C6]/10 text-[#0593C6]">
               {projection.confidence}
             </span>
           </div>
@@ -120,11 +120,11 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
 
       {/* Projection Highlights: When Achieved vs In Progress */}
       {projection.isAchieved ? (
-        <div className="p-4 rounded-xl bg-[#30d158]/10 border border-[#30d158]/30 mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="p-4 rounded-xl bg-[#0593C6]/10 border border-[#0593C6]/30 mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-center space-x-3">
-            <CheckCircle2 className="w-6 h-6 text-[#30d158] shrink-0" />
+            <CheckCircle2 className="w-6 h-6 text-[#0593C6] shrink-0" />
             <div>
-              <div className="font-bold text-sm text-neutral-900 dark:text-white">
+              <div className="font-bold text-sm text-neutral-900 dark:text-[#FCFFFF]">
                 Target Already Achieved!
               </div>
               <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-0.5">
@@ -134,7 +134,7 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
           </div>
           <button
             onClick={onOpenSettings}
-            className="px-4 py-2 rounded-full bg-[#30d158] hover:bg-[#28cd41] text-black font-semibold text-xs transition-colors cursor-pointer shrink-0"
+            className="px-4 py-2 rounded-full bg-[#0593C6] hover:bg-[#047da8] text-[#FCFFFF] font-semibold text-xs transition-colors cursor-pointer shrink-0"
           >
             Set Faster Target
           </button>
@@ -142,26 +142,26 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 sm:gap-4 mb-5">
           {/* Estimated Weeks */}
-          <div className="p-4 rounded-xl bg-gradient-to-br from-neutral-50 to-neutral-100/60 dark:from-neutral-900/80 dark:to-neutral-900/30 border border-neutral-200/80 dark:border-neutral-800/80 flex flex-col justify-between">
+          <div className="p-4 rounded-xl bg-[#F2F8FB]/80 dark:bg-[#0e1b25]/80 border border-[#0593C6]/15 dark:border-neutral-800 flex flex-col justify-between">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-1 flex items-center justify-between">
               <span>Estimated Timeline</span>
-              <Calendar className="w-3.5 h-3.5 text-[#0a84ff]" />
+              <Calendar className="w-3.5 h-3.5 text-[#0593C6]" />
             </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-neutral-900 dark:text-white tabular-nums tracking-tight">
+            <div className="text-2xl sm:text-3xl font-extrabold text-neutral-900 dark:text-[#FCFFFF] tabular-nums tracking-tight">
               ~{activeScenarioData.weeks} <span className="text-sm font-semibold text-neutral-500">Weeks</span>
             </div>
-            <div className="text-xs text-[#0a84ff] font-medium mt-1">
+            <div className="text-xs text-[#0593C6] font-semibold mt-1">
               Projected: {activeScenarioData.date}
             </div>
           </div>
 
-          {/* Time Remaining to Cut Off */}
-          <div className="p-4 rounded-xl bg-gradient-to-br from-neutral-50 to-neutral-100/60 dark:from-neutral-900/80 dark:to-neutral-900/30 border border-neutral-200/80 dark:border-neutral-800/80 flex flex-col justify-between">
+          {/* Time Remaining to Cut Off with touch of orange */}
+          <div className="p-4 rounded-xl bg-[#F2F8FB]/80 dark:bg-[#0e1b25]/80 border border-[#FF6B00]/20 dark:border-neutral-800 flex flex-col justify-between">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-1 flex items-center justify-between">
               <span>Gap to Goal</span>
-              <TrendingDown className="w-3.5 h-3.5 text-rose-500" />
+              <TrendingDown className="w-3.5 h-3.5 text-[#FF6B00]" />
             </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-neutral-900 dark:text-white tabular-nums tracking-tight">
+            <div className="text-2xl sm:text-3xl font-extrabold text-[#FF6B00] tabular-nums tracking-tight">
               {formatDuration(projection.gapSeconds)}
             </div>
             <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 tabular-nums">
@@ -170,12 +170,12 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
           </div>
 
           {/* Weekly Progression Pace */}
-          <div className="p-4 rounded-xl bg-gradient-to-br from-neutral-50 to-neutral-100/60 dark:from-neutral-900/80 dark:to-neutral-900/30 border border-neutral-200/80 dark:border-neutral-800/80 flex flex-col justify-between">
+          <div className="p-4 rounded-xl bg-[#F2F8FB]/80 dark:bg-[#0e1b25]/80 border border-[#0593C6]/15 dark:border-neutral-800 flex flex-col justify-between">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-1 flex items-center justify-between">
               <span>Progression Rate</span>
-              <Zap className="w-3.5 h-3.5 text-[#ff9f0a]" />
+              <Zap className="w-3.5 h-3.5 text-[#0593C6]" />
             </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-[#30d158] tabular-nums tracking-tight">
+            <div className="text-2xl sm:text-3xl font-extrabold text-[#0593C6] tabular-nums tracking-tight">
               -{activeScenarioData.weeklyRateSec}s <span className="text-sm font-semibold text-neutral-500">/ wk</span>
             </div>
             <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 tabular-nums">
@@ -184,12 +184,12 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
           </div>
 
           {/* Goal Target */}
-          <div className="p-4 rounded-xl bg-gradient-to-br from-neutral-50 to-neutral-100/60 dark:from-neutral-900/80 dark:to-neutral-900/30 border border-neutral-200/80 dark:border-neutral-800/80 flex flex-col justify-between">
+          <div className="p-4 rounded-xl bg-[#F2F8FB]/80 dark:bg-[#0e1b25]/80 border border-[#0593C6]/15 dark:border-neutral-800 flex flex-col justify-between">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-1 flex items-center justify-between">
               <span>Target Benchmark</span>
-              <Target className="w-3.5 h-3.5 text-[#30d158]" />
+              <Target className="w-3.5 h-3.5 text-[#0593C6]" />
             </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-neutral-900 dark:text-white tabular-nums tracking-tight">
+            <div className="text-2xl sm:text-3xl font-extrabold text-neutral-900 dark:text-[#FCFFFF] tabular-nums tracking-tight">
               {formatDuration(projection.targetTimeSeconds)}
             </div>
             <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 tabular-nums">
@@ -216,8 +216,8 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
                 onClick={() => setSelectedScenario('expected')}
                 className={`px-3 py-1 rounded-md font-semibold transition-all cursor-pointer ${
                   selectedScenario === 'expected'
-                    ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-xs'
-                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+                    ? 'bg-[#0593C6] text-[#FCFFFF] shadow-xs'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-[#FCFFFF]'
                 }`}
               >
                 Steady (3 runs/wk)
@@ -226,8 +226,8 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
                 onClick={() => setSelectedScenario('accelerated')}
                 className={`px-3 py-1 rounded-md font-semibold transition-all cursor-pointer ${
                   selectedScenario === 'accelerated'
-                    ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-xs'
-                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+                    ? 'bg-[#FF6B00] text-[#FCFFFF] shadow-xs'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-[#FCFFFF]'
                 }`}
               >
                 Accelerated (3-4 runs)
@@ -236,8 +236,8 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
                 onClick={() => setSelectedScenario('conservative')}
                 className={`px-3 py-1 rounded-md font-semibold transition-all cursor-pointer ${
                   selectedScenario === 'conservative'
-                    ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-xs'
-                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+                    ? 'bg-[#0593C6] text-[#FCFFFF] shadow-xs'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-[#FCFFFF]'
                 }`}
               >
                 Base (1-2 runs)
@@ -250,13 +250,13 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
               onClick={() => setSelectedScenario('expected')}
               className={`p-3 rounded-lg border transition-all cursor-pointer ${
                 selectedScenario === 'expected'
-                  ? 'border-[#0a84ff] bg-[#0a84ff]/5 dark:bg-[#0a84ff]/10 ring-1 ring-[#0a84ff]/30'
+                  ? 'border-[#0593C6] bg-[#0593C6]/10 ring-1 ring-[#0593C6]/30'
                   : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900'
               }`}
             >
-              <div className="font-semibold text-neutral-900 dark:text-white flex items-center justify-between">
+              <div className="font-semibold text-neutral-900 dark:text-[#FCFFFF] flex items-center justify-between">
                 <span>Steady Schedule</span>
-                <span className="text-[#0a84ff] tabular-nums font-bold">~{projection.scenarios.expected.weeks} wks</span>
+                <span className="text-[#0593C6] tabular-nums font-bold">~{projection.scenarios.expected.weeks} wks</span>
               </div>
               <p className="text-[11px] text-neutral-500 mt-1">
                 Maintains your recommended 3 runs/week structure (Intervals + Tempo + Aerobic Long Run).
@@ -267,13 +267,13 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
               onClick={() => setSelectedScenario('accelerated')}
               className={`p-3 rounded-lg border transition-all cursor-pointer ${
                 selectedScenario === 'accelerated'
-                  ? 'border-[#30d158] bg-[#30d158]/5 dark:bg-[#30d158]/10 ring-1 ring-[#30d158]/30'
+                  ? 'border-[#FF6B00] bg-[#FF6B00]/10 ring-1 ring-[#FF6B00]/30'
                   : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900'
               }`}
             >
-              <div className="font-semibold text-neutral-900 dark:text-white flex items-center justify-between">
+              <div className="font-semibold text-neutral-900 dark:text-[#FCFFFF] flex items-center justify-between">
                 <span>Accelerated Focus</span>
-                <span className="text-[#30d158] tabular-nums font-bold">~{projection.scenarios.accelerated.weeks} wks</span>
+                <span className="text-[#FF6B00] tabular-nums font-bold">~{projection.scenarios.accelerated.weeks} wks</span>
               </div>
               <p className="text-[11px] text-neutral-500 mt-1">
                 Optimal recovery nutrition, race pace repeat intervals, and high weekly adherence.
@@ -284,13 +284,13 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
               onClick={() => setSelectedScenario('conservative')}
               className={`p-3 rounded-lg border transition-all cursor-pointer ${
                 selectedScenario === 'conservative'
-                  ? 'border-[#ff9f0a] bg-[#ff9f0a]/5 dark:bg-[#ff9f0a]/10 ring-1 ring-[#ff9f0a]/30'
+                  ? 'border-[#0593C6] bg-[#0593C6]/10 ring-1 ring-[#0593C6]/30'
                   : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900'
               }`}
             >
-              <div className="font-semibold text-neutral-900 dark:text-white flex items-center justify-between">
+              <div className="font-semibold text-neutral-900 dark:text-[#FCFFFF] flex items-center justify-between">
                 <span>Conservative Base</span>
-                <span className="text-[#ff9f0a] tabular-nums font-bold">~{projection.scenarios.conservative.weeks} wks</span>
+                <span className="text-[#0593C6] tabular-nums font-bold">~{projection.scenarios.conservative.weeks} wks</span>
               </div>
               <p className="text-[11px] text-neutral-500 mt-1">
                 Gradual aerobic conditioning, lower volume or occasional missed sessions.
@@ -304,7 +304,7 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
       {projection.milestones.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-neutral-900 dark:text-white">
+            <span className="text-xs font-bold text-neutral-900 dark:text-[#FCFFFF]">
               Projected Progression Milestones
             </span>
             <span className="text-[11px] text-neutral-400 tabular-nums">
@@ -316,37 +316,46 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
             {projection.milestones.map((ms, idx) => {
               const isFirst = idx === 0;
               const isLast = idx === projection.milestones.length - 1;
+              const isAchievedGoal = isLast && projection.isAchieved;
 
               return (
                 <div
                   key={idx}
                   className={`p-3 rounded-xl border flex flex-col justify-between text-xs transition-colors ${
-                    isLast
-                      ? 'bg-[#30d158]/5 dark:bg-[#30d158]/10 border-[#30d158]/40 ring-1 ring-[#30d158]/30'
+                    isAchievedGoal
+                      ? 'bg-[#0593C6]/10 border-[#0593C6]/40 ring-1 ring-[#0593C6]/30'
                       : isFirst
-                      ? 'bg-neutral-100/70 dark:bg-neutral-900 border-neutral-300 dark:border-neutral-700'
-                      : 'bg-neutral-50 dark:bg-neutral-900/60 border-neutral-200/80 dark:border-neutral-800'
+                      ? 'bg-[#F2F8FB] dark:bg-neutral-900 border-[#0593C6]/30 dark:border-neutral-700'
+                      : 'bg-[#F2F8FB]/60 dark:bg-neutral-900/60 border-neutral-200/80 dark:border-neutral-800'
                   }`}
                 >
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <span
                         className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          isLast
-                            ? 'bg-[#30d158] text-black'
+                          isAchievedGoal
+                            ? 'bg-[#0593C6] text-[#FCFFFF]'
+                            : isLast
+                            ? 'bg-neutral-200 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 border border-neutral-300 dark:border-neutral-700'
                             : isFirst
-                            ? 'bg-neutral-300 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200'
-                            : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
+                            ? 'bg-[#0593C6]/15 text-[#0593C6] font-bold'
+                            : 'bg-neutral-200/80 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
                         }`}
                       >
-                        {isFirst ? 'Baseline' : isLast ? 'Goal Hit' : `Week ${ms.weekNumber}`}
+                        {isFirst
+                          ? 'Baseline'
+                          : isLast
+                          ? isAchievedGoal
+                            ? 'Goal Hit'
+                            : 'Projected Goal Hit'
+                          : `Week ${ms.weekNumber}`}
                       </span>
                       <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
                         {ms.projectedDate}
                       </span>
                     </div>
 
-                    <div className="text-xl font-bold text-neutral-900 dark:text-white tabular-nums tracking-tight mt-1">
+                    <div className="text-xl font-bold text-neutral-900 dark:text-[#FCFFFF] tabular-nums tracking-tight mt-1">
                       {formatDuration(ms.projectedTimeSeconds)}
                     </div>
 

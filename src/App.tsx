@@ -29,7 +29,8 @@ import { GoalBanner } from './components/GoalBanner';
 import { GoalProjectionCard } from './components/GoalProjectionCard';
 import { WeeklyAdherenceCard } from './components/WeeklyAdherenceCard';
 import { ProgressVisualizer } from './components/ProgressVisualizer';
-import { RunList } from './components/RunList';
+import { MotivationalGreeting } from './components/MotivationalGreeting';
+import { FirstTimeNameModal } from './components/FirstTimeNameModal';
 import { GarminSyncModal } from './components/GarminSyncModal';
 import { DuplicateRunsModal } from './components/DuplicateRunsModal';
 import { AiExportModal } from './components/AiExportModal';
@@ -37,7 +38,8 @@ import { AddRunModal } from './components/AddRunModal';
 import { GoalSettingsModal } from './components/GoalSettingsModal';
 import { EmptyGarminState } from './components/EmptyGarminState';
 import { WatchTelemetrySection } from './components/WatchTelemetrySection';
-import { Cloud, CloudOff, Loader2, AlertCircle, X } from 'lucide-react';
+import { LoginPage } from './components/LoginPage';
+import { Cloud, CloudOff, Loader2, AlertCircle, X, FlaskConical, Activity } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 const LOCAL_STORAGE_RUNS_KEY = 'xc_6k_user_runs_data';
@@ -48,6 +50,21 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // Guest Testing Mode
+  const [isGuest, setIsGuest] = useState<boolean>(() => {
+    return sessionStorage.getItem('xc_6k_guest_mode') === 'true';
+  });
+
+  const handleContinueAsGuest = () => {
+    setIsGuest(true);
+    sessionStorage.setItem('xc_6k_guest_mode', 'true');
+  };
+
+  const handleExitGuestMode = () => {
+    setIsGuest(false);
+    sessionStorage.removeItem('xc_6k_guest_mode');
+  };
 
   // Theme: light / dark
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -111,6 +128,29 @@ export default function App() {
   const [isAiExportOpen, setIsAiExportOpen] = useState(false);
   const [isAddRunOpen, setIsAddRunOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isFirstTimeNameOpen, setIsFirstTimeNameOpen] = useState(false);
+
+  // Check if runner needs to be prompted for their name on first login / app entry
+  useEffect(() => {
+    if (!authLoading && (user || isGuest)) {
+      const hasPrompted = localStorage.getItem('xc_name_prompt_completed');
+      if (!profile.displayName && !hasPrompted) {
+        setIsFirstTimeNameOpen(true);
+      }
+    }
+  }, [authLoading, user, isGuest, profile.displayName]);
+
+  const handleSaveFirstTimeName = (name: string) => {
+    const updated = { ...profile, displayName: name };
+    handleSaveProfile(updated);
+    localStorage.setItem('xc_name_prompt_completed', 'true');
+    setIsFirstTimeNameOpen(false);
+  };
+
+  const handleDismissFirstTimeName = () => {
+    localStorage.setItem('xc_name_prompt_completed', 'true');
+    setIsFirstTimeNameOpen(false);
+  };
 
   const handleOpenGarminSync = () => {
     setPreParsedGarminRuns([]);
@@ -360,6 +400,8 @@ export default function App() {
     setAuthError(null);
     try {
       await signInWithGoogle();
+      setIsGuest(false);
+      sessionStorage.removeItem('xc_6k_guest_mode');
     } catch (err: unknown) {
       console.error('Google sign in error', err);
       const errorObj = err as { code?: string; message?: string };
@@ -381,14 +423,49 @@ export default function App() {
     try {
       await logOut();
       setUser(null);
+      setIsGuest(false);
+      sessionStorage.removeItem('xc_6k_guest_mode');
     } catch (err) {
       console.error('Google sign out error', err);
     }
   };
 
+  // 1. Initial auth loading splash
+  if (authLoading) {
+    return (
+      <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
+        <div className="min-h-screen bg-[#F2F8FB] dark:bg-[#0c1822] flex flex-col items-center justify-center space-y-4">
+          <div className="w-12 h-12 rounded-2xl bg-[#0593C6] text-[#FCFFFF] flex items-center justify-center font-bold shadow-lg shadow-[#0593C6]/20 animate-pulse">
+            <Activity className="w-6 h-6 stroke-[2.5]" />
+          </div>
+          <div className="text-center">
+            <span className="font-extrabold text-base tracking-tight text-neutral-900 dark:text-[#FCFFFF]">
+              RunGoals
+            </span>
+            <p className="text-xs text-neutral-400 mt-0.5">Initializing training telemetry...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Login Page at start: Shown when not signed in and guest mode not activated
+  if (!user && !isGuest) {
+    return (
+      <LoginPage
+        onSignIn={handleSignIn}
+        onContinueAsGuest={handleContinueAsGuest}
+        authError={authError}
+        onClearAuthError={() => setAuthError(null)}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
+    );
+  }
+
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
-      <div className="min-h-screen bg-[#f2f2f7] dark:bg-black text-neutral-900 dark:text-neutral-100 flex flex-col font-sans transition-colors selection:bg-[#30d158] selection:text-black">
+      <div className="min-h-screen bg-[#F2F8FB] dark:bg-[#0c1822] text-neutral-900 dark:text-[#FCFFFF] flex flex-col font-sans transition-colors selection:bg-[#0593C6] selection:text-[#FCFFFF]">
         {/* Apple-style Navigation */}
         <Navbar
           user={user}
@@ -396,6 +473,8 @@ export default function App() {
           adherence={adherence}
           best6kSec={best6kSec}
           theme={theme}
+          isGuest={isGuest}
+          onExitGuestMode={handleExitGuestMode}
           onToggleTheme={toggleTheme}
           onOpenGarminSync={handleOpenGarminSync}
           onOpenAiExport={() => setIsAiExportOpen(true)}
@@ -405,36 +484,47 @@ export default function App() {
           onSignOut={handleSignOut}
         />
 
-        {/* Minimal Cloud / Local Status */}
-        <div className="bg-white/60 dark:bg-neutral-900/40 border-b border-neutral-200 dark:border-neutral-800/80 px-4 py-1.5 text-[11px] text-neutral-500 dark:text-neutral-400">
+        {/* Cloud / Guest Status Banner */}
+        <div className="bg-[#FCFFFF]/85 dark:bg-[#12222f]/85 border-b border-[#0593C6]/15 dark:border-[#0593C6]/20 px-4 py-2 text-xs text-neutral-500 dark:text-neutral-400 backdrop-blur-xs">
           <div className="max-w-6xl mx-auto flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              {authLoading ? (
-                <span className="flex items-center space-x-1.5">
-                  <Loader2 className="w-3 h-3 animate-spin text-[#30d158]" />
-                  <span>Connecting...</span>
+              {user ? (
+                <span className="flex items-center space-x-1.5 text-[#0593C6] font-semibold">
+                  <Cloud className="w-4 h-4" />
+                  <span>Cloud Synced · {user.email}</span>
                 </span>
-              ) : user ? (
-                <span className="flex items-center space-x-1.5 text-[#30d158] font-medium">
-                  <Cloud className="w-3.5 h-3.5" />
-                  <span>Firebase Synced · {user.email}</span>
+              ) : isGuest ? (
+                <span className="flex items-center space-x-1.5 text-neutral-700 dark:text-neutral-300 font-medium">
+                  <FlaskConical className="w-4 h-4 text-[#FF6B00]" />
+                  <span>Guest Testing Mode · Local storage only ·</span>
+                  <button
+                    onClick={handleSignIn}
+                    className="text-[#0593C6] hover:underline font-bold cursor-pointer ml-1"
+                  >
+                    Sign in with Google to enable cloud sync
+                  </button>
                 </span>
               ) : (
                 <span className="flex items-center space-x-1.5">
-                  <CloudOff className="w-3.5 h-3.5 text-[#ff9f0a]" />
-                  <span>Local Session ·</span>
-                  <button
-                    onClick={handleSignIn}
-                    className="text-[#0a84ff] hover:underline font-semibold cursor-pointer"
-                  >
-                    Sign in with Google for cloud storage
-                  </button>
+                  <CloudOff className="w-3.5 h-3.5 text-[#FF6B00]" />
+                  <span>Local Session</span>
                 </span>
               )}
             </div>
 
-            <div className="hidden sm:flex items-center space-x-2 text-neutral-400 dark:text-neutral-500">
-              <span className="tabular-nums">{runs.length} {runs.length === 1 ? 'run' : 'runs'} logged</span>
+            <div className="flex items-center space-x-3 text-neutral-400 dark:text-neutral-500 text-[11px]">
+              <span className="tabular-nums font-mono">{runs.length} {runs.length === 1 ? 'workout' : 'workouts'} logged</span>
+              {isGuest && (
+                <>
+                  <span>·</span>
+                  <button
+                    onClick={handleExitGuestMode}
+                    className="text-neutral-500 hover:text-neutral-900 dark:hover:text-white underline cursor-pointer"
+                  >
+                    Exit Guest Mode
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -468,6 +558,15 @@ export default function App() {
 
         {/* Main Dashboard */}
         <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-5">
+          {/* Dynamic Motivational Greeting with User's Name */}
+          <MotivationalGreeting
+            profile={profile}
+            weeklyRunsCount={adherence.currentWeekRuns}
+            weeklyGoal={adherence.weeklyGoal}
+            streakWeeks={adherence.currentStreakWeeks}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+          />
+
           {runs.length === 0 ? (
             <EmptyGarminState
               unit={profile.unitPreference}
@@ -496,7 +595,7 @@ export default function App() {
                 onOpenSettings={() => setIsSettingsOpen(true)}
               />
 
-              {/* 3. WEEKLY TRAINING (Weekly Training Schedule) */}
+              {/* 3. WEEKLY TRAINING (Weekly Training Schedule: Interval, 6K Threshold Tempo, Aerobic Long Run) */}
               <WeeklyAdherenceCard
                 weeklyStats={weeklyStats}
                 adherence={adherence}
@@ -505,7 +604,7 @@ export default function App() {
                 weeklyDistanceGoalKm={profile.weeklyDistanceGoalKm}
               />
 
-              {/* 3. PERFORMANCE ANALYTICS (Recovery readiness, progression curves, aerobic base, interval training) */}
+              {/* 4. PERFORMANCE ANALYTICS (Recovery readiness, progression curves, aerobic base, interval training) */}
               <ProgressVisualizer
                 runs={runs}
                 weeklyStats={weeklyStats}
@@ -518,24 +617,18 @@ export default function App() {
                 onOpenAddRun={() => setIsAddRunOpen(true)}
               />
 
-              {/* 4. FITNESS TRACKER DATA (Watch Biometrics, Fastest Pace, Peak Heartbeat, HR Training Zones) */}
+              {/* 5. FITNESS TRACKER DATA & UNIFIED ACTIVITY LOGS (Fastest Pace, Peak HR, HR Training Zones, Workout Combining, Categories & Deletion) */}
               <WatchTelemetrySection
-                runs={runs}
-                unit={profile.unitPreference}
-                customMaxHr={profile.maxHeartRate}
-                onUpdateMaxHr={(val) => handleSaveProfile({ ...profile, maxHeartRate: val })}
-              />
-
-              {/* 5. WORKOUT HISTORY (History log, categories, and Combine Workout tool) */}
-              <RunList
                 runs={runs}
                 unit={profile.unitPreference}
                 targetDistanceKm={profile.targetDistanceKm}
                 target6kSec={profile.target6kTimeSeconds}
+                best6kSec={best6kSec}
+                customMaxHr={profile.maxHeartRate}
+                onUpdateMaxHr={(val) => handleSaveProfile({ ...profile, maxHeartRate: val })}
                 onDeleteRun={handleDeleteRun}
                 onUpdateRunCategory={handleUpdateRunCategory}
                 onCombineRuns={handleCombineRuns}
-                best6kSec={best6kSec}
                 onOpenGarminSync={handleOpenGarminSync}
                 onOpenAddRun={() => setIsAddRunOpen(true)}
               />
@@ -549,6 +642,13 @@ export default function App() {
         </footer>
 
         {/* Modals */}
+        <FirstTimeNameModal
+          isOpen={isFirstTimeNameOpen}
+          initialName={profile.displayName || (user?.displayName ? user.displayName.split(' ')[0] : '')}
+          onSaveName={handleSaveFirstTimeName}
+          onDismiss={handleDismissFirstTimeName}
+        />
+
         <GarminSyncModal
           isOpen={isGarminSyncOpen}
           onClose={handleCloseGarminSync}

@@ -734,30 +734,30 @@ export function calculateCategoryBreakdown(
     Easy: {
       name: 'Easy & Base',
       description: 'Aerobic foundation, recovery, and long runs (Zone 2)',
-      color: '#0284c7', // Sky 600
-      darkColor: '#38bdf8', // Sky 400
-      badgeBg: 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300',
+      color: '#0593C6', // Sky Blue brand
+      darkColor: '#2eb4e6', // Sky Blue light
+      badgeBg: 'bg-sky-50 dark:bg-sky-950/40 text-[#0593C6] dark:text-[#2eb4e6]',
     },
     Interval: {
       name: 'Intervals',
       description: 'Track repeats, VO2 max speed, and race turnover',
-      color: '#7c3aed', // Violet 600
-      darkColor: '#a78bfa', // Violet 400
-      badgeBg: 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300',
+      color: '#FF6B00', // Brand Orange
+      darkColor: '#ff8533', // Brand Orange light
+      badgeBg: 'bg-orange-50 dark:bg-orange-950/40 text-[#FF6B00] dark:text-[#ff8533]',
     },
     Tempo: {
       name: 'Tempo',
       description: 'Lactate threshold and sustained tempo rhythm',
-      color: '#d97706', // Amber 600
-      darkColor: '#fbbf24', // Amber 400
-      badgeBg: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300',
+      color: '#0284c7', // Deep Sky 600
+      darkColor: '#38bdf8', // Light Sky 400
+      badgeBg: 'bg-sky-50 dark:bg-sky-950/40 text-[#0284c7] dark:text-[#38bdf8]',
     },
     Race: {
       name: 'Race & Trials',
       description: 'Cross country races and goal distance time trials',
-      color: '#059669', // Emerald 600
-      darkColor: '#34d399', // Emerald 400
-      badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300',
+      color: '#e05e00', // Deep Orange
+      darkColor: '#ff944d', // Bright Orange
+      badgeBg: 'bg-orange-50 dark:bg-orange-950/40 text-[#e05e00] dark:text-[#ff944d]',
     },
   };
 

@@ -2,19 +2,34 @@
 
 @variant dark (&:where(.dark, .dark *));
 
+@theme {
+  --color-sky-brand: #0593C6;
+  --color-sky-brand-dark: #047da8;
+  --color-sky-brand-light: #2eb4e6;
+  --color-sky-brand-subtle: #e8f6fc;
+  --color-white-brand: #FCFFFF;
+  --color-orange-brand: #FF6B00;
+  --color-orange-brand-dark: #e05e00;
+  --color-orange-brand-light: #ff8533;
+}
+
 @layer base {
   :root {
     color-scheme: light dark;
+    --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
 
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "SF Pro", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum";
+    letter-spacing: -0.011em;
   }
 
-  .tabular-nums {
+  .tabular-nums, .font-mono, [data-mono] {
+    font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
   }
 }
