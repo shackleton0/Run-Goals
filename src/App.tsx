@@ -407,7 +407,7 @@ export default function App() {
       const errorObj = err as { code?: string; message?: string };
       if (errorObj?.code === 'auth/unauthorized-domain') {
         setAuthError(
-          'Firebase Authentication domain is provisioning. Please click Retry to connect.'
+          'Firebase Authentication domain is provisioning (takes ~1-2 minutes). Click Retry to connect, or use Guest Mode in the meantime.'
         );
       } else if (errorObj?.code === 'auth/popup-closed-by-user') {
         // Closed by user, no error banner needed

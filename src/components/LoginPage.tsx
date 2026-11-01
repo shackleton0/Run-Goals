@@ -70,18 +70,34 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
         {/* Auth Error Banner */}
         {authError && (
-          <div className="bg-red-50 dark:bg-red-950/40 border-b border-red-200 dark:border-red-800/80 px-4 py-2 text-xs text-red-700 dark:text-red-300">
-            <div className="max-w-md mx-auto flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+          <div className="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/80 px-4 py-3 text-xs text-amber-800 dark:text-amber-200">
+            <div className="max-w-xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-start sm:items-center space-x-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
                 <span>{authError}</span>
               </div>
-              <button
-                onClick={onClearAuthError}
-                className="text-xs font-semibold underline ml-2 cursor-pointer"
-              >
-                Dismiss
-              </button>
+              <div className="flex items-center space-x-2 shrink-0">
+                <button
+                  onClick={handleGoogleSignIn}
+                  disabled={isSigningIn}
+                  className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center space-x-1"
+                >
+                  {isSigningIn ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                  <span>Retry</span>
+                </button>
+                <button
+                  onClick={onContinueAsGuest}
+                  className="px-2.5 py-1 rounded-lg bg-neutral-200 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 font-semibold text-xs hover:bg-neutral-300 dark:hover:bg-neutral-700 transition-colors cursor-pointer"
+                >
+                  Try Guest Mode
+                </button>
+                <button
+                  onClick={onClearAuthError}
+                  className="text-xs font-semibold underline text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 ml-1 cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
             </div>
           </div>
         )}
