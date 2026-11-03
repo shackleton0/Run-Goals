@@ -1477,3 +1477,180 @@ export function calculateIntervalMetrics(params: IntervalCalculationParams, unit
   };
 }
 
+export interface SuggestedSlotSchedule {
+  id: 'interval' | 'tempo' | 'long_run' | 'recovery';
+  slotNumber: number;
+  name: string;
+  category: string;
+  suggestedDistanceKm: number;
+  suggestedDistanceFormatted: string;
+  percentageOfWeekly: number;
+  structure: string;
+  purpose: string;
+}
+
+export interface SuggestedWeeklySchedulePlan {
+  weeklyDistanceKm: number;
+  weeklyDistanceFormatted: string;
+  weeklyRunGoal: number;
+  slots: SuggestedSlotSchedule[];
+  totalSuggestedKm: number;
+}
+
+export function getSuggestedWeeklySchedule(
+  weeklyDistanceGoalKm?: number | null,
+  weeklyRunGoal: number = 3,
+  unit: 'km' | 'miles' = 'km',
+  targetGoalDistanceKm: number = 6.0
+): SuggestedWeeklySchedulePlan {
+  // If no weekly distance goal is set, suggest a baseline: 25 km (~15.5 mi) for 3 runs, or 8 km per run
+  const effectiveWeeklyKm = Math.max(
+    5,
+    weeklyDistanceGoalKm && weeklyDistanceGoalKm > 0
+      ? weeklyDistanceGoalKm
+      : Math.max(15, weeklyRunGoal * 8)
+  );
+
+  const runsCount = Math.max(1, Math.min(14, weeklyRunGoal));
+  const slots: SuggestedSlotSchedule[] = [];
+
+  if (runsCount <= 3) {
+    // Standard 3-Session Cross Country Microcycle:
+    // Slot 1: Intervals (~24% of weekly volume)
+    // Slot 2: Lactate Threshold Tempo (~30% of weekly volume)
+    // Slot 3: Aerobic Long Run (~46% of weekly volume, balancing to exact 100%)
+    const intervalKm = Number(Math.max(3.0, Number((effectiveWeeklyKm * 0.24).toFixed(1))));
+    const tempoKm = Number(Math.max(4.0, Number((effectiveWeeklyKm * 0.30).toFixed(1))));
+    const longRunKm = Number(Math.max(5.0, Number((effectiveWeeklyKm - intervalKm - tempoKm).toFixed(1))));
+
+    // Interval workout structure based on volume:
+    const intervalReps =
+      intervalKm >= 10
+        ? '6 × 1000m'
+        : intervalKm >= 7
+        ? '5 × 1000m'
+        : intervalKm >= 5
+        ? '5 × 800m'
+        : '4 × 600m';
+    const intervalStructure = `1.5 km warm-up + ${intervalReps} @ 6K pace + 1.5 km cool-down`;
+
+    const tempoWorkDist = Math.max(3.0, tempoKm - 2.0);
+    const tempoStructure = `1.0 km warm-up + ${tempoWorkDist.toFixed(1)} km continuous tempo + 1.0 km cool-down`;
+
+    slots.push({
+      id: 'interval',
+      slotNumber: 1,
+      name: 'Interval Workout',
+      category: 'Speed & VO2 Max',
+      suggestedDistanceKm: intervalKm,
+      suggestedDistanceFormatted:
+        unit === 'miles' ? `${(intervalKm * KM_TO_MILES).toFixed(1)} mi` : `${intervalKm.toFixed(1)} km`,
+      percentageOfWeekly: Math.round((intervalKm / effectiveWeeklyKm) * 100),
+      structure: intervalStructure,
+      purpose: 'Develops biomechanical stride efficiency and maximum aerobic oxygen uptake (VO2 max)',
+    });
+
+    slots.push({
+      id: 'tempo',
+      slotNumber: 2,
+      name: 'Threshold Tempo',
+      category: 'Lactate Clearance',
+      suggestedDistanceKm: tempoKm,
+      suggestedDistanceFormatted:
+        unit === 'miles' ? `${(tempoKm * KM_TO_MILES).toFixed(1)} mi` : `${tempoKm.toFixed(1)} km`,
+      percentageOfWeekly: Math.round((tempoKm / effectiveWeeklyKm) * 100),
+      structure: tempoStructure,
+      purpose: 'Raises anaerobic lactate threshold to eliminate late-race muscular fatigue',
+    });
+
+    slots.push({
+      id: 'long_run',
+      slotNumber: 3,
+      name: 'Aerobic Long Run',
+      category: 'Endurance Base',
+      suggestedDistanceKm: longRunKm,
+      suggestedDistanceFormatted:
+        unit === 'miles' ? `${(longRunKm * KM_TO_MILES).toFixed(1)} mi` : `${longRunKm.toFixed(1)} km`,
+      percentageOfWeekly: Math.round((longRunKm / effectiveWeeklyKm) * 100),
+      structure: 'Continuous relaxed conversational effort over rolling trails, grass, or turf',
+      purpose: 'Builds cardiac stroke volume, mitochondrial density, and mental race grit',
+    });
+  } else {
+    // 4+ runs per week: includes recovery / easy runs
+    const intervalKm = Number(Math.max(3.0, Number((effectiveWeeklyKm * 0.20).toFixed(1))));
+    const tempoKm = Number(Math.max(4.0, Number((effectiveWeeklyKm * 0.25).toFixed(1))));
+    const longRunKm = Number(Math.max(6.0, Number((effectiveWeeklyKm * 0.35).toFixed(1))));
+    const remainingKm = Number(
+      Math.max(2.0, Number((effectiveWeeklyKm - intervalKm - tempoKm - longRunKm).toFixed(1)))
+    );
+    const easyDaysCount = runsCount - 3;
+    const easyPerDayKm = Number((remainingKm / easyDaysCount).toFixed(1));
+
+    slots.push({
+      id: 'interval',
+      slotNumber: 1,
+      name: 'Interval Workout',
+      category: 'Speed & VO2 Max',
+      suggestedDistanceKm: intervalKm,
+      suggestedDistanceFormatted:
+        unit === 'miles' ? `${(intervalKm * KM_TO_MILES).toFixed(1)} mi` : `${intervalKm.toFixed(1)} km`,
+      percentageOfWeekly: Math.round((intervalKm / effectiveWeeklyKm) * 100),
+      structure: `1.5 km warm-up + 5 × 800m–1000m @ goal pace + 1.5 km cool-down`,
+      purpose: 'Develops biomechanical turnover and top aerobic power',
+    });
+
+    slots.push({
+      id: 'tempo',
+      slotNumber: 2,
+      name: 'Threshold Tempo',
+      category: 'Lactate Clearance',
+      suggestedDistanceKm: tempoKm,
+      suggestedDistanceFormatted:
+        unit === 'miles' ? `${(tempoKm * KM_TO_MILES).toFixed(1)} mi` : `${tempoKm.toFixed(1)} km`,
+      percentageOfWeekly: Math.round((tempoKm / effectiveWeeklyKm) * 100),
+      structure: `1.0 km warm-up + ${(tempoKm - 2).toFixed(1)} km tempo + 1.0 km cool-down`,
+      purpose: 'Elevates lactate threshold capacity for sustained pacing',
+    });
+
+    slots.push({
+      id: 'long_run',
+      slotNumber: 3,
+      name: 'Aerobic Long Run',
+      category: 'Endurance Base',
+      suggestedDistanceKm: longRunKm,
+      suggestedDistanceFormatted:
+        unit === 'miles' ? `${(longRunKm * KM_TO_MILES).toFixed(1)} mi` : `${longRunKm.toFixed(1)} km`,
+      percentageOfWeekly: Math.round((longRunKm / effectiveWeeklyKm) * 100),
+      structure: 'Steady aerobic endurance run over natural terrain',
+      purpose: 'Builds cellular capillary bed density and stamina',
+    });
+
+    for (let i = 0; i < easyDaysCount; i++) {
+      slots.push({
+        id: 'recovery',
+        slotNumber: 4 + i,
+        name: `Easy Recovery Run ${i + 1}`,
+        category: 'Active Recovery',
+        suggestedDistanceKm: easyPerDayKm,
+        suggestedDistanceFormatted:
+          unit === 'miles' ? `${(easyPerDayKm * KM_TO_MILES).toFixed(1)} mi` : `${easyPerDayKm.toFixed(1)} km`,
+        percentageOfWeekly: Math.round((easyPerDayKm / effectiveWeeklyKm) * 100),
+        structure: 'Very relaxed conversational jog to promote blood flow and tissue recovery',
+        purpose: 'Facilitates musculoskeletal repair without adding neural fatigue',
+      });
+    }
+  }
+
+  const totalSuggested = Number(slots.reduce((sum, s) => sum + s.suggestedDistanceKm, 0).toFixed(1));
+
+  return {
+    weeklyDistanceKm: effectiveWeeklyKm,
+    weeklyDistanceFormatted:
+      unit === 'miles' ? `${(effectiveWeeklyKm * KM_TO_MILES).toFixed(1)} mi` : `${effectiveWeeklyKm.toFixed(1)} km`,
+    weeklyRunGoal: runsCount,
+    slots,
+    totalSuggestedKm: totalSuggested,
+  };
+}
+
+

@@ -22,6 +22,7 @@ import {
   getCurrentWeekRange,
   isRunInCurrentWeek,
   calculateIntervalMetrics,
+  getSuggestedWeeklySchedule,
 } from './runningCalculations';
 import { RunRecord } from '../types/running';
 
@@ -374,6 +375,28 @@ test('calculateIntervalMetrics strips rest duration from Garmin workout and comp
   assert.equal(result.restDeductionFormatted, '06:00');
   assert.equal(result.isPaceMet, false); // 5:12 is slower than 3:30
 });
+
+test('getSuggestedWeeklySchedule divides weekly km into balanced training schedule', () => {
+  // 3-run week with 25 km target
+  const plan25 = getSuggestedWeeklySchedule(25, 3, 'km');
+  assert.equal(plan25.weeklyDistanceKm, 25);
+  assert.equal(plan25.slots.length, 3);
+  assert.equal(plan25.slots[0].id, 'interval');
+  assert.equal(plan25.slots[0].suggestedDistanceKm, 6.0);
+  assert.equal(plan25.slots[1].id, 'tempo');
+  assert.equal(plan25.slots[1].suggestedDistanceKm, 7.5);
+  assert.equal(plan25.slots[2].id, 'long_run');
+  assert.equal(plan25.slots[2].suggestedDistanceKm, 11.5);
+  assert.equal(plan25.totalSuggestedKm, 25);
+
+  // 3-run week with 30 km target
+  const plan30 = getSuggestedWeeklySchedule(30, 3, 'km');
+  assert.equal(plan30.slots[0].suggestedDistanceKm, 7.2);
+  assert.equal(plan30.slots[1].suggestedDistanceKm, 9.0);
+  assert.equal(plan30.slots[2].suggestedDistanceKm, 13.8);
+  assert.equal(plan30.totalSuggestedKm, 30);
+});
+
 
 
 

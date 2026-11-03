@@ -1,7 +1,14 @@
 import React, { useState } from 'react';
 import { UserProfile } from '../types/running';
-import { formatDuration, parseDuration, formatPace, KM_TO_MILES, MILES_TO_KM } from '../utils/runningCalculations';
-import { X, Target, Calendar, Flag, Activity } from 'lucide-react';
+import {
+  formatDuration,
+  parseDuration,
+  formatPace,
+  KM_TO_MILES,
+  MILES_TO_KM,
+  getSuggestedWeeklySchedule,
+} from '../utils/runningCalculations';
+import { X, Target, Calendar, Flag, Activity, Check } from 'lucide-react';
 
 interface GoalSettingsModalProps {
   isOpen: boolean;
@@ -239,45 +246,114 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
           </div>
 
           {/* Section 3: Weekly Consistency & Weekly Distance Target */}
-          <div className="grid grid-cols-2 gap-3 pt-1 border-t border-neutral-200 dark:border-neutral-800">
-            <div>
-              <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                Weekly Runs Target
-              </label>
-              <div className="relative">
-                <Calendar className="w-4 h-4 text-[#10B981] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="number"
-                  min="1"
-                  max="14"
-                  required
-                  value={weeklyRunGoal}
-                  onChange={(e) => setWeeklyRunGoal(parseInt(e.target.value, 10))}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs font-semibold text-neutral-900 dark:text-white tabular-nums focus:outline-none focus:border-[#10B981]"
-                />
+          <div className="space-y-3 pt-2 border-t border-neutral-200 dark:border-neutral-800">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
+                  Weekly Runs Target
+                </label>
+                <div className="relative">
+                  <Calendar className="w-4 h-4 text-[#10B981] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="number"
+                    min="1"
+                    max="14"
+                    required
+                    value={weeklyRunGoal}
+                    onChange={(e) => setWeeklyRunGoal(parseInt(e.target.value, 10))}
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs font-semibold text-neutral-900 dark:text-white tabular-nums focus:outline-none focus:border-[#10B981]"
+                  />
+                </div>
+                <p className="text-[10px] text-neutral-500 mt-0.5">Sessions per week</p>
               </div>
-              <p className="text-[10px] text-neutral-500 mt-0.5">Runs per week</p>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
+                  Weekly Distance Goal
+                </label>
+                <div className="relative">
+                  <Activity className="w-4 h-4 text-[#0a84ff] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="1"
+                    max="300"
+                    value={weeklyDistGoalStr}
+                    onChange={(e) => setWeeklyDistGoalStr(e.target.value)}
+                    placeholder={`e.g. 25 (${unitPreference})`}
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs font-bold text-neutral-900 dark:text-white tabular-nums focus:outline-none focus:border-[#0a84ff]"
+                  />
+                </div>
+                <p className="text-[10px] text-neutral-500 mt-0.5">Total {unitPreference} per week</p>
+              </div>
             </div>
 
+            {/* Quick Mileage Presets */}
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                Weekly Distance Goal
-              </label>
-              <div className="relative">
-                <Activity className="w-4 h-4 text-[#0a84ff] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="number"
-                  step="0.5"
-                  min="1"
-                  max="300"
-                  value={weeklyDistGoalStr}
-                  onChange={(e) => setWeeklyDistGoalStr(e.target.value)}
-                  placeholder={`e.g. 25 (${unitPreference})`}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs font-semibold text-neutral-900 dark:text-white tabular-nums focus:outline-none focus:border-[#0a84ff]"
-                />
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">
+                  Select Weekly {unitPreference === 'miles' ? 'Mileage' : 'Distance'} Preset:
+                </span>
               </div>
-              <p className="text-[10px] text-neutral-500 mt-0.5">Optional volume ({unitPreference}/wk)</p>
+              <div className="flex flex-wrap gap-1.5">
+                {(unitPreference === 'miles' ? [10, 15, 20, 25, 30] : [15, 20, 25, 30, 35, 40, 50]).map((presetVal) => {
+                  const isCurrent = Math.abs(parseFloat(weeklyDistGoalStr || '0') - presetVal) < 0.8;
+                  return (
+                    <button
+                      key={presetVal}
+                      type="button"
+                      onClick={() => setWeeklyDistGoalStr(presetVal.toString())}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer tabular-nums ${
+                        isCurrent
+                          ? 'bg-[#0a84ff] text-white shadow-xs'
+                          : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                      }`}
+                    >
+                      {presetVal} {unitPreference}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
+
+            {/* Live Suggested Weekly Training Schedule Preview */}
+            {(() => {
+              const currentNum = parseFloat(weeklyDistGoalStr);
+              const effectiveKm = !isNaN(currentNum) && currentNum > 0
+                ? unitPreference === 'miles'
+                  ? currentNum * MILES_TO_KM
+                  : currentNum
+                : 25;
+              const livePlan = getSuggestedWeeklySchedule(effectiveKm, weeklyRunGoal || 3, unitPreference);
+
+              return (
+                <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-neutral-800 dark:text-neutral-200 uppercase tracking-wider flex items-center space-x-1.5">
+                      <Target className="w-3.5 h-3.5 text-[#0a84ff]" />
+                      <span>Suggested Training Schedule ({livePlan.weeklyDistanceFormatted}/wk):</span>
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {livePlan.slots.map((s) => (
+                      <div
+                        key={s.id}
+                        className="p-2 rounded-lg bg-white dark:bg-[#1c1c1e] border border-neutral-200/70 dark:border-neutral-800"
+                      >
+                        <div className="flex items-center justify-between text-[11px] font-bold text-neutral-900 dark:text-white">
+                          <span>{s.name}</span>
+                          <span className="text-[#0a84ff] tabular-nums">{s.suggestedDistanceFormatted}</span>
+                        </div>
+                        <p className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5 line-clamp-2">
+                          {s.structure}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Section 4: Units & Profile */}

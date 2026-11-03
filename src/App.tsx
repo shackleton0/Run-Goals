@@ -671,14 +671,29 @@ export default function App() {
           />
 
           {runs.length === 0 ? (
-            <EmptyGarminState
-              unit={profile.unitPreference}
-              onProcessIncomingRuns={handleProcessIncomingRuns}
-              onOpenGarminSync={handleOpenGarminSync}
-              onOpenGarminSyncWithRuns={handleOpenGarminSyncWithRuns}
-              onOpenAddRun={() => setIsAddRunOpen(true)}
-              onOpenSettings={() => setIsSettingsOpen(true)}
-            />
+            <div className="space-y-5">
+              <WeeklyAdherenceCard
+                weeklyStats={weeklyStats}
+                adherence={adherence}
+                runs={runs}
+                onOpenAddRun={() => setIsAddRunOpen(true)}
+                unit={profile.unitPreference}
+                weeklyDistanceGoalKm={profile.weeklyDistanceGoalKm}
+                weeklyRunGoal={profile.weeklyRunGoal || 3}
+                onUpdateWeeklyDistanceGoal={(newKm) =>
+                  handleSaveProfile({ ...profile, weeklyDistanceGoalKm: newKm })
+                }
+                onOpenSettings={() => setIsSettingsOpen(true)}
+              />
+              <EmptyGarminState
+                unit={profile.unitPreference}
+                onProcessIncomingRuns={handleProcessIncomingRuns}
+                onOpenGarminSync={handleOpenGarminSync}
+                onOpenGarminSyncWithRuns={handleOpenGarminSyncWithRuns}
+                onOpenAddRun={() => setIsAddRunOpen(true)}
+                onOpenSettings={() => setIsSettingsOpen(true)}
+              />
+            </div>
           ) : (
             <div className="space-y-5">
               {/* 1. TARGET BENCHMARK (Target Distance, Pace & Current Best) */}
@@ -706,6 +721,11 @@ export default function App() {
                 onOpenAddRun={() => setIsAddRunOpen(true)}
                 unit={profile.unitPreference}
                 weeklyDistanceGoalKm={profile.weeklyDistanceGoalKm}
+                weeklyRunGoal={profile.weeklyRunGoal || 3}
+                onUpdateWeeklyDistanceGoal={(newKm) =>
+                  handleSaveProfile({ ...profile, weeklyDistanceGoalKm: newKm })
+                }
+                onOpenSettings={() => setIsSettingsOpen(true)}
               />
 
               {/* 4. PERFORMANCE ANALYTICS (Recovery readiness, progression curves, aerobic base, interval training) */}
