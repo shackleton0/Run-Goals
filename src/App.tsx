@@ -599,6 +599,7 @@ export default function App() {
               <WeeklyAdherenceCard
                 weeklyStats={weeklyStats}
                 adherence={adherence}
+                runs={runs}
                 onOpenAddRun={() => setIsAddRunOpen(true)}
                 unit={profile.unitPreference}
                 weeklyDistanceGoalKm={profile.weeklyDistanceGoalKm}

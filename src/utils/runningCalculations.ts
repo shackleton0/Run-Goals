@@ -150,8 +150,23 @@ export function is6kQualityRun(type: RunType): boolean {
   return type === '6K Time Trial' || type === 'Race' || type === 'Tempo';
 }
 
+export function parseDateSafe(dateInput: string | Date): Date {
+  if (!dateInput) return new Date();
+  if (dateInput instanceof Date) return isNaN(dateInput.getTime()) ? new Date() : dateInput;
+  const trimmed = String(dateInput).trim();
+  const ymdMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (ymdMatch) {
+    const y = parseInt(ymdMatch[1], 10);
+    const m = parseInt(ymdMatch[2], 10) - 1;
+    const d = parseInt(ymdMatch[3], 10);
+    return new Date(y, m, d, 12, 0, 0);
+  }
+  const parsed = new Date(trimmed);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
 export function getIsoWeekKey(dateStr: string): { key: string; year: number; weekNumber: number; weekStartDate: Date } {
-  const d = new Date(dateStr);
+  const d = parseDateSafe(dateStr);
   if (isNaN(d.getTime())) {
     const now = new Date();
     return { key: 'unknown', year: now.getFullYear(), weekNumber: 1, weekStartDate: now };
@@ -178,6 +193,43 @@ export function getIsoWeekKey(dateStr: string): { key: string; year: number; wee
     weekNumber,
     weekStartDate: monday,
   };
+}
+
+export function getCurrentWeekRange(referenceDate: Date = new Date()): {
+  monday: Date;
+  sunday: Date;
+  isoWeekKey: string;
+  formattedRange: string;
+  formattedMonday: string;
+  formattedSunday: string;
+} {
+  const now = referenceDate;
+  const dayNr = (now.getDay() + 6) % 7; // 0 = Mon, 6 = Sun
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - dayNr);
+  monday.setHours(0, 0, 0, 0);
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+
+  const monthNames = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  const formattedMonday = `${monthNames[monday.getMonth()]} ${monday.getDate()}`;
+  const formattedSunday = `${monthNames[sunday.getMonth()]} ${sunday.getDate()}`;
+  const formattedRange = `Mon ${formattedMonday} – Sun ${formattedSunday}`;
+
+  const { key: isoWeekKey } = getIsoWeekKey(now.toISOString());
+
+  return { monday, sunday, isoWeekKey, formattedRange, formattedMonday, formattedSunday };
+}
+
+export function isRunInCurrentWeek(runDate: string, referenceDate: Date = new Date()): boolean {
+  const currentKey = getIsoWeekKey(referenceDate.toISOString()).key;
+  const runKey = getIsoWeekKey(runDate).key;
+  return currentKey === runKey;
 }
 
 export function groupRunsByWeek(

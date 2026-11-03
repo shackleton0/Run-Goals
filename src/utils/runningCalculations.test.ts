@@ -16,6 +16,10 @@ import {
   calculateCategoryBreakdown,
   calculateRecoveryStatus,
   calculateGoalProjection,
+  parseDateSafe,
+  getIsoWeekKey,
+  getCurrentWeekRange,
+  isRunInCurrentWeek,
 } from './runningCalculations';
 import { RunRecord } from '../types/running';
 
@@ -287,5 +291,64 @@ test('calculateGoalProjection computes weeks remaining and trajectory milestones
   const noTargetProjection = calculateGoalProjection(currentRuns, 6.0, undefined, 1380, 3, 2);
   assert.equal(noTargetProjection.hasTarget, false);
 });
+
+test('parseDateSafe safely parses YYYY-MM-DD and preserves local calendar date', () => {
+  const d = parseDateSafe('2026-11-02');
+  assert.equal(d.getFullYear(), 2026);
+  assert.equal(d.getMonth(), 10); // November is 10
+  assert.equal(d.getDate(), 2);
+});
+
+test('getIsoWeekKey and isRunInCurrentWeek correctly partition runs by week', () => {
+  // Monday Nov 2, 2026 to Sunday Nov 8, 2026 is week 2026-W45
+  const nov2Key = getIsoWeekKey('2026-11-02').key;
+  const nov8Key = getIsoWeekKey('2026-11-08').key;
+  const nov9Key = getIsoWeekKey('2026-11-09').key; // next week
+  const oct31Key = getIsoWeekKey('2026-10-31').key; // previous week
+
+  assert.equal(nov2Key, '2026-W45');
+  assert.equal(nov8Key, '2026-W45');
+  assert.equal(nov9Key, '2026-W46');
+  assert.equal(oct31Key, '2026-W44');
+
+  const refDate = new Date('2026-11-04T10:00:00Z'); // Wednesday in W45
+  assert.equal(isRunInCurrentWeek('2026-11-02', refDate), true);
+  assert.equal(isRunInCurrentWeek('2026-11-08', refDate), true);
+  assert.equal(isRunInCurrentWeek('2026-10-31', refDate), false); // last week
+  assert.equal(isRunInCurrentWeek('2026-11-09', refDate), false); // next week
+});
+
+test('groupRunsByWeek excludes previous week runs from current week runsCount', () => {
+  const runs: RunRecord[] = [
+    {
+      id: 'old_run',
+      userId: 'u1',
+      date: '2026-10-25', // Week 43
+      title: 'Past Week Long Run',
+      distanceKm: 10.0,
+      durationSeconds: 3000,
+      averagePaceSecPerKm: 300,
+      runType: 'Long Run',
+      source: 'manual',
+    },
+    {
+      id: 'prev_run',
+      userId: 'u1',
+      date: '2026-10-30', // Week 44
+      title: 'Previous Week Tempo',
+      distanceKm: 6.0,
+      durationSeconds: 1500,
+      averagePaceSecPerKm: 250,
+      runType: 'Tempo',
+      source: 'manual',
+    },
+  ];
+
+  const { weeklyStats } = groupRunsByWeek(runs, 3);
+  // Current ISO week for 2026-11-02 is 2026-W45
+  const w45 = weeklyStats.find((w) => w.weekKey === '2026-W45');
+  assert.equal(w45, undefined); // No runs occurred in W45, so no W45 stat exists
+});
+
 
 

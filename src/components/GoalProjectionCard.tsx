@@ -17,7 +17,6 @@ import {
   ChevronDown,
   ChevronUp,
   Sliders,
-  Sparkles,
 } from 'lucide-react';
 
 interface GoalProjectionCardProps {

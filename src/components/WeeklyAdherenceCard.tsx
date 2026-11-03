@@ -6,9 +6,10 @@ import {
   KM_TO_MILES,
   isIntervalRun,
   isAerobicRun,
-  getIsoWeekKey,
+  getCurrentWeekRange,
+  isRunInCurrentWeek,
 } from '../utils/runningCalculations';
-import { Check, Plus, Calendar, Info, Zap, Gauge, Heart } from 'lucide-react';
+import { Check, Plus, Calendar, Info, Zap, Gauge, Heart, Activity } from 'lucide-react';
 
 interface WeeklyAdherenceCardProps {
   weeklyStats: WeeklyStat[];
@@ -16,6 +17,7 @@ interface WeeklyAdherenceCardProps {
   onOpenAddRun: () => void;
   unit: 'km' | 'miles';
   weeklyDistanceGoalKm?: number;
+  runs?: RunRecord[];
 }
 
 export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
@@ -24,35 +26,23 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
   onOpenAddRun,
   unit,
   weeklyDistanceGoalKm,
+  runs,
 }) => {
   const [showTrainingGuide, setShowTrainingGuide] = useState(false);
 
-  // Compute Current Week Monday - Sunday Date Range
+  // Compute Current Week Monday - Sunday Date Range in runner's local time
   const now = new Date();
-  const currentDayNr = (now.getDay() + 6) % 7; // 0 = Monday, 6 = Sunday
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - currentDayNr);
-  monday.setHours(0, 0, 0, 0);
+  const { isoWeekKey, formattedRange, formattedMonday, formattedSunday } = getCurrentWeekRange(now);
 
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  sunday.setHours(23, 59, 59, 999);
+  // Strictly Current Week Runs: ONLY runs that occurred in the current week (Mon – Sun)
+  const currentWeekStat = weeklyStats.find((s) => s.weekKey === isoWeekKey);
+  const currentWeekRuns: RunRecord[] = runs
+    ? runs.filter((r) => isRunInCurrentWeek(r.date, now))
+    : currentWeekStat
+    ? currentWeekStat.runs
+    : [];
 
-  const monthNames = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-  const formattedMonday = `${monthNames[monday.getMonth()]} ${monday.getDate()}`;
-  const formattedSunday = `${monthNames[sunday.getMonth()]} ${sunday.getDate()}`;
-  const weekRangeDisplay = `Mon ${formattedMonday} – Sun ${formattedSunday}`;
-
-  // Current Week Runs (ISO week match or first available week stat)
-  const currentIsoKey = getIsoWeekKey(now.toISOString()).key;
-  const currentWeek =
-    weeklyStats.find((s) => s.weekKey === currentIsoKey) || weeklyStats[0];
-  const currentWeekRuns: RunRecord[] = currentWeek ? currentWeek.runs : [];
-
-  const currentWeekDistKm = currentWeek ? currentWeek.totalDistanceKm : 0;
+  const currentWeekDistKm = currentWeekRuns.reduce((sum, r) => sum + r.distanceKm, 0);
   const currentWeekDistFormatted =
     unit === 'miles'
       ? (currentWeekDistKm * KM_TO_MILES).toFixed(1)
@@ -78,6 +68,7 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
       icon: Zap,
       matcher: (r: RunRecord) =>
         r.runType === 'Interval Training' ||
+        r.runType === 'Intervals' ||
         isIntervalRun(r.runType) ||
         /interval|track|repeat|speed/i.test(r.title),
     },
@@ -108,15 +99,15 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
         r.runType === 'Long Run' ||
         (r.distanceKm >= 8 && isAerobicRun(r.runType)) ||
         /long/i.test(r.title) ||
-        r.runType === 'Aerobic',
+        (r.runType === 'Aerobic' && r.distanceKm >= 7),
     },
   ];
 
-  // Assign uploaded/logged runs to the 3 slots for this current week
+  // Assign uploaded/logged runs to the 3 slots for THIS CURRENT WEEK ONLY.
+  // If there wasn't any run that fills that category this week, leave it empty (greyed out).
   const assignedSlots: { slot: (typeof expectedSlots)[0]; run: RunRecord | null }[] = [];
   const usedRunIds = new Set<string>();
 
-  // Pass 1: Categorical / specialty match
   expectedSlots.forEach((slot) => {
     const matched = currentWeekRuns.find(
       (r) => !usedRunIds.has(r.id) && slot.matcher(r)
@@ -125,20 +116,13 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
       usedRunIds.add(matched.id);
       assignedSlots.push({ slot, run: matched });
     } else {
+      // Leave greyed out if no run in the current week fills this specific category
       assignedSlots.push({ slot, run: null });
     }
   });
 
-  // Pass 2: Fill open slots with any other logged runs from this current week
-  assignedSlots.forEach((item) => {
-    if (!item.run) {
-      const remainingRun = currentWeekRuns.find((r) => !usedRunIds.has(r.id));
-      if (remainingRun) {
-        usedRunIds.add(remainingRun.id);
-        item.run = remainingRun;
-      }
-    }
-  });
+  // Additional runs that occurred this week but outside the 3 primary slots (e.g. Easy recovery runs)
+  const additionalWeekRuns = currentWeekRuns.filter((r) => !usedRunIds.has(r.id));
 
   const completedCount = assignedSlots.filter((s) => !!s.run).length;
 
@@ -152,20 +136,24 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
               Weekly Training Schedule
             </h2>
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#0593C6]/10 text-[#0593C6]">
-              {completedCount} of 3 Completed
+              {completedCount} of 3 Categories Completed
             </span>
-            {weeklyDistGoalFormatted && (
+            {weeklyDistGoalFormatted ? (
               <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#10B981]/10 text-[#10B981] dark:text-[#34d399] tabular-nums">
                 {currentWeekDistFormatted} / {weeklyDistGoalFormatted} {unit}
               </span>
-            )}
+            ) : currentWeekDistKm > 0 ? (
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#10B981]/10 text-[#10B981] dark:text-[#34d399] tabular-nums">
+                {currentWeekDistFormatted} {unit} this week
+              </span>
+            ) : null}
           </div>
           <div className="flex items-center space-x-1.5 text-xs text-neutral-500 dark:text-neutral-400 mt-1">
             <Calendar className="w-3.5 h-3.5 text-[#0593C6]" />
             <span className="font-semibold text-neutral-700 dark:text-neutral-300">
               Current Week (Mon – Sun):
             </span>
-            <span className="text-[#0593C6] font-semibold">{weekRangeDisplay}</span>
+            <span className="text-[#0593C6] font-semibold">{formattedRange}</span>
           </div>
         </div>
 
@@ -215,11 +203,11 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
           const Icon = slot.icon;
 
           if (!isDone) {
-            // Greyed out placeholder box
+            // Distinctly greyed-out card when no run fills this category in the current week
             return (
               <div
                 key={slot.id}
-                className="p-4 rounded-xl border-2 border-dashed border-neutral-200 dark:border-neutral-800 bg-[#F2F8FB]/50 dark:bg-[#0e1b25]/40 flex flex-col justify-between min-h-[175px] opacity-75 hover:opacity-90 transition-opacity"
+                className="p-4 rounded-xl border-2 border-dashed border-neutral-300 dark:border-neutral-700/80 bg-neutral-100/60 dark:bg-neutral-900/40 flex flex-col justify-between min-h-[185px] opacity-75 hover:opacity-90 transition-opacity"
               >
                 <div>
                   {/* Placeholder Header */}
@@ -234,13 +222,13 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
                       </span>
                     </div>
 
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-neutral-200/60 dark:bg-neutral-800/60 text-neutral-500 dark:text-neutral-400 border border-neutral-300/40 dark:border-neutral-700/40">
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-neutral-200/80 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 border border-neutral-300/40 dark:border-neutral-700/40">
                       Not Completed
                     </span>
                   </div>
 
                   {/* Placeholder Body */}
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     <div className="flex items-center space-x-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400">
                       <Icon className="w-3.5 h-3.5 shrink-0 text-neutral-400 dark:text-neutral-500" />
                       <span>Expected: {slot.expectedLabel}</span>
@@ -248,13 +236,16 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
                     <p className="text-[11px] text-neutral-400 dark:text-neutral-500 leading-relaxed">
                       {slot.expectedDescription}
                     </p>
+                    <p className="text-[10px] font-medium text-neutral-400/90 dark:text-neutral-500 italic pt-0.5">
+                      No {slot.name} run logged this week
+                    </p>
                   </div>
                 </div>
 
                 {/* Placeholder Footer Action */}
-                <div className="pt-3 mt-2 border-t border-dashed border-neutral-200 dark:border-neutral-800/80 flex items-center justify-between">
-                  <span className="text-[10px] text-neutral-400 dark:text-neutral-500 italic">
-                    Pending this week (Mon – Sun)
+                <div className="pt-3 mt-2 border-t border-dashed border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
+                  <span className="text-[10px] text-neutral-400 dark:text-neutral-500">
+                    Week of {formattedMonday} – {formattedSunday}
                   </span>
                   <button
                     type="button"
@@ -273,7 +264,7 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
           return (
             <div
               key={slot.id}
-              className="p-4 rounded-xl border border-[#0593C6]/25 dark:border-neutral-800 bg-[#FCFFFF] dark:bg-[#12222f] shadow-xs flex flex-col justify-between min-h-[175px] transition-all"
+              className="p-4 rounded-xl border border-[#0593C6]/25 dark:border-neutral-800 bg-[#FCFFFF] dark:bg-[#12222f] shadow-xs flex flex-col justify-between min-h-[185px] transition-all"
             >
               <div>
                 {/* Completed Header */}
@@ -328,6 +319,52 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
           );
         })}
       </div>
+
+      {/* Additional Runs Completed in the Current Week (if any) */}
+      {additionalWeekRuns.length > 0 && (
+        <div className="mt-4 pt-4 border-t border-neutral-200/80 dark:border-neutral-800">
+          <div className="flex items-center justify-between mb-2.5">
+            <div className="flex items-center space-x-1.5">
+              <Activity className="w-3.5 h-3.5 text-[#0593C6]" />
+              <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
+                Additional Runs This Week ({additionalWeekRuns.length})
+              </span>
+            </div>
+            <span className="text-[11px] text-neutral-400">
+              Supplementary volume logged in this calendar week
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {additionalWeekRuns.map((r) => (
+              <div
+                key={r.id}
+                className="px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-[#0e1b25] border border-neutral-200/70 dark:border-neutral-800 flex items-center justify-between text-xs"
+              >
+                <div className="min-w-0 pr-2">
+                  <div className="font-semibold text-neutral-900 dark:text-[#FCFFFF] truncate text-xs">
+                    {r.title}
+                  </div>
+                  <div className="text-[11px] text-neutral-500 dark:text-neutral-400 flex items-center space-x-1.5 mt-0.5">
+                    <span className="font-medium text-[#0593C6]">{r.runType}</span>
+                    <span>·</span>
+                    <span>{r.date}</span>
+                  </div>
+                </div>
+
+                <div className="text-right shrink-0">
+                  <div className="font-bold text-neutral-900 dark:text-[#FCFFFF] tabular-nums">
+                    {unit === 'miles' ? (r.distanceKm * KM_TO_MILES).toFixed(2) : r.distanceKm} {unit}
+                  </div>
+                  <div className="text-[11px] text-neutral-400 tabular-nums">
+                    {formatDuration(r.durationSeconds)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

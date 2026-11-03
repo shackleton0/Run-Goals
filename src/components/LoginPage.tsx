@@ -4,7 +4,6 @@ import {
   UploadCloud,
   TrendingDown,
   Heart,
-  Calendar,
   ArrowRight,
   ShieldCheck,
   FlaskConical,
@@ -45,23 +44,28 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
-      <div className="min-h-screen bg-[#F2F8FB] dark:bg-[#0c1822] text-neutral-900 dark:text-[#FCFFFF] flex flex-col font-sans transition-colors selection:bg-[#0593C6] selection:text-[#FCFFFF]">
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0c151c] text-neutral-900 dark:text-white flex flex-col font-sans transition-colors selection:bg-[#0593C6] selection:text-white">
         {/* Minimal Navigation Bar */}
-        <header className="border-b border-neutral-200/80 dark:border-neutral-800/80 bg-[#FCFFFF]/80 dark:bg-[#0c1822]/80 backdrop-blur-md">
+        <header className="border-b border-neutral-200 dark:border-neutral-800 bg-white/95 dark:bg-[#0c151c]/95 backdrop-blur-md">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-xl bg-[#0593C6] text-[#FCFFFF] flex items-center justify-center font-bold shadow-xs">
-                <Activity className="w-4 h-4 stroke-[2.5]" />
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-lg bg-[#0593C6] text-white flex items-center justify-center font-bold shadow-xs">
+                <Activity className="w-4 h-4 stroke-[2.4]" />
               </div>
-              <span className="font-extrabold text-lg tracking-tight text-neutral-900 dark:text-[#FCFFFF]">
-                RunGoals
-              </span>
+              <div className="flex items-center space-x-2">
+                <span className="font-extrabold text-base tracking-tight text-neutral-900 dark:text-white uppercase">
+                  RunGoals
+                </span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-sm bg-[#0593C6]/10 text-[#0593C6] dark:text-[#38bdf8] uppercase tracking-wider">
+                  XC 6K
+                </span>
+              </div>
             </div>
 
             <button
               onClick={onToggleTheme}
-              className="p-2 rounded-full text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-[#FCFFFF] hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
-              aria-label="Toggle dark / light theme"
+              className="p-2 rounded-lg text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer border border-neutral-200 dark:border-neutral-800"
+              aria-label="Toggle dark / light appearance"
             >
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
@@ -80,16 +84,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 <button
                   onClick={handleGoogleSignIn}
                   disabled={isSigningIn}
-                  className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center space-x-1"
+                  className="px-2.5 py-1 rounded-md bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center space-x-1"
                 >
                   {isSigningIn ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                   <span>Retry</span>
                 </button>
                 <button
                   onClick={onContinueAsGuest}
-                  className="px-2.5 py-1 rounded-lg bg-neutral-200 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 font-semibold text-xs hover:bg-neutral-300 dark:hover:bg-neutral-700 transition-colors cursor-pointer"
+                  className="px-2.5 py-1 rounded-md bg-neutral-200 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 font-semibold text-xs hover:bg-neutral-300 dark:hover:bg-neutral-700 transition-colors cursor-pointer"
                 >
-                  Try Guest Mode
+                  Guest Mode
                 </button>
                 <button
                   onClick={onClearAuthError}
@@ -105,19 +109,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         {/* Main Hero & Auth Portal */}
         <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-10 sm:py-16 flex flex-col items-center justify-center">
           {/* Main Card */}
-          <div className="w-full max-w-lg rounded-3xl bg-[#FCFFFF] dark:bg-[#12222f] border border-neutral-200/90 dark:border-neutral-800 shadow-xl p-6 sm:p-10 transition-colors">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#111c24] border border-neutral-200 dark:border-neutral-800 shadow-xl p-6 sm:p-8 transition-colors">
             {/* Logo Badge */}
-            <div className="flex flex-col items-center text-center space-y-3 mb-8">
-              <div className="w-14 h-14 rounded-2xl bg-[#0593C6]/10 text-[#0593C6] flex items-center justify-center shadow-inner">
-                <Activity className="w-7 h-7 stroke-[2.5]" />
+            <div className="flex flex-col items-center text-center space-y-3 mb-6">
+              <div className="w-12 h-12 rounded-xl bg-[#0593C6]/10 text-[#0593C6] flex items-center justify-center border border-[#0593C6]/20 shadow-xs">
+                <Activity className="w-6 h-6 stroke-[2.4]" />
               </div>
 
               <div>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 dark:text-[#FCFFFF] tracking-tight">
-                  Welcome to RunGoals
+                <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white tracking-tight">
+                  Cross Country Performance Portal
                 </h1>
-                <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-1 max-w-sm mx-auto leading-relaxed">
-                  Cross country 6K pacing, Garmin fitness watch analytics, and empirical goal projections.
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 max-w-sm mx-auto leading-relaxed">
+                  Collegiate & distance athlete training telemetry, Garmin fitness watch synchronization, and empirical 6K pace tracking.
                 </p>
               </div>
             </div>
@@ -128,18 +132,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               <button
                 onClick={handleGoogleSignIn}
                 disabled={isSigningIn}
-                className="w-full py-3.5 px-4 rounded-2xl bg-[#0593C6] hover:bg-[#047ea8] text-[#FCFFFF] font-bold text-sm flex items-center justify-center space-x-3 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                className="w-full py-3 px-4 rounded-xl bg-[#0593C6] hover:bg-[#047ea8] text-white font-bold text-xs sm:text-sm flex items-center justify-center space-x-2.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
               >
                 {isSigningIn ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Connecting Google Account...</span>
+                    <span>Connecting Athlete Account...</span>
                   </>
                 ) : (
                   <>
-                    {/* Official Google G Logo */}
-                    <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center p-0.5 shrink-0">
-                      <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <div className="w-4 h-4 rounded-full bg-white flex items-center justify-center p-0.5 shrink-0">
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
                         <path
                           fill="#4285F4"
                           d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -158,7 +161,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         />
                       </svg>
                     </div>
-                    <span>Sign in with Google</span>
+                    <span>Sign in with Google Account</span>
                   </>
                 )}
               </button>
@@ -166,47 +169,47 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               {/* Divider */}
               <div className="relative py-2 flex items-center justify-center">
                 <div className="w-full border-t border-neutral-200 dark:border-neutral-800" />
-                <span className="absolute px-3 bg-[#FCFFFF] dark:bg-[#12222f] text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+                <span className="absolute px-3 bg-white dark:bg-[#111c24] text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
                   Or
                 </span>
               </div>
 
-              {/* Secondary / Testing: Guest Option with subtle green accent */}
+              {/* Secondary: Guest Access */}
               <button
                 onClick={onContinueAsGuest}
-                className="w-full py-3 px-4 rounded-2xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-900 dark:hover:bg-neutral-800 border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-[#FCFFFF] font-bold text-sm flex items-center justify-center space-x-2 transition-all cursor-pointer group"
+                className="w-full py-2.5 px-4 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white font-semibold text-xs flex items-center justify-center space-x-2 transition-all cursor-pointer group"
               >
-                <FlaskConical className="w-4 h-4 text-[#10B981] group-hover:scale-110 transition-transform" />
-                <span>Continue as Guest (for testing)</span>
-                <ArrowRight className="w-3.5 h-3.5 text-neutral-400 group-hover:translate-x-0.5 transition-transform" />
+                <FlaskConical className="w-3.5 h-3.5 text-[#10B981]" />
+                <span>Continue in Guest / Evaluation Mode</span>
+                <ArrowRight className="w-3 h-3 text-neutral-400 group-hover:translate-x-0.5 transition-transform" />
               </button>
 
               <p className="text-[11px] text-neutral-400 dark:text-neutral-500 text-center pt-1">
-                Guest testing saves your workouts locally in your browser. You can sign in anytime later.
+                Guest mode persists data locally in browser storage. You can authenticate later to sync to cloud.
               </p>
             </div>
 
-            {/* Feature Pills */}
-            <div className="mt-8 pt-6 border-t border-neutral-100 dark:border-neutral-800/80 space-y-2.5">
+            {/* Feature Highlights */}
+            <div className="mt-6 pt-5 border-t border-neutral-100 dark:border-neutral-800 space-y-2.5">
               <div className="flex items-center space-x-2.5 text-xs text-neutral-600 dark:text-neutral-300">
                 <UploadCloud className="w-4 h-4 text-[#0593C6] shrink-0" />
-                <span>Upload Garmin .TCX, .GPX, and .CSV files directly</span>
+                <span>Upload Garmin .TCX, .GPX, and .CSV workout files</span>
               </div>
               <div className="flex items-center space-x-2.5 text-xs text-neutral-600 dark:text-neutral-300">
                 <TrendingDown className="w-4 h-4 text-[#10B981] shrink-0" />
-                <span>Calculates empirical 6K splits and weeks remaining</span>
+                <span>Empirical 6K split calculations and pace cutoff gaps</span>
               </div>
               <div className="flex items-center space-x-2.5 text-xs text-neutral-600 dark:text-neutral-300">
                 <Heart className="w-4 h-4 text-[#0593C6] shrink-0" />
-                <span>Z1 to Z5 physiological heart rate training distribution</span>
+                <span>5-zone cardiovascular training distribution & recovery status</span>
               </div>
             </div>
           </div>
 
           {/* Security & Reliability Footer Note */}
-          <div className="mt-6 flex items-center space-x-2 text-[11px] text-neutral-400 dark:text-neutral-500">
+          <div className="mt-5 flex items-center space-x-2 text-[11px] text-neutral-400 dark:text-neutral-500">
             <ShieldCheck className="w-3.5 h-3.5 text-[#0593C6]" />
-            <span>Encrypted cloud database · Firebase Auth protected · Authentic Garmin data</span>
+            <span>Secure Firebase Firestore cloud database · Direct Garmin watch telemetry</span>
           </div>
         </main>
       </div>
