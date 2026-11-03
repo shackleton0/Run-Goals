@@ -533,8 +533,10 @@ export function parseTcx(tcxText: string, userId: string, fileName?: string): Ru
     const defaultTitle = fileName ? fileName.replace(/\.[^/.]+$/, '') : `Garmin XC Run`;
     const runType = inferRunType(defaultTitle, distKm);
 
+    const cleanActId = actId ? actId.replace(/[^a-zA-Z0-9_\-\.:]/g, '_') : null;
+
     return {
-      id: actId ? `garmin_tcx_${actId}` : `garmin_tcx_${Date.now()}`,
+      id: cleanActId ? `garmin_tcx_${cleanActId}` : `garmin_tcx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       userId,
       date: new Date(dateStr).toISOString().split('T')[0] || dateStr,
       title: defaultTitle,
@@ -1357,6 +1359,81 @@ export function calculateGoalProjection(
         weeklyRateSec: conservativeRate,
       },
     },
+  };
+}
+
+export interface IntervalCalculationParams {
+  totalDurationSeconds: number;
+  totalDistanceKm?: number;
+  repCount: number;
+  repDistanceMeters: number;
+  restDurationSeconds?: number;
+  totalRestSeconds?: number;
+  targetPaceSecPerKm?: number;
+}
+
+export interface IntervalCalculationResult {
+  workDistanceKm: number;
+  totalRestSeconds: number;
+  activeWorkDurationSeconds: number;
+  activeIntervalPaceSecPerKm: number;
+  targetPaceSecPerKm?: number;
+  paceDifferenceSeconds?: number;
+  isPaceMet?: boolean;
+  restDeductionFormatted: string;
+  activePaceFormatted: string;
+  targetPaceFormatted: string;
+  summaryText: string;
+}
+
+export function calculateIntervalMetrics(params: IntervalCalculationParams, unit: 'km' | 'miles' = 'km'): IntervalCalculationResult {
+  const {
+    totalDurationSeconds,
+    repCount,
+    repDistanceMeters,
+    restDurationSeconds = 0,
+    targetPaceSecPerKm,
+  } = params;
+
+  const validRepCount = Math.max(1, repCount || 1);
+  const validRepDistance = Math.max(50, repDistanceMeters || 1000);
+  const workDistanceKm = (validRepCount * validRepDistance) / 1000;
+
+  // Calculate total rest seconds: either user explicit total rest or restDuration * (reps - 1)
+  const calcTotalRest = params.totalRestSeconds !== undefined
+    ? Math.max(0, params.totalRestSeconds)
+    : Math.max(0, (validRepCount > 1 ? validRepCount - 1 : 1) * (restDurationSeconds || 0));
+
+  // Active duration stripping rest out, bounded by total duration
+  const activeWorkDurationSeconds = Math.max(10, Math.min(totalDurationSeconds, totalDurationSeconds - calcTotalRest));
+  const activeIntervalPaceSecPerKm = Math.round(activeWorkDurationSeconds / workDistanceKm);
+
+  let paceDifferenceSeconds: number | undefined = undefined;
+  let isPaceMet: boolean | undefined = undefined;
+
+  if (targetPaceSecPerKm && targetPaceSecPerKm > 0) {
+    paceDifferenceSeconds = Math.round(activeIntervalPaceSecPerKm - targetPaceSecPerKm);
+    isPaceMet = paceDifferenceSeconds <= 0;
+  }
+
+  const restDeductionFormatted = formatDuration(calcTotalRest);
+  const activePaceFormatted = formatPace(activeIntervalPaceSecPerKm, unit);
+  const targetPaceFormatted = targetPaceSecPerKm ? formatPace(targetPaceSecPerKm, unit) : '--:--';
+
+  const summaryText = `${validRepCount} × ${validRepDistance >= 1000 ? `${(validRepDistance / 1000).toFixed(1)}k` : `${validRepDistance}m`} (${formatDuration(restDurationSeconds)} rest)`;
+
+  return {
+    workDistanceKm: Number(workDistanceKm.toFixed(2)),
+    totalRestSeconds: calcTotalRest,
+    activeWorkDurationSeconds,
+    activeIntervalPaceSecPerKm,
+    targetPaceSecPerKm,
+    paceDifferenceSeconds,
+    isPaceMet,
+    restDeductionFormatted,
+    activePaceFormatted,
+    targetPaceFormatted,
+    summaryText,
   };
 }
 

@@ -31,7 +31,9 @@ import {
   UploadCloud,
   PlusCircle,
   Clock,
+  Target,
 } from 'lucide-react';
+import { IntervalCalibrationModal } from './IntervalCalibrationModal';
 
 interface WatchTelemetrySectionProps {
   runs: RunRecord[];
@@ -43,6 +45,7 @@ interface WatchTelemetrySectionProps {
   onUpdateMaxHr?: (maxHr: number) => void;
   onDeleteRun: (runId: string) => void;
   onUpdateRunCategory: (runId: string, newCategory: RunType) => void;
+  onUpdateRun?: (updatedRun: RunRecord) => void;
   onCombineRuns?: (combinedRun: RunRecord, sourceRunIds: string[]) => void;
   onOpenGarminSync?: () => void;
   onOpenAddRun?: () => void;
@@ -163,6 +166,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
   onUpdateMaxHr,
   onDeleteRun,
   onUpdateRunCategory,
+  onUpdateRun,
   onCombineRuns,
   onOpenGarminSync,
   onOpenAddRun,
@@ -173,6 +177,16 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
   const [tempMaxHr, setTempMaxHr] = useState<number>(195);
   const [showZoneDetails, setShowZoneDetails] = useState(false);
   const [showAllActivityLogs, setShowAllActivityLogs] = useState(false);
+
+  // Interval & Rest Calibration Modal State
+  const [calibratingRun, setCalibratingRun] = useState<RunRecord | null>(null);
+
+  const handleSaveIntervalForRun = (runId: string, updatedFields: Partial<RunRecord>) => {
+    const targetRun = runs.find((r) => r.id === runId);
+    if (targetRun && onUpdateRun) {
+      onUpdateRun({ ...targetRun, ...updatedFields });
+    }
+  };
 
   // Combine Workouts Mode State
   const [isCombineMode, setIsCombineMode] = useState(false);
@@ -1019,6 +1033,14 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                               <span>Sub-Goal</span>
                             </span>
                           )}
+
+                          {/* Rest Excluded Badge */}
+                          {run.activeIntervalPaceSecPerKm && (
+                            <span className="inline-flex items-center space-x-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                              <Zap className="w-2.5 h-2.5" />
+                              <span>Rest Excluded (-{formatDuration(run.totalRestSeconds || 0)})</span>
+                            </span>
+                          )}
                         </div>
 
                         {/* Date, notes, and tracker badge */}
@@ -1039,6 +1061,29 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                             </>
                           )}
                         </div>
+
+                        {/* Calibrated Active Interval Telemetry Row */}
+                        {run.activeIntervalPaceSecPerKm && (
+                          <div className="flex flex-wrap items-center gap-2 pt-0.5 text-[11px]">
+                            <span className="font-bold text-[#10B981]">
+                              ⚡ Active Pace: {formatPace(run.activeIntervalPaceSecPerKm, unit)}
+                            </span>
+                            {run.targetIntervalPaceSecPerKm && (
+                              <span className="text-neutral-600 dark:text-neutral-400 flex items-center space-x-1">
+                                <Target className="w-3 h-3 text-[#10B981]" />
+                                <span>Aimed: {formatPace(run.targetIntervalPaceSecPerKm, unit)}</span>
+                                <span className={`font-semibold ${run.activeIntervalPaceSecPerKm <= run.targetIntervalPaceSecPerKm ? 'text-emerald-500' : 'text-amber-500'}`}>
+                                  ({run.activeIntervalPaceSecPerKm <= run.targetIntervalPaceSecPerKm ? 'Target Hit!' : 'Off target'})
+                                </span>
+                              </span>
+                            )}
+                            {run.repCount && run.repDistanceMeters && (
+                              <span className="text-neutral-400">
+                                · {run.repCount} × {run.repDistanceMeters}m ({run.restDurationSeconds || 90}s rest)
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1056,10 +1101,17 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
 
                       {/* Pace */}
                       <div className="text-left sm:text-right">
-                        <div className="font-semibold text-neutral-900 dark:text-white">
-                          {formatPace(run.averagePaceSecPerKm, unit)}
+                        <div className={`font-semibold ${run.activeIntervalPaceSecPerKm ? 'text-[#10B981]' : 'text-neutral-900 dark:text-white'}`}>
+                          {formatPace(run.activeIntervalPaceSecPerKm || run.averagePaceSecPerKm, unit)}
                         </div>
-                        <div className="text-[10px] text-neutral-400 uppercase">Avg Pace</div>
+                        <div className="text-[10px] text-neutral-400 uppercase">
+                          {run.activeIntervalPaceSecPerKm ? 'Active Pace' : 'Avg Pace'}
+                        </div>
+                        {run.activeIntervalPaceSecPerKm && (
+                          <div className="text-[9px] text-neutral-400 line-through">
+                            {formatPace(run.averagePaceSecPerKm, unit)}
+                          </div>
+                        )}
                       </div>
 
                       {/* 6K / Target Time Equivalent */}
@@ -1099,20 +1151,39 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                         </div>
                       ) : null}
 
-                      {/* Delete Action (hidden when in combine mode) */}
+                      {/* Actions: Calibrate Interval & Delete (hidden when in combine mode) */}
                       {!isCombineMode && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteRun(run.id);
-                          }}
-                          className="p-1.5 rounded-full text-neutral-400 hover:text-rose-500 hover:bg-neutral-200/60 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
-                          title="Delete workout"
-                          aria-label={`Delete ${run.title}`}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center space-x-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCalibratingRun(run);
+                            }}
+                            className={`p-1.5 rounded-full transition-colors cursor-pointer ${
+                              run.activeIntervalPaceSecPerKm
+                                ? 'text-[#10B981] hover:text-[#0ea372] bg-[#10B981]/10 hover:bg-[#10B981]/20'
+                                : 'text-neutral-400 hover:text-[#0593C6] hover:bg-neutral-200/60 dark:hover:bg-neutral-800'
+                            }`}
+                            title="Calibrate interval sets, aimed pace, and strip rest duration"
+                            aria-label={`Calibrate intervals for ${run.title}`}
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteRun(run.id);
+                            }}
+                            className="p-1.5 rounded-full text-neutral-400 hover:text-rose-500 hover:bg-neutral-200/60 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                            title="Delete workout"
+                            aria-label={`Delete ${run.title}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1147,6 +1218,17 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
               </div>
             )}
           </div>
+        )}
+
+        {/* Interval & Rest Calibration Modal for any existing workout */}
+        {calibratingRun && (
+          <IntervalCalibrationModal
+            isOpen={!!calibratingRun}
+            onClose={() => setCalibratingRun(null)}
+            run={calibratingRun}
+            unit={unit}
+            onSaveInterval={handleSaveIntervalForRun}
+          />
         )}
       </div>
     </div>

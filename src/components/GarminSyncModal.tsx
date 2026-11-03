@@ -21,7 +21,9 @@ import {
   Activity,
   ArrowLeft,
   ChevronRight,
+  Zap,
 } from 'lucide-react';
+import { IntervalCalibrationModal } from './IntervalCalibrationModal';
 
 interface GarminSyncModalProps {
   isOpen: boolean;
@@ -52,6 +54,14 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
   // Search query in selection screen
   const [searchFilter, setSearchFilter] = useState('');
   const [fileName, setFileName] = useState<string>('');
+  // Run being calibrated for intervals & rest
+  const [calibratingRun, setCalibratingRun] = useState<RunRecord | null>(null);
+
+  const handleUpdateParsedRun = (runId: string, updatedFields: Partial<RunRecord>) => {
+    setParsedActivities((prev) =>
+      prev.map((r) => (r.id === runId ? { ...r, ...updatedFields } : r))
+    );
+  };
 
   useEffect(() => {
     if (initialIncomingRuns && initialIncomingRuns.length > 0) {
@@ -348,19 +358,21 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
                 filteredActivities.map((run) => {
                   const isChecked = selectedIds.has(run.id);
 
+                  const isInterval = run.runType === 'Intervals' || run.runType === 'Interval Training' || !!run.activeIntervalPaceSecPerKm || /interval|repeat|track|reps/i.test(run.title);
+
                   return (
                     <div
                       key={run.id}
                       onClick={() => toggleSelectRun(run.id)}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 text-xs select-none ${
+                      className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs select-none ${
                         isChecked
                           ? 'bg-neutral-50 dark:bg-neutral-900/80 border-[#30d158]/50 dark:border-[#30d158]/40 shadow-xs'
                           : 'bg-white dark:bg-black/40 border-neutral-200 dark:border-neutral-800 opacity-60 hover:opacity-100'
                       }`}
                     >
                       {/* Left: Checkbox + Title + Meta */}
-                      <div className="flex items-center space-x-3 min-w-0">
-                        <div className="flex-shrink-0">
+                      <div className="flex items-start space-x-3 min-w-0 flex-1">
+                        <div className="flex-shrink-0 mt-0.5">
                           {isChecked ? (
                             <CheckSquare className="w-4 h-4 text-[#30d158]" />
                           ) : (
@@ -368,17 +380,23 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
                           )}
                         </div>
 
-                        <div className="min-w-0 space-y-0.5">
-                          <div className="flex items-center space-x-2">
+                        <div className="min-w-0 space-y-1 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <span className="font-semibold text-neutral-900 dark:text-white truncate">
                               {run.title}
                             </span>
                             <span className="px-1.5 py-0.2 rounded-full bg-neutral-200/80 dark:bg-neutral-800 text-[10px] font-medium text-neutral-700 dark:text-neutral-300 flex-shrink-0">
                               {run.runType}
                             </span>
+                            {run.activeIntervalPaceSecPerKm && (
+                              <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold flex items-center space-x-1">
+                                <Zap className="w-2.5 h-2.5" />
+                                <span>Rest Excluded (-{formatDuration(run.totalRestSeconds || 0)})</span>
+                              </span>
+                            )}
                           </div>
 
-                          <div className="text-[11px] text-neutral-500 dark:text-neutral-400 flex items-center space-x-2">
+                          <div className="text-[11px] text-neutral-500 dark:text-neutral-400 flex flex-wrap items-center gap-2">
                             <span>{run.date}</span>
                             {run.avgHeartRate && (
                               <>
@@ -396,11 +414,30 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
                               </>
                             )}
                           </div>
+
+                          {/* Calibrated Interval Details if present */}
+                          {run.activeIntervalPaceSecPerKm && (
+                            <div className="pt-0.5 flex flex-wrap items-center gap-2 text-[11px]">
+                              <span className="font-bold text-[#10B981]">
+                                ⚡ Active Interval Pace: {formatPace(run.activeIntervalPaceSecPerKm, unit)}
+                              </span>
+                              {run.targetIntervalPaceSecPerKm && (
+                                <span className="text-neutral-500 dark:text-neutral-400">
+                                  🎯 Aimed: {formatPace(run.targetIntervalPaceSecPerKm, unit)}
+                                </span>
+                              )}
+                              {run.repCount && run.repDistanceMeters && (
+                                <span className="text-neutral-400">
+                                  ({run.repCount} × {run.repDistanceMeters}m)
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
 
-                      {/* Right: Distance & Pace Telemetry */}
-                      <div className="flex items-center space-x-3 text-right flex-shrink-0 tabular-nums">
+                      {/* Right: Distance, Pace & Calibration Button */}
+                      <div className="flex items-center justify-between sm:justify-end gap-3 text-right flex-shrink-0 tabular-nums border-t sm:border-t-0 pt-2 sm:pt-0 border-neutral-200/60 dark:border-neutral-800">
                         <div>
                           <div className="font-bold text-neutral-900 dark:text-white">
                             {run.distanceKm} km
@@ -411,11 +448,33 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
                         </div>
 
                         <div className="min-w-[65px]">
-                          <div className="font-semibold text-neutral-800 dark:text-neutral-200">
-                            {formatPace(run.averagePaceSecPerKm, unit)}
+                          <div className={`font-semibold ${run.activeIntervalPaceSecPerKm ? 'text-[#10B981]' : 'text-neutral-800 dark:text-neutral-200'}`}>
+                            {formatPace(run.activeIntervalPaceSecPerKm || run.averagePaceSecPerKm, unit)}
                           </div>
-                          <div className="text-[10px] text-neutral-400 uppercase">Avg Pace</div>
+                          <div className="text-[10px] text-neutral-400 uppercase">
+                            {run.activeIntervalPaceSecPerKm ? 'Active Pace' : 'Avg Pace'}
+                          </div>
                         </div>
+
+                        {/* Interval Calibration Action Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCalibratingRun(run);
+                          }}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center space-x-1 shrink-0 ${
+                            run.activeIntervalPaceSecPerKm
+                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25'
+                              : isInterval
+                              ? 'bg-[#0593C6]/15 text-[#0593C6] dark:text-[#38bdf8] hover:bg-[#0593C6]/25 ring-1 ring-[#0593C6]/40'
+                              : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                          }`}
+                          title="Input aimed pace, reps, set distance, and rest duration to calculate true active interval pace"
+                        >
+                          <Zap className="w-3 h-3" />
+                          <span>{run.activeIntervalPaceSecPerKm ? 'Edit Interval' : 'Strip Rest'}</span>
+                        </button>
                       </div>
                     </div>
                   );
@@ -484,6 +543,17 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
               </ol>
             </div>
           </div>
+        )}
+
+        {/* Interval & Rest Calibration Modal */}
+        {calibratingRun && (
+          <IntervalCalibrationModal
+            isOpen={!!calibratingRun}
+            onClose={() => setCalibratingRun(null)}
+            run={calibratingRun}
+            unit={unit}
+            onSaveInterval={handleUpdateParsedRun}
+          />
         )}
       </div>
     </div>

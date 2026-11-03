@@ -10,6 +10,17 @@ export type RunType =
   | 'Intervals'
   | 'Recovery';
 
+export interface IntervalDetails {
+  targetPaceSecPerKm?: number; // Target / Aimed interval pace in seconds per km (e.g. 210 for 3:30/km)
+  repCount?: number; // Number of sets / repetitions (e.g. 5)
+  repDistanceMeters?: number; // Distance per set in meters (e.g. 1000m)
+  restDurationSeconds?: number; // Rest duration per set in seconds (e.g. 90s)
+  totalRestSeconds?: number; // Total rest duration stripped from workout (e.g. 360s or 450s)
+  activeWorkDurationSeconds?: number; // Active workout duration excluding rest
+  activeIntervalPaceSecPerKm?: number; // True active pace during work sets without rest inflation
+  workDistanceKm?: number; // Work distance in km (repCount * repDistanceMeters / 1000)
+}
+
 export interface RunRecord {
   id: string;
   userId: string;
@@ -28,6 +39,14 @@ export interface RunRecord {
   source: 'garmin' | 'garmin_tcx' | 'garmin_gpx' | 'garmin_csv' | 'manual';
   notes?: string;
   garminActivityId?: string;
+  // Interval & Rest Calibration metrics
+  intervalDetails?: IntervalDetails;
+  targetIntervalPaceSecPerKm?: number;
+  activeIntervalPaceSecPerKm?: number;
+  repCount?: number;
+  repDistanceMeters?: number;
+  restDurationSeconds?: number;
+  totalRestSeconds?: number;
   createdAt?: string;
   updatedAt?: string;
 }

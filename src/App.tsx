@@ -8,6 +8,7 @@ import { User, onAuthStateChanged } from 'firebase/auth';
 import {
   auth,
   signInWithGoogle,
+  signInAnonymousUser,
   logOut,
   getOrCreateUserProfile,
   saveUserProfile,
@@ -328,7 +329,7 @@ export default function App() {
     }
   };
 
-  // Run updates (e.g. changing category)
+  // Run updates (e.g. changing category or calibrating intervals)
   const handleUpdateRunCategory = async (runId: string, newCategory: RunType) => {
     const updatedRuns = runs.map((r) => {
       if (r.id === runId) {
@@ -341,6 +342,15 @@ export default function App() {
     const targetRun = updatedRuns.find((r) => r.id === runId);
     if (targetRun && user) {
       await saveRunRecord(targetRun);
+    }
+  };
+
+  const handleUpdateRun = async (updatedRun: RunRecord) => {
+    const runToSave = user ? { ...updatedRun, userId: user.uid } : updatedRun;
+    setRuns((prev) => prev.map((r) => (r.id === updatedRun.id ? runToSave : r)));
+
+    if (user) {
+      await saveRunRecord(runToSave);
     }
   };
 
@@ -419,6 +429,19 @@ export default function App() {
     }
   };
 
+  const handleInstantCloudSignIn = async () => {
+    setAuthError(null);
+    try {
+      await signInAnonymousUser();
+      setIsGuest(false);
+      sessionStorage.removeItem('xc_6k_guest_mode');
+    } catch (err: unknown) {
+      console.error('Instant cloud sign in error', err);
+      const errorObj = err as { message?: string };
+      setAuthError(errorObj?.message || 'Failed to initialize instant cloud athlete account.');
+    }
+  };
+
   const handleSignOut = async () => {
     try {
       await logOut();
@@ -454,6 +477,7 @@ export default function App() {
     return (
       <LoginPage
         onSignIn={handleSignIn}
+        onInstantCloudSignIn={handleInstantCloudSignIn}
         onContinueAsGuest={handleContinueAsGuest}
         authError={authError}
         onClearAuthError={() => setAuthError(null)}
@@ -629,6 +653,7 @@ export default function App() {
                 onUpdateMaxHr={(val) => handleSaveProfile({ ...profile, maxHeartRate: val })}
                 onDeleteRun={handleDeleteRun}
                 onUpdateRunCategory={handleUpdateRunCategory}
+                onUpdateRun={handleUpdateRun}
                 onCombineRuns={handleCombineRuns}
                 onOpenGarminSync={handleOpenGarminSync}
                 onOpenAddRun={() => setIsAddRunOpen(true)}

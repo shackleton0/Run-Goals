@@ -47,6 +47,12 @@
         "source": { "type": "string", "maxLength": 64 },
         "notes": { "type": "string", "maxLength": 1000 },
         "garminActivityId": { "type": "string", "maxLength": 128 },
+        "targetIntervalPaceSecPerKm": { "type": "number" },
+        "activeIntervalPaceSecPerKm": { "type": "number" },
+        "repCount": { "type": "number" },
+        "repDistanceMeters": { "type": "number" },
+        "restDurationSeconds": { "type": "number" },
+        "totalRestSeconds": { "type": "number" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },

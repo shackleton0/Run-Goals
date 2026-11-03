@@ -3,6 +3,7 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInAnonymously,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   User,
@@ -102,6 +103,16 @@ export async function signInWithGoogle() {
   }
 }
 
+export async function signInAnonymousUser() {
+  try {
+    const result = await signInAnonymously(auth);
+    return result.user;
+  } catch (error) {
+    console.error('Error signing in anonymously', error);
+    throw error;
+  }
+}
+
 export async function logOut() {
   try {
     await firebaseSignOut(auth);
@@ -140,11 +151,24 @@ export async function getOrCreateUserProfile(user: User): Promise<UserProfile> {
   }
 }
 
-// Helper to remove undefined fields which Firestore rejects
+// Helper to sanitize document IDs for Firestore compliance
+export function sanitizeDocId(id: string): string {
+  if (!id) return `run_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  return id.replace(/[^a-zA-Z0-9_\-\.:]/g, '_').substring(0, 120) || `run_${Date.now()}`;
+}
+
+// Helper to remove undefined and NaN fields which Firestore rejects, and deep-clean nested objects
 export function cleanObjectForFirestore<T extends Record<string, any>>(obj: T): Partial<T> {
   const result: any = {};
   for (const [key, value] of Object.entries(obj)) {
-    if (value !== undefined) {
+    if (value === undefined) continue;
+    if (typeof value === 'number' && isNaN(value)) continue;
+    if (value !== null && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+      const nested = cleanObjectForFirestore(value);
+      if (Object.keys(nested).length > 0) {
+        result[key] = nested;
+      }
+    } else {
       result[key] = value;
     }
   }
@@ -190,20 +214,27 @@ export function subscribeUserRuns(
 }
 
 export async function saveRunRecord(run: RunRecord): Promise<void> {
-  const cleanRun = cleanObjectForFirestore(run);
-  const path = `runs/${run.id}`;
+  const safeId = sanitizeDocId(run.id);
+  const currentUid = auth.currentUser?.uid;
+  const cleanRun = cleanObjectForFirestore({
+    ...run,
+    id: safeId,
+    userId: currentUid || run.userId,
+  });
+  const path = `runs/${safeId}`;
   try {
-    const docRef = doc(db, 'runs', run.id);
-    await setDoc(docRef, { ...cleanRun, updatedAt: new Date().toISOString() });
+    const docRef = doc(db, 'runs', safeId);
+    await setDoc(docRef, { ...cleanRun, updatedAt: new Date().toISOString() }, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
 }
 
 export async function deleteRunRecord(runId: string): Promise<void> {
-  const path = `runs/${runId}`;
+  const safeId = sanitizeDocId(runId);
+  const path = `runs/${safeId}`;
   try {
-    const docRef = doc(db, 'runs', runId);
+    const docRef = doc(db, 'runs', safeId);
     await deleteDoc(docRef);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
@@ -212,15 +243,26 @@ export async function deleteRunRecord(runId: string): Promise<void> {
 
 export async function batchSaveRuns(runs: RunRecord[]): Promise<void> {
   if (runs.length === 0) return;
-  const batch = writeBatch(db);
-  runs.forEach((r) => {
-    const cleanRun = cleanObjectForFirestore(r);
-    const docRef = doc(db, 'runs', r.id);
-    batch.set(docRef, { ...cleanRun, updatedAt: new Date().toISOString() });
-  });
-  try {
-    await batch.commit();
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, 'runs (batch)');
+  const currentUid = auth.currentUser?.uid;
+  // Firestore batches support up to 500 writes
+  const chunkSize = 400;
+  for (let i = 0; i < runs.length; i += chunkSize) {
+    const chunk = runs.slice(i, i + chunkSize);
+    const batch = writeBatch(db);
+    chunk.forEach((r) => {
+      const safeId = sanitizeDocId(r.id);
+      const cleanRun = cleanObjectForFirestore({
+        ...r,
+        id: safeId,
+        userId: currentUid || r.userId,
+      });
+      const docRef = doc(db, 'runs', safeId);
+      batch.set(docRef, { ...cleanRun, updatedAt: new Date().toISOString() }, { merge: true });
+    });
+    try {
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'runs (batch)');
+    }
   }
 }

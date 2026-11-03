@@ -20,6 +20,7 @@ import {
   getIsoWeekKey,
   getCurrentWeekRange,
   isRunInCurrentWeek,
+  calculateIntervalMetrics,
 } from './runningCalculations';
 import { RunRecord } from '../types/running';
 
@@ -349,6 +350,27 @@ test('groupRunsByWeek excludes previous week runs from current week runsCount', 
   const w45 = weeklyStats.find((w) => w.weekKey === '2026-W45');
   assert.equal(w45, undefined); // No runs occurred in W45, so no W45 stat exists
 });
+
+test('calculateIntervalMetrics strips rest duration from Garmin workout and computes pure interval pace', () => {
+  // Scenario: 5 x 1000m repeats with 90s rest
+  // Garmin recorded total duration: 32:00 (1920s) for 7.0km (including 4 rests of 90s = 360s)
+  // Target interval pace: 3:30/km (210s)
+  const result = calculateIntervalMetrics({
+    totalDurationSeconds: 1920, // 32 mins
+    repCount: 5,
+    repDistanceMeters: 1000,
+    restDurationSeconds: 90,
+    targetPaceSecPerKm: 210, // 3:30
+  });
+
+  assert.equal(result.workDistanceKm, 5.0);
+  assert.equal(result.totalRestSeconds, 360); // 4 rests * 90s = 360s
+  assert.equal(result.activeWorkDurationSeconds, 1560); // 1920 - 360 = 1560s (26 mins)
+  assert.equal(result.activeIntervalPaceSecPerKm, 312); // 1560 / 5 = 312s (5:12/km)
+  assert.equal(result.restDeductionFormatted, '06:00');
+  assert.equal(result.isPaceMet, false); // 5:12 is slower than 3:30
+});
+
 
 
 

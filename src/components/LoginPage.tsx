@@ -15,6 +15,7 @@ import {
 
 interface LoginPageProps {
   onSignIn: () => Promise<void>;
+  onInstantCloudSignIn?: () => Promise<void>;
   onContinueAsGuest: () => void;
   authError: string | null;
   onClearAuthError: () => void;
@@ -24,6 +25,7 @@ interface LoginPageProps {
 
 export const LoginPage: React.FC<LoginPageProps> = ({
   onSignIn,
+  onInstantCloudSignIn,
   onContinueAsGuest,
   authError,
   onClearAuthError,
@@ -31,6 +33,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   onToggleTheme,
 }) => {
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isInstantSigningIn, setIsInstantSigningIn] = useState(false);
 
   const handleGoogleSignIn = async () => {
     setIsSigningIn(true);
@@ -39,6 +42,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       await onSignIn();
     } finally {
       setIsSigningIn(false);
+    }
+  };
+
+  const handleInstantSignIn = async () => {
+    if (!onInstantCloudSignIn) return;
+    setIsInstantSigningIn(true);
+    onClearAuthError();
+    try {
+      await onInstantCloudSignIn();
+    } finally {
+      setIsInstantSigningIn(false);
     }
   };
 
@@ -165,6 +179,28 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   </>
                 )}
               </button>
+
+              {/* Instant Cloud Athlete Account (1-Click Firestore Sync) */}
+              {onInstantCloudSignIn && (
+                <button
+                  onClick={handleInstantSignIn}
+                  disabled={isSigningIn || isInstantSigningIn}
+                  className="w-full py-2.5 px-4 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-[#0593C6] dark:text-[#38bdf8] border border-[#0593C6]/30 font-bold text-xs flex items-center justify-center space-x-2 transition-all cursor-pointer disabled:opacity-50"
+                  title="Connect immediately to Firebase Firestore cloud storage with 1 click"
+                >
+                  {isInstantSigningIn ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Connecting Cloud Database...</span>
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="w-4 h-4 text-[#0593C6]" />
+                      <span>Instant Cloud Athlete Account (1-Click Sync)</span>
+                    </>
+                  )}
+                </button>
+              )}
 
               {/* Divider */}
               <div className="relative py-2 flex items-center justify-center">
