@@ -49,6 +49,18 @@ interface WatchTelemetrySectionProps {
   onCombineRuns?: (combinedRun: RunRecord, sourceRunIds: string[]) => void;
   onOpenGarminSync?: () => void;
   onOpenAddRun?: () => void;
+  savedDefaultInterval?: {
+    targetIntervalPaceSecPerKm?: number;
+    repDistanceMeters?: number;
+    restDurationSeconds?: number;
+    repCount?: number;
+  };
+  onSaveDefaultInterval?: (defaults: {
+    targetIntervalPaceSecPerKm?: number;
+    repDistanceMeters?: number;
+    restDurationSeconds?: number;
+    repCount?: number;
+  }) => void;
 }
 
 export interface HrZoneDefinition {
@@ -170,6 +182,8 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
   onCombineRuns,
   onOpenGarminSync,
   onOpenAddRun,
+  savedDefaultInterval,
+  onSaveDefaultInterval,
 }) => {
   const [selectedZoneFilter, setSelectedZoneFilter] = useState<number | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -1228,6 +1242,8 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
             run={calibratingRun}
             unit={unit}
             onSaveInterval={handleSaveIntervalForRun}
+            savedDefaultInterval={savedDefaultInterval}
+            onSaveDefaultInterval={onSaveDefaultInterval}
           />
         )}
       </div>

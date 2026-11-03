@@ -20,6 +20,10 @@
         "unitPreference": { "type": "string", "enum": ["km", "miles"] },
         "athleteLevel": { "type": "string", "enum": ["Beginner", "High School XC", "Collegiate / Advanced", "Masters"] },
         "maxHeartRate": { "type": "number" },
+        "defaultIntervalPaceSecPerKm": { "type": "number" },
+        "defaultRepDistanceMeters": { "type": "number" },
+        "defaultRestDurationSeconds": { "type": "number" },
+        "defaultRepCount": { "type": "number" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },

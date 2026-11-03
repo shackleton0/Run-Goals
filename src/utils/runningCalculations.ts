@@ -69,6 +69,46 @@ export function formatPace(secPerKm: number, unit: 'km' | 'miles' = 'km'): strin
   return `${mins}:${secs.toString().padStart(2, '0')} ${unitSuffix}`;
 }
 
+export function parsePace(input: string, unit: 'km' | 'miles' = 'km'): number {
+  if (!input || typeof input !== 'string') return 0;
+  const clean = input.trim().toLowerCase();
+  if (!clean) return 0;
+
+  const isMiles = clean.includes('/mi') || clean.includes('mi') || (unit === 'miles' && !clean.includes('km'));
+
+  const stripped = clean
+    .replace(/\/km|\/mi|km|mi|min\/km|min\/mi|mins\/km|mins\/mi/gi, '')
+    .trim();
+
+  let seconds = 0;
+
+  if (stripped.includes(':')) {
+    const parts = stripped.split(':').map((p) => parseFloat(p.trim()) || 0);
+    if (parts.length === 2) {
+      seconds = Math.round(parts[0] * 60 + parts[1]);
+    } else if (parts.length === 3) {
+      seconds = Math.round(parts[0] * 3600 + parts[1] * 60 + parts[2]);
+    }
+  } else {
+    const rawNum = parseFloat(stripped);
+    if (!isNaN(rawNum) && rawNum > 0) {
+      if (rawNum < 30) {
+        seconds = Math.round(rawNum * 60);
+      } else {
+        seconds = Math.round(rawNum);
+      }
+    }
+  }
+
+  if (seconds <= 0) return 0;
+
+  if (isMiles) {
+    return Math.round(seconds / MILES_TO_KM);
+  }
+
+  return seconds;
+}
+
 export function calculateTargetDistanceEquivalent(
   distanceKm: number,
   durationSeconds: number,

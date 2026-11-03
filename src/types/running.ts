@@ -65,6 +65,10 @@ export interface UserProfile {
   unitPreference: 'km' | 'miles';
   athleteLevel?: 'Beginner' | 'High School XC' | 'Collegiate / Advanced' | 'Masters';
   maxHeartRate?: number;
+  defaultIntervalPaceSecPerKm?: number;
+  defaultRepDistanceMeters?: number;
+  defaultRestDurationSeconds?: number;
+  defaultRepCount?: number;
   createdAt?: string;
   updatedAt?: string;
 }

@@ -406,6 +406,29 @@ export default function App() {
     }
   };
 
+  const handleSaveDefaultInterval = async (defaults: {
+    targetIntervalPaceSecPerKm?: number;
+    repDistanceMeters?: number;
+    restDurationSeconds?: number;
+    repCount?: number;
+  }) => {
+    const updated: UserProfile = {
+      ...profile,
+      defaultIntervalPaceSecPerKm: defaults.targetIntervalPaceSecPerKm,
+      defaultRepDistanceMeters: defaults.repDistanceMeters,
+      defaultRestDurationSeconds: defaults.restDurationSeconds,
+      defaultRepCount: defaults.repCount,
+    };
+    handleSaveProfile(updated);
+  };
+
+  const savedDefaultInterval = {
+    targetIntervalPaceSecPerKm: profile.defaultIntervalPaceSecPerKm,
+    repDistanceMeters: profile.defaultRepDistanceMeters,
+    restDurationSeconds: profile.defaultRestDurationSeconds,
+    repCount: profile.defaultRepCount,
+  };
+
   const handleSignIn = async () => {
     setAuthError(null);
     try {
@@ -657,6 +680,8 @@ export default function App() {
                 onCombineRuns={handleCombineRuns}
                 onOpenGarminSync={handleOpenGarminSync}
                 onOpenAddRun={() => setIsAddRunOpen(true)}
+                savedDefaultInterval={savedDefaultInterval}
+                onSaveDefaultInterval={handleSaveDefaultInterval}
               />
             </div>
           )}
@@ -682,6 +707,8 @@ export default function App() {
           unit={profile.unitPreference}
           initialIncomingRuns={preParsedGarminRuns}
           onProcessIncomingRuns={handleProcessIncomingRuns}
+          savedDefaultInterval={savedDefaultInterval}
+          onSaveDefaultInterval={handleSaveDefaultInterval}
         />
 
         <DuplicateRunsModal
@@ -709,6 +736,7 @@ export default function App() {
           onSaveRun={handleSaveRun}
           unit={profile.unitPreference}
           targetDistanceKm={profile.targetDistanceKm}
+          savedDefaultInterval={savedDefaultInterval}
         />
 
         <GoalSettingsModal

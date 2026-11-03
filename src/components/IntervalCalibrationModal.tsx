@@ -16,7 +16,21 @@ interface IntervalCalibrationModalProps {
   run: RunRecord | null;
   unit: 'km' | 'miles';
   onSaveInterval: (runId: string, updatedFields: Partial<RunRecord>) => void;
+  savedDefaultInterval?: {
+    targetIntervalPaceSecPerKm?: number;
+    repDistanceMeters?: number;
+    restDurationSeconds?: number;
+    repCount?: number;
+  };
+  onSaveDefaultInterval?: (defaults: {
+    targetIntervalPaceSecPerKm?: number;
+    repDistanceMeters?: number;
+    restDurationSeconds?: number;
+    repCount?: number;
+  }) => void;
 }
+
+const LOCAL_STORAGE_INTERVAL_DEFAULTS_KEY = 'xc_default_interval_profile';
 
 const COMMON_REP_COUNTS = [3, 4, 5, 6, 8, 10];
 const COMMON_DISTANCES = [
@@ -28,6 +42,7 @@ const COMMON_DISTANCES = [
   { label: '2000m (2K)', meters: 2000 },
 ];
 const COMMON_RESTS = [
+  { label: '30s', seconds: 30 },
   { label: '45s', seconds: 45 },
   { label: '60s (1m)', seconds: 60 },
   { label: '90s (1:30)', seconds: 90 },
@@ -41,18 +56,50 @@ export const IntervalCalibrationModal: React.FC<IntervalCalibrationModalProps> =
   run,
   unit,
   onSaveInterval,
+  savedDefaultInterval,
+  onSaveDefaultInterval,
 }) => {
   if (!isOpen || !run) return null;
 
-  // Initialize from existing run metrics or reasonable heuristics based on run distance
-  const initialReps = run.repCount || (run.distanceKm >= 5 ? 5 : Math.max(3, Math.round(run.distanceKm)));
-  const initialDistance = run.repDistanceMeters || 1000;
-  const initialRest = run.restDurationSeconds !== undefined ? run.restDurationSeconds : 90;
+  // Retrieve cached local defaults if available
+  const cachedDefaults = (() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_INTERVAL_DEFAULTS_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // fallback
+    }
+    return null;
+  })();
+
+  const effectiveDefaults = {
+    ...cachedDefaults,
+    ...savedDefaultInterval,
+  };
+
+  // Initialize from existing run metrics or saved default preferences or reasonable heuristics
+  const initialReps =
+    run.repCount ||
+    effectiveDefaults.repCount ||
+    (run.distanceKm >= 5 ? 5 : Math.max(3, Math.round(run.distanceKm)));
+
+  const initialDistance =
+    run.repDistanceMeters ||
+    effectiveDefaults.repDistanceMeters ||
+    1000;
+
+  const initialRest =
+    run.restDurationSeconds !== undefined
+      ? run.restDurationSeconds
+      : effectiveDefaults.restDurationSeconds !== undefined
+      ? effectiveDefaults.restDurationSeconds
+      : 90;
 
   // Format initial target pace
+  const initialTargetSec = run.targetIntervalPaceSecPerKm || effectiveDefaults.targetIntervalPaceSecPerKm;
   let initialTargetPaceStr = '';
-  if (run.targetIntervalPaceSecPerKm && run.targetIntervalPaceSecPerKm > 0) {
-    const paceToFormat = unit === 'miles' ? run.targetIntervalPaceSecPerKm * MILES_TO_KM : run.targetIntervalPaceSecPerKm;
+  if (initialTargetSec && initialTargetSec > 0) {
+    const paceToFormat = unit === 'miles' ? initialTargetSec * MILES_TO_KM : initialTargetSec;
     const m = Math.floor(paceToFormat / 60);
     const s = Math.round(paceToFormat % 60);
     initialTargetPaceStr = `${m}:${s < 10 ? '0' : ''}${s}`;
@@ -63,6 +110,7 @@ export const IntervalCalibrationModal: React.FC<IntervalCalibrationModalProps> =
   const [restDurationSeconds, setRestDurationSeconds] = useState<number>(initialRest);
   const [targetPaceStr, setTargetPaceStr] = useState<string>(initialTargetPaceStr);
   const [includeFinalRest, setIncludeFinalRest] = useState<boolean>(false);
+  const [rememberForFuture, setRememberForFuture] = useState<boolean>(true);
 
   // Parse target pace
   let targetPaceSecPerKm: number | undefined = undefined;
@@ -93,18 +141,19 @@ export const IntervalCalibrationModal: React.FC<IntervalCalibrationModalProps> =
 
   const handleSave = () => {
     const intervalDetails = {
-      reps: repCount,
-      setDistanceMeters: repDistanceMeters,
+      repCount,
+      repDistanceMeters,
       restDurationSeconds,
       totalRestSeconds: metrics.totalRestSeconds,
       targetPaceSecPerKm,
       activeIntervalPaceSecPerKm: metrics.activeIntervalPaceSecPerKm,
-      rawGarminPaceSecPerKm: run.averagePaceSecPerKm,
+      activeWorkDurationSeconds: metrics.activeWorkDurationSeconds,
+      workDistanceKm: metrics.workDistanceKm,
     };
 
     onSaveInterval(run.id, {
       runType: 'Intervals',
-      targetIntervalPaceSecPerKm,
+      targetIntervalPaceSecPerKm: targetPaceSecPerKm,
       activeIntervalPaceSecPerKm: metrics.activeIntervalPaceSecPerKm,
       repCount,
       repDistanceMeters,
@@ -112,6 +161,20 @@ export const IntervalCalibrationModal: React.FC<IntervalCalibrationModalProps> =
       totalRestSeconds: metrics.totalRestSeconds,
       intervalDetails,
     });
+
+    // Save as defaults for future interval sessions & uploads
+    if (rememberForFuture) {
+      const defaultsToSave = {
+        targetIntervalPaceSecPerKm: targetPaceSecPerKm,
+        repDistanceMeters,
+        restDurationSeconds,
+        repCount,
+      };
+      localStorage.setItem(LOCAL_STORAGE_INTERVAL_DEFAULTS_KEY, JSON.stringify(defaultsToSave));
+      if (onSaveDefaultInterval) {
+        onSaveDefaultInterval(defaultsToSave);
+      }
+    }
 
     onClose();
   };
@@ -355,6 +418,28 @@ export const IntervalCalibrationModal: React.FC<IntervalCalibrationModalProps> =
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Remember defaults for future uploads & workouts */}
+          <div className="flex items-center space-x-2.5 p-3 rounded-xl bg-neutral-100/70 dark:bg-neutral-900/60 border border-neutral-200/80 dark:border-neutral-800">
+            <input
+              id="remember-interval-defaults"
+              type="checkbox"
+              checked={rememberForFuture}
+              onChange={(e) => setRememberForFuture(e.target.checked)}
+              className="w-4 h-4 rounded text-[#10B981] accent-[#10B981] cursor-pointer"
+            />
+            <label
+              htmlFor="remember-interval-defaults"
+              className="text-xs text-neutral-700 dark:text-neutral-300 cursor-pointer select-none"
+            >
+              <strong className="text-neutral-900 dark:text-white block font-semibold">
+                Save as default interval profile for future uploads & sessions
+              </strong>
+              <span className="text-[11px] text-neutral-500 dark:text-neutral-400 block mt-0.5">
+                Automatically pre-fills your aimed pace ({targetPaceStr || 'None'}), {repCount}×{repDistanceMeters}m sets, and {restDurationSeconds}s rest on future Garmin uploads.
+              </span>
+            </label>
           </div>
         </div>
 

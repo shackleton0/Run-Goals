@@ -32,6 +32,18 @@ interface GarminSyncModalProps {
   unit?: 'km' | 'miles';
   initialIncomingRuns?: RunRecord[];
   onProcessIncomingRuns: (runs: RunRecord[]) => void;
+  savedDefaultInterval?: {
+    targetIntervalPaceSecPerKm?: number;
+    repDistanceMeters?: number;
+    restDurationSeconds?: number;
+    repCount?: number;
+  };
+  onSaveDefaultInterval?: (defaults: {
+    targetIntervalPaceSecPerKm?: number;
+    repDistanceMeters?: number;
+    restDurationSeconds?: number;
+    repCount?: number;
+  }) => void;
 }
 
 export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
@@ -41,6 +53,8 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
   unit = 'km',
   initialIncomingRuns,
   onProcessIncomingRuns,
+  savedDefaultInterval,
+  onSaveDefaultInterval,
 }) => {
   const [dragOver, setDragOver] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
@@ -348,6 +362,56 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
               )}
             </div>
 
+            {/* Prompt for Detected Interval Sessions */}
+            {(() => {
+              const detectedIntervals = parsedActivities.filter(
+                (r) =>
+                  r.runType === 'Intervals' ||
+                  r.runType === 'Interval Training' ||
+                  Boolean(r.activeIntervalPaceSecPerKm) ||
+                  /interval|repeat|track|reps|400m|1000m|1200m|1600m/i.test(r.title)
+              );
+              if (detectedIntervals.length === 0) return null;
+              const uncalibrated = detectedIntervals.filter((r) => !r.activeIntervalPaceSecPerKm);
+
+              return (
+                <div className="p-3 rounded-xl bg-amber-500/10 dark:bg-amber-950/30 border border-amber-500/30 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shrink-0">
+                  <div className="flex items-start space-x-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                      <Zap className="w-4 h-4" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-xs">
+                          {uncalibrated.length > 0
+                            ? `Interval Session Detected (${uncalibrated.length} need calibration)`
+                            : 'All Interval Sessions Calibrated'}
+                        </span>
+                        {uncalibrated.length === 0 && (
+                          <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
+                            Rest Stripped
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-amber-800/80 dark:text-amber-300/80 block leading-tight">
+                        Garmin average pace is ruined by rest periods. Input your aimed interval pace, distance per set, and rest time to deduct rest and save your true speed.
+                      </span>
+                    </div>
+                  </div>
+                  {uncalibrated.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setCalibratingRun(uncalibrated[0])}
+                      className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs shrink-0 flex items-center justify-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
+                    >
+                      <Zap className="w-3.5 h-3.5 fill-black" />
+                      <span>Calibrate Interval Pace & Rest</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* Scrollable Activities Selection List */}
             <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[220px]">
               {filteredActivities.length === 0 ? (
@@ -553,6 +617,8 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
             run={calibratingRun}
             unit={unit}
             onSaveInterval={handleUpdateParsedRun}
+            savedDefaultInterval={savedDefaultInterval}
+            onSaveDefaultInterval={onSaveDefaultInterval}
           />
         )}
       </div>

@@ -5,6 +5,7 @@ import {
   parseDuration,
   calculatePaceSecPerKm,
   formatPace,
+  parsePace,
   calculate6kEquivalent,
   calculateTargetDistanceEquivalent,
   calculateTargetCutoff,
@@ -32,10 +33,13 @@ test('formatDuration and parseDuration roundtrip correctly', () => {
   assert.equal(parseDuration('24m'), 1440);
 });
 
-test('calculatePaceSecPerKm calculates pace', () => {
+test('calculatePaceSecPerKm calculates pace and parsePace parses formats correctly', () => {
   const pace = calculatePaceSecPerKm(6.0, 1260);
   assert.equal(pace, 210);
   assert.equal(formatPace(pace, 'km'), '3:30 /km');
+  assert.equal(parsePace('3:30'), 210);
+  assert.equal(parsePace('3:30 /km'), 210);
+  assert.equal(parsePace('5:38 /mi'), 210); // 338 / 1.60934 = 210
 });
 
 test('calculate6kEquivalent projects correctly', () => {

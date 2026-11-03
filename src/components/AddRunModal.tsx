@@ -19,6 +19,12 @@ interface AddRunModalProps {
   onSaveRun: (run: RunRecord) => void;
   unit: 'km' | 'miles';
   targetDistanceKm?: number;
+  savedDefaultInterval?: {
+    targetIntervalPaceSecPerKm?: number;
+    repDistanceMeters?: number;
+    restDurationSeconds?: number;
+    repCount?: number;
+  };
 }
 
 export const AddRunModal: React.FC<AddRunModalProps> = ({
@@ -28,6 +34,7 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
   onSaveRun,
   unit,
   targetDistanceKm = 6.0,
+  savedDefaultInterval,
 }) => {
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [title, setTitle] = useState<string>('');
@@ -40,12 +47,39 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
   const [elevationGain, setElevationGain] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
 
+  // Retrieve cached local defaults if available
+  const initialDefaultInterval = (() => {
+    try {
+      const saved = localStorage.getItem('xc_default_interval_profile');
+      if (saved) return { ...JSON.parse(saved), ...savedDefaultInterval };
+    } catch {
+      // fallback
+    }
+    return savedDefaultInterval || {};
+  })();
+
+  const formatPaceFromSec = (sec?: number) => {
+    if (!sec || sec <= 0) return '';
+    const paceVal = unit === 'miles' ? sec * 1.60934 : sec;
+    const m = Math.floor(paceVal / 60);
+    const s = Math.round(paceVal % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
   // Interval & Rest Calibration State
   const [isIntervalWorkout, setIsIntervalWorkout] = useState<boolean>(false);
-  const [targetIntervalPaceStr, setTargetIntervalPaceStr] = useState<string>('');
-  const [repCount, setRepCount] = useState<string>('5');
-  const [repDistanceMeters, setRepDistanceMeters] = useState<string>('1000');
-  const [restDurationSeconds, setRestDurationSeconds] = useState<string>('90');
+  const [targetIntervalPaceStr, setTargetIntervalPaceStr] = useState<string>(
+    formatPaceFromSec(initialDefaultInterval.targetIntervalPaceSecPerKm)
+  );
+  const [repCount, setRepCount] = useState<string>(
+    String(initialDefaultInterval.repCount || 5)
+  );
+  const [repDistanceMeters, setRepDistanceMeters] = useState<string>(
+    String(initialDefaultInterval.repDistanceMeters || 1000)
+  );
+  const [restDurationSeconds, setRestDurationSeconds] = useState<string>(
+    String(initialDefaultInterval.restDurationSeconds !== undefined ? initialDefaultInterval.restDurationSeconds : 90)
+  );
 
   if (!isOpen) return null;
 
@@ -111,13 +145,14 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
       newRun.restDurationSeconds = parsedRestSec;
       newRun.totalRestSeconds = intervalMetrics.totalRestSeconds;
       newRun.intervalDetails = {
-        reps: parsedReps,
-        setDistanceMeters: parsedRepDist,
+        repCount: parsedReps,
+        repDistanceMeters: parsedRepDist,
         restDurationSeconds: parsedRestSec,
         totalRestSeconds: intervalMetrics.totalRestSeconds,
         targetPaceSecPerKm: parsedTargetPaceSec,
         activeIntervalPaceSecPerKm: intervalMetrics.activeIntervalPaceSecPerKm,
-        rawGarminPaceSecPerKm: Math.round(avgPaceSec),
+        activeWorkDurationSeconds: intervalMetrics.activeWorkDurationSeconds,
+        workDistanceKm: intervalMetrics.workDistanceKm,
       };
     }
 
