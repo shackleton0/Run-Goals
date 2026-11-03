@@ -11,7 +11,13 @@ import {
   Moon,
   AlertCircle,
   Loader2,
+  Copy,
+  Check,
+  ExternalLink,
+  ShieldAlert,
+  X,
 } from 'lucide-react';
+import { firebaseConfig } from '../lib/firebase';
 
 interface LoginPageProps {
   onSignIn: () => Promise<void>;
@@ -34,6 +40,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 }) => {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isInstantSigningIn, setIsInstantSigningIn] = useState(false);
+  const [copiedDomain, setCopiedDomain] = useState(false);
+
+  const isUnauthorizedDomain = Boolean(authError && authError.startsWith('UNAUTHORIZED_DOMAIN:'));
+  const unauthorizedDomain = authError && isUnauthorizedDomain
+    ? authError.replace('UNAUTHORIZED_DOMAIN:', '')
+    : '';
+
+  const handleCopyDomain = () => {
+    if (unauthorizedDomain) {
+      navigator.clipboard.writeText(unauthorizedDomain);
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 2000);
+    }
+  };
 
   const handleGoogleSignIn = async () => {
     setIsSigningIn(true);
@@ -86,8 +106,103 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           </div>
         </header>
 
-        {/* Auth Error Banner */}
-        {authError && (
+        {/* Unauthorized Domain Guide Card */}
+        {isUnauthorizedDomain && (
+          <div className="bg-amber-500/10 border-b border-amber-500/30 px-4 py-3.5 text-xs text-amber-900 dark:text-amber-100">
+            <div className="max-w-xl mx-auto space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start space-x-2.5">
+                  <ShieldAlert className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="font-bold text-sm text-neutral-900 dark:text-white">
+                      Authorize Website Domain in Firebase
+                    </h3>
+                    <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-0.5">
+                      Google OAuth requires your current website domain to be authorized in your Firebase project (
+                      <span className="font-mono font-semibold">{firebaseConfig.projectId}</span>) before sign-in can proceed from this URL.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={onClearAuthError}
+                  className="text-neutral-400 hover:text-neutral-700 dark:hover:text-white p-1 cursor-pointer"
+                  aria-label="Dismiss banner"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Step by step box */}
+              <div className="bg-white/80 dark:bg-black/40 rounded-xl p-3 border border-amber-500/25 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">Current Domain:</span>
+                    <code className="px-2 py-0.5 rounded bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 font-mono text-[11px] font-bold">
+                      {unauthorizedDomain}
+                    </code>
+                  </div>
+                  <button
+                    onClick={handleCopyDomain}
+                    className="px-2.5 py-1 rounded-md bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-semibold text-[11px] flex items-center space-x-1.5 cursor-pointer hover:opacity-90 transition-opacity"
+                  >
+                    {copiedDomain ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedDomain ? 'Domain Copied!' : 'Copy Domain'}</span>
+                  </button>
+                </div>
+
+                <ol className="text-[11px] text-neutral-700 dark:text-neutral-300 list-decimal list-inside space-y-1">
+                  <li>
+                    Open Firebase Settings:{' '}
+                    <a
+                      href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#0593C6] dark:text-[#38bdf8] font-bold underline inline-flex items-center space-x-1"
+                    >
+                      <span>Authorized Domains Console ↗</span>
+                    </a>
+                  </li>
+                  <li>Under <span className="font-semibold">Authorized domains</span>, click <span className="font-semibold">Add domain</span>.</li>
+                  <li>Paste <code className="font-mono bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 rounded">{unauthorizedDomain}</code> and save.</li>
+                </ol>
+              </div>
+
+              {/* Actions row */}
+              <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={handleGoogleSignIn}
+                    disabled={isSigningIn}
+                    className="px-3 py-1.5 rounded-lg bg-[#0593C6] hover:bg-[#047ea8] text-white font-bold text-xs flex items-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {isSigningIn ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                    <span>Retry Sign-In</span>
+                  </button>
+                  <a
+                    href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-lg bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-semibold text-xs flex items-center space-x-1.5 transition-colors cursor-pointer border border-neutral-300 dark:border-neutral-700"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Firebase Console</span>
+                  </a>
+                </div>
+
+                <button
+                  onClick={onContinueAsGuest}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
+                >
+                  <FlaskConical className="w-3.5 h-3.5" />
+                  <span>Use Guest Mode (Zero Setup Needed)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Standard Auth Error Banner */}
+        {!isUnauthorizedDomain && authError && (
           <div className="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/80 px-4 py-3 text-xs text-amber-800 dark:text-amber-200">
             <div className="max-w-xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex items-start sm:items-center space-x-2">

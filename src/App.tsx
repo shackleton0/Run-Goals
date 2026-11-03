@@ -16,6 +16,7 @@ import {
   saveRunRecord,
   deleteRunRecord,
   batchSaveRuns,
+  firebaseConfig,
 } from './lib/firebase';
 import { RunRecord, UserProfile, DuplicateRunMatch, RunType } from './types/running';
 import { DEFAULT_RUNNER_PROFILE } from './data/sampleRuns';
@@ -40,7 +41,19 @@ import { GoalSettingsModal } from './components/GoalSettingsModal';
 import { EmptyGarminState } from './components/EmptyGarminState';
 import { WatchTelemetrySection } from './components/WatchTelemetrySection';
 import { LoginPage } from './components/LoginPage';
-import { Cloud, CloudOff, Loader2, AlertCircle, X, FlaskConical, Activity } from 'lucide-react';
+import {
+  Cloud,
+  CloudOff,
+  Loader2,
+  AlertCircle,
+  X,
+  FlaskConical,
+  Activity,
+  Copy,
+  Check,
+  ExternalLink,
+  ShieldAlert,
+} from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 const LOCAL_STORAGE_RUNS_KEY = 'xc_6k_user_runs_data';
@@ -439,9 +452,8 @@ export default function App() {
       console.error('Google sign in error', err);
       const errorObj = err as { code?: string; message?: string };
       if (errorObj?.code === 'auth/unauthorized-domain') {
-        setAuthError(
-          'Firebase Authentication domain is provisioning (takes ~1-2 minutes). Click Retry to connect, or use Guest Mode in the meantime.'
-        );
+        const domain = typeof window !== 'undefined' ? window.location.hostname : 'this domain';
+        setAuthError(`UNAUTHORIZED_DOMAIN:${domain}`);
       } else if (errorObj?.code === 'auth/popup-closed-by-user') {
         // Closed by user, no error banner needed
       } else if (errorObj?.code === 'auth/popup-blocked') {
@@ -460,8 +472,17 @@ export default function App() {
       sessionStorage.removeItem('xc_6k_guest_mode');
     } catch (err: unknown) {
       console.error('Instant cloud sign in error', err);
-      const errorObj = err as { message?: string };
-      setAuthError(errorObj?.message || 'Failed to initialize instant cloud athlete account.');
+      const errorObj = err as { code?: string; message?: string };
+      if (
+        errorObj?.code === 'auth/operation-not-allowed' ||
+        errorObj?.code === 'auth/admin-restricted-operation'
+      ) {
+        setAuthError(
+          'Anonymous authentication is disabled in your Firebase console. Please sign in with Google, or enable Anonymous in Firebase Console > Authentication > Sign-in method.'
+        );
+      } else {
+        setAuthError(errorObj?.message || 'Failed to initialize instant cloud athlete account.');
+      }
     }
   };
 
@@ -578,22 +599,57 @@ export default function App() {
 
         {/* Auth Error Banner */}
         {authError && (
-          <div className="bg-red-50 dark:bg-red-950/40 border-b border-red-200 dark:border-red-800/80 px-4 py-2 text-xs text-red-700 dark:text-red-300">
-            <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <div className="bg-amber-500/10 border-b border-amber-500/30 px-4 py-2.5 text-xs text-amber-900 dark:text-amber-100">
+            <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex items-center space-x-2">
-                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-                <span>{authError}</span>
+                <ShieldAlert className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                {authError.startsWith('UNAUTHORIZED_DOMAIN:') ? (
+                  <span>
+                    Current website domain (
+                    <code className="font-mono font-bold bg-neutral-200 dark:bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-900 dark:text-white">
+                      {authError.replace('UNAUTHORIZED_DOMAIN:', '')}
+                    </code>
+                    ) must be added to Authorized Domains in Firebase console (
+                    <span className="font-mono font-semibold">{firebaseConfig.projectId}</span>).
+                  </span>
+                ) : (
+                  <span>{authError}</span>
+                )}
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 shrink-0">
+                {authError.startsWith('UNAUTHORIZED_DOMAIN:') && (
+                  <>
+                    <button
+                      onClick={() => {
+                        const domain = authError.replace('UNAUTHORIZED_DOMAIN:', '');
+                        navigator.clipboard.writeText(domain);
+                        alert(`Copied "${domain}" to clipboard. Add it in Firebase Console > Authentication > Settings > Authorized domains.`);
+                      }}
+                      className="px-2.5 py-1 rounded-md bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-semibold text-[11px] flex items-center space-x-1 cursor-pointer"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>Copy Domain</span>
+                    </button>
+                    <a
+                      href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1 rounded-md bg-neutral-200 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 font-semibold text-[11px] flex items-center space-x-1 cursor-pointer hover:bg-neutral-300 dark:hover:bg-neutral-700 transition-colors"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      <span>Console ↗</span>
+                    </a>
+                  </>
+                )}
                 <button
                   onClick={handleSignIn}
-                  className="px-2.5 py-0.5 rounded-md bg-red-600 hover:bg-red-700 text-white font-medium text-[11px] cursor-pointer"
+                  className="px-2.5 py-1 rounded-md bg-[#0593C6] hover:bg-[#047ea8] text-white font-semibold text-[11px] cursor-pointer"
                 >
-                  Retry
+                  Retry Sign-In
                 </button>
                 <button
                   onClick={() => setAuthError(null)}
-                  className="p-1 rounded-md text-red-500 hover:text-red-700 dark:hover:text-red-200 cursor-pointer"
+                  className="p-1 rounded-md text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-200 cursor-pointer"
                   aria-label="Dismiss alert"
                 >
                   <X className="w-3.5 h-3.5" />
