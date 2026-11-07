@@ -83,11 +83,13 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
       ? (effectiveWeeklyGoalKm * KM_TO_MILES).toFixed(1)
       : effectiveWeeklyGoalKm.toFixed(1);
 
-  // Generate suggested schedule based on chosen weekly km
+  // Generate suggested schedule based on chosen weekly km and real data of improvement
   const schedulePlan = getSuggestedWeeklySchedule(
     effectiveWeeklyGoalKm,
     weeklyRunGoal,
-    unit
+    unit,
+    6.0,
+    runs
   );
 
   // The 3 primary weekly run slots:
@@ -374,27 +376,63 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
         </div>
 
         {/* Live Suggested Breakdown Summary */}
-        <div className="pt-2 border-t border-neutral-200/60 dark:border-neutral-800/80 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-          <span className="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
-            Suggested Schedule:
-          </span>
-          {schedulePlan.slots.map((s) => (
-            <span key={s.id} className="inline-flex items-center space-x-1 tabular-nums font-medium text-neutral-700 dark:text-neutral-300">
-              <span className="text-neutral-400">·</span>
-              <span className="font-semibold text-neutral-900 dark:text-white">{s.name}:</span>
-              <span className="text-[#0593C6] font-bold">{s.suggestedDistanceFormatted}</span>
-              <span className="text-[10px] text-neutral-400">({s.percentageOfWeekly}%)</span>
+        <div className="pt-2 border-t border-neutral-200/60 dark:border-neutral-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
+              Suggested Schedule:
             </span>
-          ))}
+            {schedulePlan.slots.map((s) => (
+              <span key={s.id} className="inline-flex items-center space-x-1 tabular-nums font-medium text-neutral-700 dark:text-neutral-300">
+                <span className="text-neutral-400">·</span>
+                <span className="font-semibold text-neutral-900 dark:text-white">{s.name}:</span>
+                <span className="text-[#0593C6] font-bold">{s.suggestedDistanceFormatted}</span>
+                <span className="text-[10px] text-neutral-400">({s.percentageOfWeekly}%)</span>
+              </span>
+            ))}
+          </div>
+
+          {/* Real Data of Improvement Status Badge */}
+          {schedulePlan.improvement.hasEnoughData ? (
+            <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Real Data: {schedulePlan.improvement.statusText}</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-neutral-200/60 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 border border-neutral-300/40 dark:border-neutral-700/40">
+              <span className="w-1.5 h-1.5 rounded-full bg-neutral-400" />
+              <span>Real Improvement: <strong>Not enough data yet</strong></span>
+            </span>
+          )}
         </div>
       </div>
 
       {/* Expandable Workout Blueprint */}
       {showTrainingGuide && (
         <div className="mb-5 p-4 rounded-xl bg-[#F2F8FB] dark:bg-[#0e1b25] border border-[#0593C6]/20 dark:border-neutral-800 text-xs text-neutral-700 dark:text-neutral-300 space-y-3 animate-in fade-in duration-150">
-          <div className="font-bold text-neutral-900 dark:text-[#FCFFFF]">
-            Recommended Cross Country Training Architecture for {weeklyDistGoalFormatted} {unit}/week:
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="font-bold text-neutral-900 dark:text-[#FCFFFF]">
+              Recommended Cross Country Training Architecture ({weeklyDistGoalFormatted} {unit}/week)
+            </div>
+            {schedulePlan.improvement.hasEnoughData ? (
+              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                ✓ Paces calibrated from {schedulePlan.improvement.totalRunsAnalyzed} real workouts
+              </span>
+            ) : (
+              <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                Paces pending: Not enough data yet
+              </span>
+            )}
           </div>
+
+          {!schedulePlan.improvement.hasEnoughData && (
+            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-neutral-700 dark:text-neutral-300">
+              <span className="font-semibold text-amber-600 dark:text-amber-400">Not enough data yet:</span>
+              <span className="text-[11px] ml-1.5">
+                Log at least 2 recorded runs on separate calendar days to establish your personal empirical rate of improvement and unlock adaptive target workout paces.
+              </span>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
             {schedulePlan.slots.map((s) => (
               <div
@@ -408,6 +446,12 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
                   <span className="text-[11px] font-extrabold text-[#10B981] tabular-nums">
                     {s.suggestedDistanceFormatted}
                   </span>
+                </div>
+                <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                  Target Pace:{' '}
+                  <strong className="text-neutral-800 dark:text-neutral-200">
+                    {s.suggestedPaceFormatted || 'Not enough data yet'}
+                  </strong>
                 </div>
                 <p className="text-[11px] font-medium text-neutral-700 dark:text-neutral-300">
                   {s.structure}
@@ -428,6 +472,7 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
           const Icon = slot.icon;
           const suggestedStr = suggestedPlan?.suggestedDistanceFormatted || '';
           const suggestedKm = suggestedPlan?.suggestedDistanceKm || 0;
+          const targetPaceStr = suggestedPlan?.suggestedPaceFormatted || 'Not enough data yet';
 
           if (!isDone) {
             // Distinctly greyed-out card when no run fills this category in the current week
@@ -454,14 +499,22 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
                     </span>
                   </div>
 
-                  {/* Suggested Distance Highlight Badge */}
-                  <div className="mb-2.5 p-2 rounded-lg bg-white/70 dark:bg-black/30 border border-neutral-200/60 dark:border-neutral-800 flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">
-                      Suggested Distance:
-                    </span>
-                    <span className="text-xs font-extrabold text-[#0593C6] dark:text-[#38bdf8] tabular-nums">
-                      {suggestedStr}
-                    </span>
+                  {/* Suggested Distance & Target Pace Highlight Badge */}
+                  <div className="mb-2.5 p-2 rounded-lg bg-white/70 dark:bg-black/30 border border-neutral-200/60 dark:border-neutral-800 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">
+                        Suggested Dist:
+                      </span>
+                      <span className="text-xs font-extrabold text-[#0593C6] dark:text-[#38bdf8] tabular-nums">
+                        {suggestedStr}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-neutral-500 dark:text-neutral-400">
+                      <span>Target Pace:</span>
+                      <span className="font-semibold text-neutral-700 dark:text-neutral-300 tabular-nums">
+                        {targetPaceStr}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Placeholder Body */}
@@ -528,21 +581,29 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
                 </div>
 
                 {/* Suggested vs Logged Target Comparison Badge */}
-                <div className="mb-2 p-1.5 rounded-lg bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200/60 dark:border-neutral-800 flex items-center justify-between text-[11px] tabular-nums">
-                  <span className="text-neutral-500 dark:text-neutral-400">
-                    Suggested: <strong className="text-neutral-700 dark:text-neutral-300">{suggestedStr}</strong>
-                  </span>
-                  <span
-                    className={`font-bold px-1.5 py-0.5 rounded ${
-                      isOnTarget
-                        ? 'bg-[#10B981]/10 text-[#10B981]'
-                        : diffKm > 0
-                        ? 'bg-[#0593C6]/10 text-[#0593C6]'
-                        : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                    }`}
-                  >
-                    {isOnTarget ? '🎯 On Target' : diffStr}
-                  </span>
+                <div className="mb-2 p-1.5 rounded-lg bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200/60 dark:border-neutral-800 space-y-1 text-[11px] tabular-nums">
+                  <div className="flex items-center justify-between">
+                    <span className="text-neutral-500 dark:text-neutral-400">
+                      Suggested: <strong className="text-neutral-700 dark:text-neutral-300">{suggestedStr}</strong>
+                    </span>
+                    <span
+                      className={`font-bold px-1.5 py-0.5 rounded ${
+                        isOnTarget
+                          ? 'bg-[#10B981]/10 text-[#10B981]'
+                          : diffKm > 0
+                          ? 'bg-[#0593C6]/10 text-[#0593C6]'
+                          : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                      }`}
+                    >
+                      {isOnTarget ? '🎯 On Target' : diffStr}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-neutral-500 dark:text-neutral-400 pt-0.5 border-t border-neutral-200/40 dark:border-neutral-800/60">
+                    <span>Target Pace:</span>
+                    <span className="font-semibold text-neutral-700 dark:text-neutral-300">
+                      {targetPaceStr}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Completed Body */}

@@ -828,30 +828,30 @@ export function calculateCategoryBreakdown(
     Easy: {
       name: 'Easy & Base',
       description: 'Aerobic foundation, recovery, and long runs (Zone 2)',
-      color: '#0593C6', // Sky Blue brand
-      darkColor: '#2eb4e6', // Sky Blue light
-      badgeBg: 'bg-sky-50 dark:bg-sky-950/40 text-[#0593C6] dark:text-[#2eb4e6]',
+      color: '#10B981', // Emerald Green
+      darkColor: '#34d399',
+      badgeBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20',
     },
     Interval: {
       name: 'Intervals',
       description: 'Track repeats, VO2 max speed, and race turnover',
-      color: '#10B981', // Emerald Green brand
-      darkColor: '#34d399', // Emerald Green light
-      badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40 text-[#10B981] dark:text-[#34d399]',
+      color: '#F59E0B', // Amber Gold
+      darkColor: '#fbbf24',
+      badgeBg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20',
     },
     Tempo: {
       name: 'Tempo',
       description: 'Lactate threshold and sustained tempo rhythm',
-      color: '#0284c7', // Deep Sky 600
-      darkColor: '#38bdf8', // Light Sky 400
-      badgeBg: 'bg-sky-50 dark:bg-sky-950/40 text-[#0284c7] dark:text-[#38bdf8]',
+      color: '#8B5CF6', // Royal Purple
+      darkColor: '#a78bfa',
+      badgeBg: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20',
     },
     Race: {
       name: 'Race & Trials',
       description: 'Cross country races and goal distance time trials',
-      color: '#059669', // Forest Green
-      darkColor: '#6ee7b7', // Mint Green
-      badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40 text-[#059669] dark:text-[#6ee7b7]',
+      color: '#EF4444', // Vibrant Crimson
+      darkColor: '#f87171',
+      badgeBg: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20',
     },
   };
 
@@ -1477,6 +1477,22 @@ export function calculateIntervalMetrics(params: IntervalCalculationParams, unit
   };
 }
 
+export interface RealImprovementMetrics {
+  hasEnoughData: boolean;
+  statusText: string;
+  totalRunsAnalyzed: number;
+  distinctDaysCount: number;
+  daysSpan: number;
+  weeklyImprovementSeconds?: number;
+  paceImprovementSecPerKm?: number;
+  currentPaceBaselineSecPerKm?: number;
+  basisDescription: string;
+  trend: 'improving' | 'steady' | 'building' | 'insufficient';
+  suggestedIntervalPaceFormatted?: string;
+  suggestedTempoPaceFormatted?: string;
+  suggestedLongRunPaceFormatted?: string;
+}
+
 export interface SuggestedSlotSchedule {
   id: 'interval' | 'tempo' | 'long_run' | 'recovery';
   slotNumber: number;
@@ -1487,6 +1503,7 @@ export interface SuggestedSlotSchedule {
   percentageOfWeekly: number;
   structure: string;
   purpose: string;
+  suggestedPaceFormatted?: string;
 }
 
 export interface SuggestedWeeklySchedulePlan {
@@ -1495,14 +1512,103 @@ export interface SuggestedWeeklySchedulePlan {
   weeklyRunGoal: number;
   slots: SuggestedSlotSchedule[];
   totalSuggestedKm: number;
+  improvement: RealImprovementMetrics;
+}
+
+export function calculateRealImprovement(
+  runs: RunRecord[] = [],
+  unit: 'km' | 'miles' = 'km',
+  targetGoalDistanceKm: number = 6.0
+): RealImprovementMetrics {
+  const validRuns = runs
+    .filter((r) => r.distanceKm >= 0.5 && r.durationSeconds >= 60 && !isNaN(new Date(r.date).getTime()))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  const distinctDays = new Set(validRuns.map((r) => r.date));
+
+  // If there is not real data from at least 2 distinct days, explicitly state 'Not enough data yet'
+  if (validRuns.length < 2 || distinctDays.size < 2) {
+    return {
+      hasEnoughData: false,
+      statusText: 'Not enough data yet',
+      totalRunsAnalyzed: validRuns.length,
+      distinctDaysCount: distinctDays.size,
+      daysSpan: 0,
+      basisDescription: 'Requires at least 2 recorded workouts across separate days to measure real pace and performance improvement.',
+      trend: 'insufficient',
+    };
+  }
+
+  const firstDate = new Date(validRuns[0].date).getTime();
+  const lastDate = new Date(validRuns[validRuns.length - 1].date).getTime();
+  const daysSpan = Math.max(1, Math.round((lastDate - firstDate) / (1000 * 3600 * 24)));
+  const weeksSpan = Math.max(0.5, daysSpan / 7);
+
+  // Divide into earliest half and latest half to compute empirical pace adaptation
+  const midPoint = Math.max(1, Math.floor(validRuns.length / 2));
+  const earlySlice = validRuns.slice(0, midPoint);
+  const lateSlice = validRuns.slice(midPoint);
+
+  const earlyTotalDist = earlySlice.reduce((s, r) => s + r.distanceKm, 0);
+  const earlyTotalSec = earlySlice.reduce((s, r) => s + r.durationSeconds, 0);
+  const earlyAvgPace = earlyTotalDist > 0 ? earlyTotalSec / earlyTotalDist : 0;
+
+  const lateTotalDist = lateSlice.reduce((s, r) => s + r.distanceKm, 0);
+  const lateTotalSec = lateSlice.reduce((s, r) => s + r.durationSeconds, 0);
+  const lateAvgPace = lateTotalDist > 0 ? lateTotalSec / lateTotalDist : 0;
+
+  // Pace improvement: early pace minus late pace (positive = getting faster in sec/km)
+  const paceDiffSecPerKm = earlyAvgPace - lateAvgPace;
+  const weeklyPaceRate = paceDiffSecPerKm / weeksSpan;
+  const weekly6kRate = Math.round(weeklyPaceRate * targetGoalDistanceKm);
+
+  const currentPaceBaselineSecPerKm = Math.round(lateAvgPace);
+  const intervalPaceSec = Math.max(150, currentPaceBaselineSecPerKm - 20); // ~20s faster than baseline
+  const tempoPaceSec = Math.max(160, currentPaceBaselineSecPerKm + 5);    // ~threshold effort
+  const longRunPaceSec = Math.max(180, currentPaceBaselineSecPerKm + 50); // ~aerobic Zone 2
+
+  let trend: 'improving' | 'steady' | 'building' = 'steady';
+  let statusText = 'Pacing consistent across logged runs';
+
+  if (weeklyPaceRate >= 0.5) {
+    trend = 'improving';
+    const rateFormatted = Math.abs(weeklyPaceRate).toFixed(1);
+    statusText = `Improving ~${rateFormatted}s/km per week across ${validRuns.length} workouts`;
+  } else if (weeklyPaceRate <= -0.5) {
+    trend = 'building';
+    const rateFormatted = Math.abs(weeklyPaceRate).toFixed(1);
+    statusText = `Volume building (+${rateFormatted}s/km endurance base) across ${validRuns.length} workouts`;
+  } else {
+    trend = 'steady';
+    statusText = `Consistent benchmark pace (${formatPace(currentPaceBaselineSecPerKm, unit)}) across ${validRuns.length} workouts`;
+  }
+
+  return {
+    hasEnoughData: true,
+    statusText,
+    totalRunsAnalyzed: validRuns.length,
+    distinctDaysCount: distinctDays.size,
+    daysSpan,
+    weeklyImprovementSeconds: weekly6kRate,
+    paceImprovementSecPerKm: Number(weeklyPaceRate.toFixed(1)),
+    currentPaceBaselineSecPerKm,
+    basisDescription: `Calibrated from ${validRuns.length} real workouts logged over ${daysSpan} days (${weeksSpan.toFixed(1)} weeks).`,
+    trend,
+    suggestedIntervalPaceFormatted: formatPace(intervalPaceSec, unit),
+    suggestedTempoPaceFormatted: formatPace(tempoPaceSec, unit),
+    suggestedLongRunPaceFormatted: formatPace(longRunPaceSec, unit),
+  };
 }
 
 export function getSuggestedWeeklySchedule(
   weeklyDistanceGoalKm?: number | null,
   weeklyRunGoal: number = 3,
   unit: 'km' | 'miles' = 'km',
-  targetGoalDistanceKm: number = 6.0
+  targetGoalDistanceKm: number = 6.0,
+  runs?: RunRecord[]
 ): SuggestedWeeklySchedulePlan {
+  const improvement = calculateRealImprovement(runs || [], unit, targetGoalDistanceKm);
+
   // If no weekly distance goal is set, suggest a baseline: 25 km (~15.5 mi) for 3 runs, or 8 km per run
   const effectiveWeeklyKm = Math.max(
     5,
@@ -1548,6 +1654,7 @@ export function getSuggestedWeeklySchedule(
       percentageOfWeekly: Math.round((intervalKm / effectiveWeeklyKm) * 100),
       structure: intervalStructure,
       purpose: 'Develops biomechanical stride efficiency and maximum aerobic oxygen uptake (VO2 max)',
+      suggestedPaceFormatted: improvement.hasEnoughData ? improvement.suggestedIntervalPaceFormatted : undefined,
     });
 
     slots.push({
@@ -1561,6 +1668,7 @@ export function getSuggestedWeeklySchedule(
       percentageOfWeekly: Math.round((tempoKm / effectiveWeeklyKm) * 100),
       structure: tempoStructure,
       purpose: 'Raises anaerobic lactate threshold to eliminate late-race muscular fatigue',
+      suggestedPaceFormatted: improvement.hasEnoughData ? improvement.suggestedTempoPaceFormatted : undefined,
     });
 
     slots.push({
@@ -1574,6 +1682,7 @@ export function getSuggestedWeeklySchedule(
       percentageOfWeekly: Math.round((longRunKm / effectiveWeeklyKm) * 100),
       structure: 'Continuous relaxed conversational effort over rolling trails, grass, or turf',
       purpose: 'Builds cardiac stroke volume, mitochondrial density, and mental race grit',
+      suggestedPaceFormatted: improvement.hasEnoughData ? improvement.suggestedLongRunPaceFormatted : undefined,
     });
   } else {
     // 4+ runs per week: includes recovery / easy runs
@@ -1597,6 +1706,7 @@ export function getSuggestedWeeklySchedule(
       percentageOfWeekly: Math.round((intervalKm / effectiveWeeklyKm) * 100),
       structure: `1.5 km warm-up + 5 × 800m–1000m @ goal pace + 1.5 km cool-down`,
       purpose: 'Develops biomechanical turnover and top aerobic power',
+      suggestedPaceFormatted: improvement.hasEnoughData ? improvement.suggestedIntervalPaceFormatted : undefined,
     });
 
     slots.push({
@@ -1610,6 +1720,7 @@ export function getSuggestedWeeklySchedule(
       percentageOfWeekly: Math.round((tempoKm / effectiveWeeklyKm) * 100),
       structure: `1.0 km warm-up + ${(tempoKm - 2).toFixed(1)} km tempo + 1.0 km cool-down`,
       purpose: 'Elevates lactate threshold capacity for sustained pacing',
+      suggestedPaceFormatted: improvement.hasEnoughData ? improvement.suggestedTempoPaceFormatted : undefined,
     });
 
     slots.push({
@@ -1623,6 +1734,7 @@ export function getSuggestedWeeklySchedule(
       percentageOfWeekly: Math.round((longRunKm / effectiveWeeklyKm) * 100),
       structure: 'Steady aerobic endurance run over natural terrain',
       purpose: 'Builds cellular capillary bed density and stamina',
+      suggestedPaceFormatted: improvement.hasEnoughData ? improvement.suggestedLongRunPaceFormatted : undefined,
     });
 
     for (let i = 0; i < easyDaysCount; i++) {
@@ -1637,6 +1749,7 @@ export function getSuggestedWeeklySchedule(
         percentageOfWeekly: Math.round((easyPerDayKm / effectiveWeeklyKm) * 100),
         structure: 'Very relaxed conversational jog to promote blood flow and tissue recovery',
         purpose: 'Facilitates musculoskeletal repair without adding neural fatigue',
+        suggestedPaceFormatted: improvement.hasEnoughData ? improvement.suggestedLongRunPaceFormatted : undefined,
       });
     }
   }
@@ -1650,6 +1763,7 @@ export function getSuggestedWeeklySchedule(
     weeklyRunGoal: runsCount,
     slots,
     totalSuggestedKm: totalSuggested,
+    improvement,
   };
 }
 

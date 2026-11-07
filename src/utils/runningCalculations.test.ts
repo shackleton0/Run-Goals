@@ -397,6 +397,55 @@ test('getSuggestedWeeklySchedule divides weekly km into balanced training schedu
   assert.equal(plan30.totalSuggestedKm, 30);
 });
 
+test('calculateCategoryBreakdown returns 4 distinct colors for Easy, Interval, Tempo, and Race', () => {
+  const sampleRuns: RunRecord[] = [
+    { id: '1', userId: 'u1', date: '2026-10-28', title: 'Easy', distanceKm: 8, durationSeconds: 2400, averagePaceSecPerKm: 300, runType: 'Easy', source: 'manual' },
+    { id: '2', userId: 'u1', date: '2026-10-27', title: 'Track Intervals', distanceKm: 6, durationSeconds: 1500, averagePaceSecPerKm: 250, runType: 'Intervals', source: 'manual' },
+    { id: '3', userId: 'u1', date: '2026-10-26', title: 'Tempo Run', distanceKm: 7, durationSeconds: 1820, averagePaceSecPerKm: 260, runType: 'Tempo', source: 'manual' },
+    { id: '4', userId: 'u1', date: '2026-10-25', title: 'XC Race 6K', distanceKm: 6, durationSeconds: 1440, averagePaceSecPerKm: 240, runType: 'Race', source: 'manual' },
+  ];
+  const breakdown = calculateCategoryBreakdown(sampleRuns, 30, new Date('2026-10-30T12:00:00Z'));
+  const colors = breakdown.items.map((i) => i.color);
+  // Verify all 4 colors are unique and distinct
+  const uniqueColors = new Set(colors);
+  assert.equal(uniqueColors.size, 4);
+  assert.equal(breakdown.items.find((i) => i.category === 'Easy')?.color, '#10B981');
+  assert.equal(breakdown.items.find((i) => i.category === 'Interval')?.color, '#F59E0B');
+  assert.equal(breakdown.items.find((i) => i.category === 'Tempo')?.color, '#8B5CF6');
+  assert.equal(breakdown.items.find((i) => i.category === 'Race')?.color, '#EF4444');
+});
+
+test('getSuggestedWeeklySchedule displays "Not enough data yet" when insufficient runs exist', () => {
+  // 0 runs
+  const planZero = getSuggestedWeeklySchedule(25, 3, 'km', 6.0, []);
+  assert.equal(planZero.improvement.hasEnoughData, false);
+  assert.equal(planZero.improvement.statusText, 'Not enough data yet');
+  assert.equal(planZero.slots[0].suggestedPaceFormatted, undefined);
+
+  // 1 run only
+  const singleRun: RunRecord[] = [
+    { id: '1', userId: 'u1', date: '2026-10-28', title: 'First Run', distanceKm: 5, durationSeconds: 1500, averagePaceSecPerKm: 300, runType: 'Easy', source: 'manual' },
+  ];
+  const planSingle = getSuggestedWeeklySchedule(25, 3, 'km', 6.0, singleRun);
+  assert.equal(planSingle.improvement.hasEnoughData, false);
+  assert.equal(planSingle.improvement.statusText, 'Not enough data yet');
+});
+
+test('getSuggestedWeeklySchedule calibrates paces from real improvement data when 2+ runs on separate days exist', () => {
+  const multiRuns: RunRecord[] = [
+    { id: '1', userId: 'u1', date: '2026-10-01', title: 'Early Base Run', distanceKm: 6, durationSeconds: 1800, averagePaceSecPerKm: 300, runType: 'Easy', source: 'manual' },
+    { id: '2', userId: 'u1', date: '2026-10-15', title: 'Mid Progression', distanceKm: 6, durationSeconds: 1680, averagePaceSecPerKm: 280, runType: 'Tempo', source: 'manual' },
+    { id: '3', userId: 'u1', date: '2026-10-28', title: 'Fast 6K Finish', distanceKm: 6, durationSeconds: 1560, averagePaceSecPerKm: 260, runType: 'Time Trial', source: 'manual' },
+  ];
+  const planReal = getSuggestedWeeklySchedule(25, 3, 'km', 6.0, multiRuns);
+  assert.equal(planReal.improvement.hasEnoughData, true);
+  assert.equal(planReal.improvement.trend, 'improving');
+  assert.ok(planReal.slots[0].suggestedPaceFormatted);
+  assert.ok(planReal.slots[1].suggestedPaceFormatted);
+  assert.ok(planReal.slots[2].suggestedPaceFormatted);
+});
+
+
 
 
 

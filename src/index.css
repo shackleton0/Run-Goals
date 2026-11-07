@@ -12,6 +12,12 @@
   --color-green-brand-dark: #059669;
   --color-green-brand-light: #34d399;
   --color-green-brand-subtle: #ecfdf5;
+
+  /* Distinct Training Category Colors */
+  --color-cat-easy: #10B981;
+  --color-cat-interval: #F59E0B;
+  --color-cat-tempo: #8B5CF6;
+  --color-cat-race: #EF4444;
 }
 
 @layer base {
@@ -33,4 +39,75 @@
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
   }
+
+  /* Premium tactile click and tap animations on interactive elements */
+  button, 
+  [role="button"],
+  input[type="button"],
+  input[type="submit"] {
+    transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), 
+                box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), 
+                background-color 0.15s ease, 
+                border-color 0.15s ease, 
+                opacity 0.15s ease;
+  }
+
+  button:active, 
+  [role="button"]:active,
+  input[type="button"]:active,
+  input[type="submit"]:active {
+    transform: scale(0.972);
+  }
+}
+
+/* Liquid Glass Utilities */
+.liquid-glass-active {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(255, 255, 255, 0.94);
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.14);
+}
+
+.dark .liquid-glass-active {
+  background: rgba(18, 34, 47, 0.94);
+  border: 1.5px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.55);
+}
+
+.liquid-glass-muted {
+  background: rgba(240, 244, 248, 0.55);
+  border: 1px solid rgba(210, 222, 232, 0.45);
+  opacity: 0.38;
+  filter: grayscale(85%);
+  transition: opacity 0.25s ease, filter 0.25s ease, background-color 0.25s ease;
+}
+
+.dark .liquid-glass-muted {
+  background: rgba(12, 24, 34, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  opacity: 0.32;
+  filter: grayscale(85%);
+}
+
+.liquid-glass-sheen {
+  position: relative;
+  overflow: hidden;
+}
+
+.liquid-glass-sheen::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0.03) 100%);
+  pointer-events: none;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+}
+
+.dark .liquid-glass-sheen::after {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.01) 100%);
 }
