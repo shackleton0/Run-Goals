@@ -38,6 +38,7 @@ import { DuplicateRunsModal } from './components/DuplicateRunsModal';
 import { AiExportModal } from './components/AiExportModal';
 import { AddRunModal } from './components/AddRunModal';
 import { GoalSettingsModal } from './components/GoalSettingsModal';
+import { ShareProgressModal } from './components/ShareProgressModal';
 import { EmptyGarminState } from './components/EmptyGarminState';
 import { WatchTelemetrySection } from './components/WatchTelemetrySection';
 import { LoginPage } from './components/LoginPage';
@@ -142,6 +143,7 @@ export default function App() {
   const [isAiExportOpen, setIsAiExportOpen] = useState(false);
   const [isAddRunOpen, setIsAddRunOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
   const [isFirstTimeNameOpen, setIsFirstTimeNameOpen] = useState(false);
 
   // Check if runner needs to be prompted for their name on first login / app entry
@@ -548,6 +550,7 @@ export default function App() {
           onOpenAiExport={() => setIsAiExportOpen(true)}
           onOpenAddRun={() => setIsAddRunOpen(true)}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenShare={() => setIsShareOpen(true)}
           onSignIn={handleSignIn}
           onSignOut={handleSignOut}
         />
@@ -702,6 +705,7 @@ export default function App() {
                 adherence={adherence}
                 best6kSec={best6kSec}
                 onEditGoal={() => setIsSettingsOpen(true)}
+                onShare={() => setIsShareOpen(true)}
               />
 
               {/* 2. GOAL PROJECTION (Estimated weeks to goal, projected progress trajectory & milestones) */}
@@ -820,6 +824,15 @@ export default function App() {
           onClose={() => setIsSettingsOpen(false)}
           profile={profile}
           onSaveProfile={handleSaveProfile}
+        />
+
+        <ShareProgressModal
+          isOpen={isShareOpen}
+          onClose={() => setIsShareOpen(false)}
+          profile={profile}
+          runs={runs}
+          adherence={adherence}
+          best6kSec={best6kSec}
         />
       </div>
     </div>

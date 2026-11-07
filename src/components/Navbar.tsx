@@ -13,6 +13,7 @@ import {
   Moon,
   ChevronDown,
   Flame,
+  Share2,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -28,6 +29,7 @@ interface NavbarProps {
   onOpenAiExport: () => void;
   onOpenAddRun: () => void;
   onOpenSettings: () => void;
+  onOpenShare?: () => void;
   onSignIn: () => void;
   onSignOut: () => void;
 }
@@ -45,6 +47,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAiExport,
   onOpenAddRun,
   onOpenSettings,
+  onOpenShare,
   onSignIn,
   onSignOut,
 }) => {
@@ -75,12 +78,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="font-extrabold text-base sm:text-lg tracking-tight text-neutral-900 dark:text-white uppercase font-sans">
                   RunGoals
                 </span>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-sm bg-[#0593C6]/10 text-[#0593C6] dark:text-[#38bdf8] uppercase tracking-wider">
-                  XC 6K
-                </span>
               </div>
-              <p className="text-[10px] text-neutral-400 dark:text-neutral-500 font-medium hidden sm:block">
-                Collegiate & Distance Performance Telemetry
+              <p className="text-[10px] text-neutral-400 dark:text-neutral-500 font-medium">
+                Distance Performance Telemetry
               </p>
             </div>
           </div>
@@ -96,17 +96,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               <UploadCloud className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Sync Garmin</span>
               <span className="sm:hidden">Sync</span>
-            </button>
-
-            {/* Quick Log Run Action */}
-            <button
-              onClick={onOpenAddRun}
-              className="flex items-center space-x-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-[#10B981] hover:bg-[#059669] text-white transition-colors cursor-pointer shadow-xs"
-              aria-label="Log Run"
-            >
-              <Plus className="w-3.5 h-3.5 stroke-[3]" />
-              <span className="hidden sm:inline">Log Run</span>
-              <span className="sm:hidden">Log</span>
             </button>
 
             {/* System / Athlete Menu Dropdown */}
@@ -143,6 +132,48 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="absolute right-0 mt-2 w-64 rounded-xl bg-white dark:bg-[#111c24] border border-neutral-200 dark:border-neutral-800 shadow-xl py-1.5 z-50 text-xs transition-all">
                   {/* Tool Actions */}
                   <div className="px-1.5 py-1 space-y-0.5">
+                    {/* Log Run in Dropdown Menu */}
+                    <button
+                      onClick={() => {
+                        setIsDropdownOpen(false);
+                        onOpenAddRun();
+                      }}
+                      className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-left cursor-pointer group"
+                    >
+                      <div className="w-6 h-6 rounded-md bg-[#10B981]/15 text-[#10B981] flex items-center justify-center group-hover:bg-[#10B981] group-hover:text-white transition-colors">
+                        <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-neutral-900 dark:text-white flex items-center justify-between">
+                          <span>Log Run</span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#10B981]/15 text-[#10B981]">New</span>
+                        </div>
+                        <div className="text-[10px] text-neutral-500 truncate">Record manual workout or interval</div>
+                      </div>
+                    </button>
+
+                    {/* Show Off Progress in Dropdown Menu */}
+                    {onOpenShare && (
+                      <button
+                        onClick={() => {
+                          setIsDropdownOpen(false);
+                          onOpenShare();
+                        }}
+                        className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-left cursor-pointer group"
+                      >
+                        <div className="w-6 h-6 rounded-md bg-amber-500/15 text-amber-500 flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-colors">
+                          <Share2 className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-neutral-900 dark:text-white flex items-center justify-between">
+                            <span>Show Off Progress</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-500">Badge</span>
+                          </div>
+                          <div className="text-[10px] text-neutral-500 truncate">Share stats & streak card with friends</div>
+                        </div>
+                      </button>
+                    )}
+
                     {/* Training Dossier in Menu Dropdown */}
                     <button
                       onClick={() => {

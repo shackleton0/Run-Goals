@@ -4,7 +4,6 @@ import {
   TrainingCategory,
   calculateCategoryBreakdown,
   formatDuration,
-  formatPace,
   KM_TO_MILES,
 } from '../utils/runningCalculations';
 import { PieChart, RotateCcw, Activity, X } from 'lucide-react';
@@ -368,10 +367,9 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
                         {focusedItem.percentageDistance}% volume
                       </div>
 
-                      {/* 4. Workout Count and Pace */}
+                      {/* 4. Workout Count */}
                       <div className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400 tabular-nums mt-0.5">
-                        {focusedItem.runCount} {focusedItem.runCount === 1 ? 'run' : 'runs'}
-                        {focusedItem.avgPaceSecPerKm > 0 ? ` · ${formatPace(focusedItem.avgPaceSecPerKm, unit)}` : ''}
+                        {focusedItem.runCount} {focusedItem.runCount === 1 ? 'run' : 'runs'} logged
                       </div>
                     </>
                   ) : (
@@ -395,13 +393,6 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
                       <div className="text-xs font-bold text-neutral-800 dark:text-neutral-200 tabular-nums mt-0.5">
                         {breakdown.totalRuns} {breakdown.totalRuns === 1 ? 'workout' : 'workouts'} logged
                       </div>
-
-                      {/* Average Pace */}
-                      {breakdown.avgPaceSecPerKm > 0 && (
-                        <div className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400 tabular-nums mt-0.5">
-                          Avg Pace: {formatPace(breakdown.avgPaceSecPerKm, unit)}
-                        </div>
-                      )}
                     </>
                   )}
                 </div>
@@ -470,24 +461,18 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
                       {item.description}
                     </p>
 
-                    {/* Metrics Row: Displays km distinctly */}
-                    <div className="grid grid-cols-3 gap-1 pt-2 border-t border-neutral-200/70 dark:border-neutral-800 text-[11px] tabular-nums">
+                    {/* Metrics Row: Clean Workouts & Distance (no avg pace) */}
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-neutral-200/70 dark:border-neutral-800 text-[11px] tabular-nums">
                       <div>
-                        <span className="block text-[10px] text-neutral-400 uppercase">Runs</span>
+                        <span className="block text-[10px] text-neutral-400 uppercase">Workouts</span>
                         <span className="font-semibold text-neutral-800 dark:text-neutral-200">
-                          {item.runCount}
+                          {item.runCount} {item.runCount === 1 ? 'run' : 'runs'}
                         </span>
                       </div>
                       <div>
                         <span className="block text-[10px] text-neutral-400 uppercase">Distance</span>
                         <span className="font-bold text-neutral-900 dark:text-white">
                           {item.totalDistanceKm.toFixed(1)} km
-                        </span>
-                      </div>
-                      <div>
-                        <span className="block text-[10px] text-neutral-400 uppercase">Avg Pace</span>
-                        <span className="font-semibold text-neutral-800 dark:text-neutral-200">
-                          {item.avgPaceSecPerKm > 0 ? formatPace(item.avgPaceSecPerKm, unit) : '--:--'}
                         </span>
                       </div>
                     </div>

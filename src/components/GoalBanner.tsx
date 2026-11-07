@@ -5,13 +5,14 @@ import {
   formatPace,
   calculateTargetCutoff,
 } from '../utils/runningCalculations';
-import { Trophy, Target, Edit2, Calendar, Clock, TrendingDown, CheckCircle2, Flame } from 'lucide-react';
+import { Trophy, Target, Edit2, Calendar, Clock, TrendingDown, CheckCircle2, Flame, Share2 } from 'lucide-react';
 
 interface GoalBannerProps {
   profile: UserProfile;
   adherence: AdherenceSummary;
   best6kSec?: number;
   onEditGoal: () => void;
+  onShare?: () => void;
 }
 
 export const GoalBanner: React.FC<GoalBannerProps> = ({
@@ -19,6 +20,7 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
   adherence,
   best6kSec,
   onEditGoal,
+  onShare,
 }) => {
   const targetDistKm = profile.targetDistanceKm || 6.0;
   const targetSec = profile.target6kTimeSeconds;
@@ -85,12 +87,25 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
           </p>
         </div>
 
-        {goalAchieved && (
-          <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-md bg-[#10B981]/10 text-[#10B981] dark:text-[#34d399] text-xs font-bold border border-[#10B981]/20 self-start sm:self-auto">
-            <Trophy className="w-3.5 h-3.5" />
-            <span>Target Benchmark Achieved</span>
-          </div>
-        )}
+        <div className="flex items-center space-x-2 self-start sm:self-auto">
+          {onShare && (
+            <button
+              onClick={onShare}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition-all cursor-pointer shadow-xs active:scale-95"
+              title="Show off progress to friends"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>Show Off</span>
+            </button>
+          )}
+
+          {goalAchieved && (
+            <div className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#10B981]/10 text-[#10B981] dark:text-[#34d399] text-xs font-bold border border-[#10B981]/20">
+              <Trophy className="w-3.5 h-3.5" />
+              <span>Target Benchmark Achieved</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Primary Metrics Grid */}
