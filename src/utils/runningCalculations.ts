@@ -183,11 +183,15 @@ export function isAerobicRun(type: RunType): boolean {
 }
 
 export function isIntervalRun(type: RunType): boolean {
-  return type === 'Interval Training' || type === 'Intervals';
+  return type === 'Interval Training' || type === 'Intervals' || type === 'Hill Repeats';
+}
+
+export function isHillRun(type: RunType, _title?: string): boolean {
+  return type === 'Hill Repeats' || type === 'Hill Run';
 }
 
 export function is6kQualityRun(type: RunType): boolean {
-  return type === '6K Time Trial' || type === 'Race' || type === 'Tempo';
+  return type === '6K Time Trial' || type === 'Race' || type === 'Tempo' || type === 'Hill Repeats';
 }
 
 export function parseDateSafe(dateInput: string | Date): Date {
@@ -772,19 +776,19 @@ export function getTrainingCategory(runType: RunType, title?: string): TrainingC
   if (runType === 'Race' || runType === '6K Time Trial') {
     return 'Race';
   }
-  if (runType === 'Interval Training' || runType === 'Intervals') {
+  if (runType === 'Interval Training' || runType === 'Intervals' || runType === 'Hill Repeats') {
     return 'Interval';
   }
-  if (runType === 'Tempo') {
+  if (runType === 'Tempo' || runType === 'Hill Run') {
     return 'Tempo';
   }
-  if (runType === 'Easy' || runType === 'Aerobic' || runType === 'Long Run') {
+  if (runType === 'Easy' || runType === 'Aerobic' || runType === 'Long Run' || runType === 'Recovery') {
     return 'Easy';
   }
   const lower = (title || '').toLowerCase();
   if (lower.includes('race') || lower.includes('time trial')) return 'Race';
-  if (lower.includes('interval') || lower.includes('track') || lower.includes('repeat')) return 'Interval';
-  if (lower.includes('tempo') || lower.includes('threshold')) return 'Tempo';
+  if (lower.includes('hill repeat') || lower.includes('hill sprint') || lower.includes('interval') || lower.includes('track') || lower.includes('repeat')) return 'Interval';
+  if (lower.includes('hill run') || lower.includes('tempo') || lower.includes('threshold')) return 'Tempo';
   return 'Easy';
 }
 
@@ -1764,6 +1768,199 @@ export function getSuggestedWeeklySchedule(
     slots,
     totalSuggestedKm: totalSuggested,
     improvement,
+  };
+}
+
+export interface MonthWeekSummary {
+  weekKey: string;
+  weekIndex: number;
+  weekLabel: string;
+  dateRangeLabel: string;
+  startDate: string;
+  endDate: string;
+  totalDistanceKm: number;
+  targetDistanceKm: number;
+  runsCount: number;
+  targetRuns: number;
+  goalMet: boolean;
+  distanceMet: boolean;
+  hillRunsCount: number;
+  elevationGainMeters: number;
+  runs: RunRecord[];
+}
+
+export interface MonthlyConsistencySummary {
+  monthKey: string;
+  monthName: string;
+  year: number;
+  monthTitle: string;
+  totalDistanceKm: number;
+  monthlyDistanceGoalKm: number;
+  distanceProgressPct: number;
+  totalRuns: number;
+  monthlyRunsGoal: number;
+  runsProgressPct: number;
+  avgPaceSecPerKm: number;
+  totalDurationSeconds: number;
+  totalElevationGainMeters: number;
+  hillRunsCount: number;
+  hillWorkouts: RunRecord[];
+  weeks: MonthWeekSummary[];
+  weeksMetCount: number;
+  totalWeeksInMonth: number;
+  consistencyPercentage: number;
+  consistencyGrade: 'Elite Consistency' | 'High Consistency' | 'Solid Consistency' | 'Building Consistency';
+  consistencyMessage: string;
+  runs: RunRecord[];
+}
+
+export function calculateMonthlyConsistency(
+  runs: RunRecord[],
+  effectiveWeeklyGoalKm: number = 25,
+  weeklyRunGoal: number = 3,
+  referenceDate: Date = new Date(),
+  monthOffset: number = 0
+): MonthlyConsistencySummary {
+  const target = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + monthOffset, 1);
+  const year = target.getFullYear();
+  const monthIdx = target.getMonth();
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  const monthName = monthNames[monthIdx];
+  const monthKey = `${year}-${String(monthIdx + 1).padStart(2, '0')}`;
+  const monthTitle = `${monthName} ${year}`;
+
+  const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+  const firstDayOfMonth = new Date(year, monthIdx, 1);
+  const lastDayOfMonth = new Date(year, monthIdx, daysInMonth, 23, 59, 59, 999);
+
+  const monthRuns = runs.filter((r) => {
+    const d = parseDateSafe(r.date);
+    return d.getFullYear() === year && d.getMonth() === monthIdx;
+  }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  const totalDistanceKm = Number(monthRuns.reduce((sum, r) => sum + r.distanceKm, 0).toFixed(1));
+  const totalDurationSeconds = monthRuns.reduce((sum, r) => sum + r.durationSeconds, 0);
+  const totalRuns = monthRuns.length;
+  const avgPaceSecPerKm = totalDistanceKm > 0 ? Math.round(totalDurationSeconds / totalDistanceKm) : 0;
+
+  const weeksCountFactor = daysInMonth / 7;
+  const monthlyDistanceGoalKm = Math.round(effectiveWeeklyGoalKm * weeksCountFactor);
+  const monthlyRunsGoal = Math.round(weeklyRunGoal * weeksCountFactor);
+  const distanceProgressPct = monthlyDistanceGoalKm > 0
+    ? Math.min(100, Math.round((totalDistanceKm / monthlyDistanceGoalKm) * 100))
+    : 0;
+  const runsProgressPct = monthlyRunsGoal > 0
+    ? Math.min(100, Math.round((totalRuns / monthlyRunsGoal) * 100))
+    : 0;
+
+  const hillWorkouts = monthRuns.filter((r) => isHillRun(r.runType, r.title));
+  const hillRunsCount = hillWorkouts.length;
+  const totalElevationGainMeters = monthRuns.reduce((sum, r) => sum + (r.elevationGainMeters || 0), 0);
+
+  const weeks: MonthWeekSummary[] = [];
+  const shortMonth = monthNames[monthIdx].slice(0, 3);
+
+  // 4 actual calendar weeks in the month (eliminating single-day Nov 1-1 / Nov 30-30 glitches):
+  // Week 1: Days 1 – 7
+  // Week 2: Days 8 – 14
+  // Week 3: Days 15 – 21
+  // Week 4: Days 22 – end of month
+  const weekRanges = [
+    { startDay: 1, endDay: 7 },
+    { startDay: 8, endDay: 14 },
+    { startDay: 15, endDay: 21 },
+    { startDay: 22, endDay: daysInMonth },
+  ];
+
+  weekRanges.forEach((range, idx) => {
+    const weekIndex = idx + 1;
+    const startDay = range.startDay;
+    const endDay = range.endDay;
+
+    const startStr = `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`;
+    const endStr = `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`;
+    const dateRangeLabel = `${shortMonth} ${startDay} – ${shortMonth} ${endDay}`;
+
+    const weekRuns = monthRuns.filter((r) => {
+      const d = parseDateSafe(r.date);
+      const day = d.getDate();
+      return day >= startDay && day <= endDay;
+    });
+
+    const weekDist = Number(weekRuns.reduce((s, r) => s + r.distanceKm, 0).toFixed(1));
+    const weekHills = weekRuns.filter((r) => isHillRun(r.runType, r.title)).length;
+    const weekElev = weekRuns.reduce((s, r) => s + (r.elevationGainMeters || 0), 0);
+
+    const goalMet = weekRuns.length >= weeklyRunGoal;
+    const distanceMet = weekDist >= effectiveWeeklyGoalKm;
+
+    weeks.push({
+      weekKey: `${year}-M${monthIdx + 1}-W${weekIndex}`,
+      weekIndex,
+      weekLabel: `Week ${weekIndex}`,
+      dateRangeLabel,
+      startDate: startStr,
+      endDate: endStr,
+      totalDistanceKm: weekDist,
+      targetDistanceKm: effectiveWeeklyGoalKm,
+      runsCount: weekRuns.length,
+      targetRuns: weeklyRunGoal,
+      goalMet,
+      distanceMet,
+      hillRunsCount: weekHills,
+      elevationGainMeters: weekElev,
+      runs: weekRuns,
+    });
+  });
+
+  const weeksMetCount = weeks.filter((w) => w.goalMet).length;
+  const totalWeeksInMonth = weeks.length;
+  const consistencyPercentage = totalWeeksInMonth > 0 ? Math.round((weeksMetCount / totalWeeksInMonth) * 100) : 0;
+
+  let consistencyGrade: 'Elite Consistency' | 'High Consistency' | 'Solid Consistency' | 'Building Consistency' = 'Building Consistency';
+  let consistencyMessage = 'Building weekly microcycle foundation toward monthly mileage';
+
+  if (consistencyPercentage === 100 && totalRuns >= monthlyRunsGoal) {
+    consistencyGrade = 'Elite Consistency';
+    consistencyMessage = 'Flawless execution! Goal met every single week of the month';
+  } else if (consistencyPercentage >= 75) {
+    consistencyGrade = 'High Consistency';
+    consistencyMessage = 'Strong regular microcycles with dependable weekly volume';
+  } else if (consistencyPercentage >= 50) {
+    consistencyGrade = 'Solid Consistency';
+    consistencyMessage = 'Good aerobic base building with regular training sessions';
+  } else {
+    consistencyGrade = 'Building Consistency';
+    consistencyMessage = 'Early microcycle momentum. Stay consistent to hit monthly targets';
+  }
+
+  return {
+    monthKey,
+    monthName,
+    year,
+    monthTitle,
+    totalDistanceKm,
+    monthlyDistanceGoalKm,
+    distanceProgressPct,
+    totalRuns,
+    monthlyRunsGoal,
+    runsProgressPct,
+    avgPaceSecPerKm,
+    totalDurationSeconds,
+    totalElevationGainMeters,
+    hillRunsCount,
+    hillWorkouts,
+    weeks,
+    weeksMetCount,
+    totalWeeksInMonth,
+    consistencyPercentage,
+    consistencyGrade,
+    consistencyMessage,
+    runs: monthRuns,
   };
 }
 

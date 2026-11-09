@@ -10,7 +10,7 @@ import {
   calculateTargetDistanceEquivalent,
   calculateIntervalMetrics,
 } from '../utils/runningCalculations';
-import { X, Plus, Zap, Clock, Target } from 'lucide-react';
+import { X, Plus, Zap, Clock, Target, Mountain } from 'lucide-react';
 
 interface AddRunModalProps {
   isOpen: boolean;
@@ -205,7 +205,9 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
                 <option value="6K Time Trial">6K Time Trial</option>
                 <option value="Race">Race</option>
                 <option value="Tempo">Tempo / Threshold</option>
-                <option value="Intervals">Track / Hill Intervals</option>
+                <option value="Intervals">Track / Speed Intervals</option>
+                <option value="Hill Repeats">Hill Repeats / Incline Power</option>
+                <option value="Hill Run">Hill Run / Rolling Hills</option>
                 <option value="Long Run">Long Run</option>
                 <option value="Easy">Easy / Aerobic</option>
                 <option value="Recovery">Active Recovery</option>
@@ -283,6 +285,35 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
               </div>
               <span className="text-[11px] font-semibold text-[#0593C6]">
                 {isIntervalWorkout || runType === 'Intervals' ? 'Rest Stripping Active' : '+ Strip Rest / Add Aimed Pace'}
+              </span>
+            </button>
+          </div>
+
+          {/* Explicit Hill Workout Option Button */}
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                if (runType === 'Hill Repeats' || runType === 'Hill Run') {
+                  setRunType('Aerobic');
+                } else {
+                  setRunType('Hill Repeats');
+                }
+              }}
+              className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
+                runType === 'Hill Repeats' || runType === 'Hill Run'
+                  ? 'bg-amber-500/10 border-amber-500/35 text-amber-900 dark:text-amber-200 shadow-2xs'
+                  : 'bg-neutral-50 dark:bg-neutral-900/40 border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:border-neutral-300'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <Mountain className={`w-4 h-4 ${runType === 'Hill Repeats' || runType === 'Hill Run' ? 'text-amber-500' : 'text-neutral-400'}`} />
+                <span className="text-xs font-semibold">
+                  Option: Label as Hill Workout
+                </span>
+              </div>
+              <span className={`text-[11px] font-bold ${runType === 'Hill Repeats' || runType === 'Hill Run' ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-400'}`}>
+                {runType === 'Hill Repeats' || runType === 'Hill Run' ? '✓ Hill Workout Active' : '+ Mark as Hill Workout'}
               </span>
             </button>
           </div>

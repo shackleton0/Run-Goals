@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RunRecord } from '../types/running';
+import { RunRecord, RunType } from '../types/running';
 import {
   parseGarminCsv,
   parseTcx,
@@ -22,6 +22,7 @@ import {
   ArrowLeft,
   ChevronRight,
   Zap,
+  Mountain,
 } from 'lucide-react';
 import { IntervalCalibrationModal } from './IntervalCalibrationModal';
 
@@ -208,6 +209,27 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
     setErrorMsg(null);
     setImportStatus(null);
     setActiveTab('upload');
+  };
+
+  const handleToggleHill = (id: string) => {
+    setParsedActivities((prev) =>
+      prev.map((r) => {
+        if (r.id === id) {
+          const isCurrentlyHill = r.runType === 'Hill Repeats' || r.runType === 'Hill Run';
+          return {
+            ...r,
+            runType: isCurrentlyHill ? 'Aerobic' : 'Hill Repeats',
+          };
+        }
+        return r;
+      })
+    );
+  };
+
+  const handleUpdateRunType = (id: string, newType: RunType) => {
+    setParsedActivities((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, runType: newType } : r))
+    );
   };
 
   const filteredActivities = parsedActivities.filter((r) => {
@@ -449,9 +471,43 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
                             <span className="font-semibold text-neutral-900 dark:text-white truncate">
                               {run.title}
                             </span>
-                            <span className="px-1.5 py-0.2 rounded-full bg-neutral-200/80 dark:bg-neutral-800 text-[10px] font-medium text-neutral-700 dark:text-neutral-300 flex-shrink-0">
-                              {run.runType}
-                            </span>
+
+                            {/* Interactive Category Selector Dropdown */}
+                            <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+                              <select
+                                value={run.runType}
+                                onChange={(e) => handleUpdateRunType(run.id, e.target.value as RunType)}
+                                className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-neutral-200/80 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 border-none cursor-pointer focus:outline-none hover:bg-neutral-300 dark:hover:bg-neutral-700 transition-colors"
+                              >
+                                <option value="Aerobic">Aerobic / Easy</option>
+                                <option value="Tempo">Tempo / Threshold</option>
+                                <option value="Intervals">Track Intervals</option>
+                                <option value="Hill Repeats">Hill Repeats</option>
+                                <option value="Hill Run">Hill Run</option>
+                                <option value="Long Run">Long Run</option>
+                                <option value="6K Time Trial">6K Time Trial</option>
+                                <option value="Race">Race</option>
+                              </select>
+                            </div>
+
+                            {/* Quick Option to toggle Hill Workout */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleHill(run.id);
+                              }}
+                              className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold transition-all cursor-pointer ${
+                                run.runType === 'Hill Repeats' || run.runType === 'Hill Run'
+                                  ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40 font-bold'
+                                  : 'bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 border border-neutral-200 dark:border-neutral-700'
+                              }`}
+                              title="Option to label as Hill Workout"
+                            >
+                              <Mountain className="w-2.5 h-2.5 text-amber-500" />
+                              <span>{run.runType === 'Hill Repeats' || run.runType === 'Hill Run' ? 'Hill Workout ✓' : '+ Hill Option'}</span>
+                            </button>
+
                             {run.activeIntervalPaceSecPerKm && (
                               <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold flex items-center space-x-1">
                                 <Zap className="w-2.5 h-2.5" />
@@ -462,6 +518,12 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
 
                           <div className="text-[11px] text-neutral-500 dark:text-neutral-400 flex flex-wrap items-center gap-2">
                             <span>{run.date}</span>
+                            {run.elevationGainMeters !== undefined && run.elevationGainMeters > 0 && (
+                              <>
+                                <span>·</span>
+                                <span className="text-amber-600 dark:text-amber-400 font-medium">+{run.elevationGainMeters}m elev</span>
+                              </>
+                            )}
                             {run.avgHeartRate && (
                               <>
                                 <span>·</span>

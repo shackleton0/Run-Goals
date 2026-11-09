@@ -19,6 +19,7 @@ import {
   Activity,
   PlusCircle,
   UploadCloud,
+  ChevronDown,
 } from 'lucide-react';
 
 interface ProgressVisualizerProps {
@@ -51,6 +52,7 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
   onOpenGarminSync,
   onOpenAddRun,
 }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
   // Set 30-Day Category Breakdown as the default view
   const [activeTab, setActiveTab] = useState<ViewMode>('categories_30d');
   const [selectedRun, setSelectedRun] = useState<RunRecord | null>(null);
@@ -171,26 +173,49 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
   const maxDistance = Math.max(...chronologicalWeeks.map((w) => w.totalDistanceKm), 25);
 
   return (
-    <div className="rounded-2xl bg-[#FCFFFF] dark:bg-[#12222f] border border-neutral-200/90 dark:border-neutral-800 shadow-xs p-4 sm:p-6 transition-colors">
-      {/* Header & Mobile-Optimized Segmented Navigation */}
-      <div className="flex flex-col gap-3 mb-5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-          <div>
-            <h2 className="text-lg font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight">
-              Performance Analytics
-            </h2>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-              Recovery readiness, 30-day category breakdown, race progression curves, and aerobic foundation
-            </p>
+    <div className="rounded-2xl bg-[#FCFFFF] dark:bg-[#12222f] border border-neutral-200/90 dark:border-neutral-800 shadow-xs p-4 sm:p-5 transition-colors">
+      {/* Clickable Dropdown Header (Resting state shows only title) */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between text-left cursor-pointer group"
+      >
+        <div className="flex items-center space-x-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-xl bg-[#0593C6]/15 text-[#0593C6] flex items-center justify-center shrink-0">
+            <TrendingUp className="w-4 h-4 stroke-[2.2]" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base sm:text-lg font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight group-hover:text-[#0593C6] transition-colors">
+                Performance Analytics
+              </h2>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#0593C6]/10 text-[#0593C6]">
+                {runs.length} Workouts Analyzed
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Real-time Math-based Recovery Bar */}
-        <RecoveryBar runs={runs} maxHeartRate={maxHeartRate} />
+        <div className="flex items-center space-x-2 shrink-0 ml-2">
+          <div className={`p-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+            <ChevronDown className="w-4 h-4" />
+          </div>
+        </div>
+      </button>
 
-        {/* Mobile-Friendly Horizontally Scrollable Segmented Tab Control */}
-        <div className="w-full overflow-x-auto no-scrollbar scroll-smooth -mx-1 px-1">
-          <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-neutral-100 dark:bg-neutral-900/90 border border-neutral-200/80 dark:border-neutral-800 min-w-full sm:min-w-0">
+      {/* Expanded Content Dropdown */}
+      {isExpanded && (
+        <div className="pt-4 mt-3 border-t border-neutral-100 dark:border-neutral-800 space-y-5 animate-in fade-in duration-150">
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            Recovery readiness, 30-day category breakdown, race progression curves, and aerobic foundation
+          </p>
+
+          {/* Real-time Math-based Recovery Bar */}
+          <RecoveryBar runs={runs} maxHeartRate={maxHeartRate} />
+
+          {/* Mobile-Friendly Horizontally Scrollable Segmented Tab Control */}
+          <div className="w-full overflow-x-auto no-scrollbar scroll-smooth -mx-1 px-1">
+            <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-neutral-100 dark:bg-neutral-900/90 border border-neutral-200/80 dark:border-neutral-800 min-w-full sm:min-w-0">
             <button
               onClick={() => {
                 setActiveTab('categories_30d');
@@ -267,7 +292,6 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
             </button>
           </div>
         </div>
-      </div>
 
       {/* Tab 1: 30-Day Category Breakdown Pie Chart */}
       {activeTab === 'categories_30d' && (
@@ -666,6 +690,8 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
               </span>
             )}
           </div>
+        </div>
+      )}
         </div>
       )}
     </div>

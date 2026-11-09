@@ -8,6 +8,7 @@ import {
   calculatePaceSecPerKm,
   isAerobicRun,
   isIntervalRun,
+  isHillRun,
   MILES_TO_KM,
   KM_TO_MILES,
 } from '../utils/runningCalculations';
@@ -32,6 +33,7 @@ import {
   PlusCircle,
   Clock,
   Target,
+  Mountain,
 } from 'lucide-react';
 import { IntervalCalibrationModal } from './IntervalCalibrationModal';
 
@@ -162,6 +164,8 @@ const CATEGORY_CHOICES: { label: string; value: RunType }[] = [
   { label: '6K Time Trial', value: '6K Time Trial' },
   { label: 'Aerobic Run', value: 'Aerobic' },
   { label: 'Interval Training', value: 'Interval Training' },
+  { label: 'Hill Repeats', value: 'Hill Repeats' },
+  { label: 'Hill Run', value: 'Hill Run' },
   { label: 'Tempo / Threshold', value: 'Tempo' },
   { label: 'Aerobic Long Run', value: 'Long Run' },
   { label: 'Race', value: 'Race' },
@@ -185,6 +189,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
   savedDefaultInterval,
   onSaveDefaultInterval,
 }) => {
+  const [isSectionExpanded, setIsSectionExpanded] = useState(false);
   const [selectedZoneFilter, setSelectedZoneFilter] = useState<number | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isEditingMaxHr, setIsEditingMaxHr] = useState(false);
@@ -451,77 +456,104 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
   const displayedRuns = shouldShowAll ? filteredRuns : filteredRuns.slice(0, 1);
 
   return (
-    <div className="rounded-2xl bg-[#FCFFFF] dark:bg-[#12222f] border border-neutral-200/90 dark:border-neutral-800 shadow-xs p-5 sm:p-6 transition-colors">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <div>
-          <div className="flex items-center space-x-2.5">
-            <div className="w-8 h-8 rounded-xl bg-[#0593C6]/10 text-[#0593C6] flex items-center justify-center">
-              <Watch className="w-4 h-4 stroke-[2.2]" />
-            </div>
-            <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white tracking-tight">
-              Garmin & Fitness Watch Telemetry
-            </h2>
+    <div className="rounded-2xl bg-[#FCFFFF] dark:bg-[#12222f] border border-neutral-200/90 dark:border-neutral-800 shadow-xs p-4 sm:p-5 transition-colors">
+      {/* Clickable Dropdown Header (Resting state shows only title) */}
+      <button
+        type="button"
+        onClick={() => setIsSectionExpanded(!isSectionExpanded)}
+        className="w-full flex items-center justify-between text-left cursor-pointer group"
+      >
+        <div className="flex items-center space-x-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-xl bg-[#0593C6]/15 text-[#0593C6] flex items-center justify-center shrink-0">
+            <Watch className="w-4 h-4 stroke-[2.2]" />
           </div>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-            Peak pace benchmarks, maximum cardiac load, 5-zone cardiovascular distribution, and unified activity logs
-          </p>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base sm:text-lg font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight group-hover:text-[#0593C6] transition-colors">
+                Garmin & Fitness Watch Telemetry
+              </h2>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#0593C6]/10 text-[#0593C6]">
+                {runs.length} Activities Logged
+              </span>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#10B981]/10 text-[#10B981] dark:text-[#34d399] tabular-nums hidden sm:inline">
+                Max HR: {maxHrToUse} bpm
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* Max HR Baseline Setting */}
-        <div className="flex items-center space-x-2 self-start sm:self-auto">
-          {isEditingMaxHr ? (
-            <form onSubmit={handleSaveMaxHr} className="flex items-center space-x-1.5">
-              <span className="text-xs text-neutral-500 font-medium">Max HR:</span>
-              <input
-                type="number"
-                min={140}
-                max={230}
-                value={tempMaxHr}
-                onChange={(e) => setTempMaxHr(parseInt(e.target.value, 10) || 195)}
-                className="w-16 px-2 py-1 text-xs rounded-lg border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-white font-bold"
-                autoFocus
-              />
-              <button
-                type="submit"
-                className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#0593C6] text-white cursor-pointer"
-              >
-                Save
-              </button>
+        {/* Dropdown Chevron */}
+        <div className="flex items-center space-x-2 shrink-0 ml-2">
+          <div className={`p-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-500 transition-transform duration-200 ${isSectionExpanded ? 'rotate-180' : ''}`}>
+            <ChevronDown className="w-4 h-4" />
+          </div>
+        </div>
+      </button>
+
+      {/* Expanded Content Dropdown */}
+      {isSectionExpanded && (
+        <div className="pt-4 mt-3 border-t border-neutral-100 dark:border-neutral-800 space-y-6 animate-in fade-in duration-150">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              Peak pace benchmarks, maximum cardiac load, 5-zone cardiovascular distribution, and unified activity logs
+            </p>
+
+            {/* Max HR Baseline Setting */}
+            <div className="flex items-center space-x-2 self-start sm:self-auto shrink-0">
+              {isEditingMaxHr ? (
+                <form onSubmit={handleSaveMaxHr} className="flex items-center space-x-1.5">
+                  <span className="text-xs text-neutral-500 font-medium">Max HR:</span>
+                  <input
+                    type="number"
+                    min={140}
+                    max={230}
+                    value={tempMaxHr}
+                    onChange={(e) => setTempMaxHr(parseInt(e.target.value, 10) || 195)}
+                    className="w-16 px-2 py-1 text-xs rounded-lg border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-white font-bold"
+                    autoFocus
+                  />
+                  <button
+                    type="submit"
+                    className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#0593C6] text-white cursor-pointer"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingMaxHr(false)}
+                    className="px-2 py-1 rounded-lg text-xs text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTempMaxHr(maxHrToUse);
+                    setIsEditingMaxHr(true);
+                  }}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 transition-colors cursor-pointer border border-neutral-200 dark:border-neutral-700"
+                  title="Calibrate your physiological Max Heart Rate"
+                >
+                  <Sliders className="w-3.5 h-3.5 text-[#10B981]" />
+                  <span>
+                    Max HR: <strong className="font-bold text-neutral-900 dark:text-white tabular-nums">{maxHrToUse} bpm</strong>
+                  </span>
+                </button>
+              )}
+
               <button
                 type="button"
-                onClick={() => setIsEditingMaxHr(false)}
-                className="px-2 py-1 rounded-lg text-xs text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 cursor-pointer"
+                onClick={() => setShowZoneDetails(!showZoneDetails)}
+                className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer border border-neutral-200 dark:border-neutral-700"
+                title="Toggle Zone Details"
+                aria-label="Toggle Zone Details"
               >
-                Cancel
+                <Info className="w-4 h-4 text-neutral-500" />
               </button>
-            </form>
-          ) : (
-            <button
-              onClick={() => {
-                setTempMaxHr(maxHrToUse);
-                setIsEditingMaxHr(true);
-              }}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 transition-colors cursor-pointer border border-neutral-200 dark:border-neutral-700"
-              title="Calibrate your physiological Max Heart Rate"
-            >
-              <Sliders className="w-3.5 h-3.5 text-[#10B981]" />
-              <span>
-                Max HR: <strong className="font-bold text-neutral-900 dark:text-white tabular-nums">{maxHrToUse} bpm</strong>
-              </span>
-            </button>
-          )}
-
-          <button
-            onClick={() => setShowZoneDetails(!showZoneDetails)}
-            className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer border border-neutral-200 dark:border-neutral-700"
-            title="Toggle Zone Details"
-            aria-label="Toggle Zone Details"
-          >
-            <Info className="w-4 h-4 text-neutral-500" />
-          </button>
-        </div>
-      </div>
+            </div>
+          </div>
 
       {/* Top 3 Key Highlights Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -1018,6 +1050,14 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                             <ChevronDown className="w-2.5 h-2.5 text-neutral-500 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                           </div>
 
+                          {/* Hill Run Badge */}
+                          {isHillRun(run.runType, run.title) && (
+                            <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                              <Mountain className="w-2.5 h-2.5" />
+                              <span>Hill{run.elevationGainMeters ? ` +${run.elevationGainMeters}m` : ''}</span>
+                            </span>
+                          )}
+
                           {/* Fastest Pace Badge */}
                           {isFastestRun && (
                             <span className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#30d158]/15 text-[#30d158]">
@@ -1233,20 +1273,22 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
             )}
           </div>
         )}
-
-        {/* Interval & Rest Calibration Modal for any existing workout */}
-        {calibratingRun && (
-          <IntervalCalibrationModal
-            isOpen={!!calibratingRun}
-            onClose={() => setCalibratingRun(null)}
-            run={calibratingRun}
-            unit={unit}
-            onSaveInterval={handleSaveIntervalForRun}
-            savedDefaultInterval={savedDefaultInterval}
-            onSaveDefaultInterval={onSaveDefaultInterval}
-          />
-        )}
       </div>
+        </div>
+      )}
+
+      {/* Interval & Rest Calibration Modal for any existing workout */}
+      {calibratingRun && (
+        <IntervalCalibrationModal
+          isOpen={!!calibratingRun}
+          onClose={() => setCalibratingRun(null)}
+          run={calibratingRun}
+          unit={unit}
+          onSaveInterval={handleSaveIntervalForRun}
+          savedDefaultInterval={savedDefaultInterval}
+          onSaveDefaultInterval={onSaveDefaultInterval}
+        />
+      )}
     </div>
   );
 };

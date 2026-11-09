@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { UserProfile, AdherenceSummary } from '../types/running';
 import {
   formatDuration,
   formatPace,
   calculateTargetCutoff,
 } from '../utils/runningCalculations';
-import { Trophy, Target, Edit2, Calendar, Clock, TrendingDown, CheckCircle2, Flame, Share2 } from 'lucide-react';
+import { Trophy, Target, Edit2, Calendar, Clock, TrendingDown, CheckCircle2, Flame, Share2, ChevronDown } from 'lucide-react';
 
 interface GoalBannerProps {
   profile: UserProfile;
@@ -22,6 +22,7 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
   onEditGoal,
   onShare,
 }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
   const targetDistKm = profile.targetDistanceKm || 6.0;
   const targetSec = profile.target6kTimeSeconds;
   const currentSec = best6kSec || profile.current6kPrSeconds;
@@ -65,51 +66,81 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
   const projectedCardLabel = targetDistKm === 6 ? 'Fastest Projected 6K Time' : `Fastest Projected ${targetDistKm}K Time`;
 
   return (
-    <div className="rounded-2xl bg-white dark:bg-[#111c24] border border-neutral-200 dark:border-neutral-800 shadow-xs p-5 sm:p-6 transition-colors">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
-        <div>
-          <div className="flex items-center space-x-2">
-            <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white tracking-tight">
-              {distTitle}
-            </h2>
-            <button
-              onClick={onEditGoal}
-              className="p-1 rounded-md text-neutral-400 hover:text-[#0593C6] dark:hover:text-[#38bdf8] hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
-              title="Edit Target Benchmark"
-              aria-label="Edit Target"
-            >
-              <Edit2 className="w-3.5 h-3.5" />
-            </button>
+    <div className="rounded-2xl bg-[#FCFFFF] dark:bg-[#12222f] border border-neutral-200/90 dark:border-neutral-800 shadow-xs p-4 sm:p-5 transition-colors">
+      {/* Clickable Dropdown Header (Resting state shows only title) */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between text-left cursor-pointer group"
+      >
+        <div className="flex items-center space-x-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-xl bg-[#0593C6]/15 text-[#0593C6] flex items-center justify-center shrink-0">
+            <Target className="w-4 h-4 stroke-[2.2]" />
           </div>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-            Structured distance conditioning and microcycle pacing ({targetDistKm.toFixed(1)} km benchmark)
-          </p>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base sm:text-lg font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight group-hover:text-[#0593C6] transition-colors">
+                {distTitle}
+              </h2>
+              {goalAchieved ? (
+                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-[#10B981]/15 text-[#10B981] dark:text-[#34d399] text-[10px] font-bold">
+                  <Trophy className="w-3 h-3" />
+                  <span>Target Achieved</span>
+                </span>
+              ) : targetTotalTimeSec ? (
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#0593C6]/10 text-[#0593C6]">
+                  {distCardLabel}: {formatDuration(targetTotalTimeSec)}
+                </span>
+              ) : null}
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center space-x-2 self-start sm:self-auto">
+        {/* Action Controls & Dropdown Chevron */}
+        <div className="flex items-center space-x-2 shrink-0 ml-2">
           {onShare && (
             <button
-              onClick={onShare}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition-all cursor-pointer shadow-xs active:scale-95"
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onShare();
+              }}
+              className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition-all cursor-pointer shadow-xs active:scale-95"
               title="Show off progress to friends"
             >
               <Share2 className="w-3.5 h-3.5" />
-              <span>Show Off</span>
+              <span className="hidden sm:inline">Show Off</span>
             </button>
           )}
 
-          {goalAchieved && (
-            <div className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#10B981]/10 text-[#10B981] dark:text-[#34d399] text-xs font-bold border border-[#10B981]/20">
-              <Trophy className="w-3.5 h-3.5" />
-              <span>Target Benchmark Achieved</span>
-            </div>
-          )}
-        </div>
-      </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEditGoal();
+            }}
+            className="p-1.5 rounded-lg text-neutral-400 hover:text-[#0593C6] dark:hover:text-[#38bdf8] hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+            title="Edit Target Benchmark"
+            aria-label="Edit Target"
+          >
+            <Edit2 className="w-3.5 h-3.5" />
+          </button>
 
-      {/* Primary Metrics Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
+          <div className={`p-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+            <ChevronDown className="w-4 h-4" />
+          </div>
+        </div>
+      </button>
+
+      {/* Expanded Content Dropdown */}
+      {isExpanded && (
+        <div className="pt-4 mt-3 border-t border-neutral-100 dark:border-neutral-800 space-y-5 animate-in fade-in duration-150">
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            Structured distance conditioning and microcycle pacing ({targetDistKm.toFixed(1)} km benchmark)
+          </p>
+
+          {/* Primary Metrics Grid */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Target Distance Time */}
         <div className="p-4 rounded-xl bg-neutral-50 dark:bg-[#0c151c] border border-neutral-200/80 dark:border-neutral-800/80 flex flex-col justify-between">
           <div className="flex items-center justify-between text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">
@@ -267,5 +298,7 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
         )}
       </div>
     </div>
+  )}
+</div>
   );
 };

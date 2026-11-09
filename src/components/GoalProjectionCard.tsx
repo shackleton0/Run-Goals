@@ -34,6 +34,7 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
   best6kSec,
   onOpenSettings,
 }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
   const [selectedScenario, setSelectedScenario] = useState<'expected' | 'accelerated' | 'conservative'>('expected');
   const [showMethodology, setShowMethodology] = useState(false);
 
@@ -52,32 +53,49 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
 
   const unit = profile.unitPreference || 'km';
 
-  // If no target set, render clean prompt card
+  // If no target set, render clean prompt card as collapsible dropdown
   if (!projection.hasTarget) {
     return (
-      <div className="rounded-2xl bg-[#FCFFFF] dark:bg-[#12222f] border border-neutral-200/90 dark:border-neutral-800 shadow-xs p-5 sm:p-6 transition-colors">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-start space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-[#0593C6]/10 text-[#0593C6] flex items-center justify-center shrink-0 mt-0.5">
-              <Target className="w-5 h-5" />
+      <div className="rounded-2xl bg-[#FCFFFF] dark:bg-[#12222f] border border-neutral-200/90 dark:border-neutral-800 shadow-xs p-4 sm:p-5 transition-colors">
+        <button
+          type="button"
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="w-full flex items-center justify-between text-left cursor-pointer group"
+        >
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 rounded-xl bg-[#0593C6]/10 text-[#0593C6] flex items-center justify-center shrink-0">
+              <Target className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight">
-                Goal Progression & Estimated Time to Goal
+              <h2 className="text-base sm:text-lg font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight group-hover:text-[#0593C6] transition-colors">
+                Goal Projection & Timeframe
               </h2>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 max-w-xl">
-                Set a target time for your {targetDistKm}K to calculate your future progression trajectory, estimated weeks remaining, and intermediate split milestones.
-              </p>
             </div>
           </div>
 
-          <button
-            onClick={onOpenSettings}
-            className="px-4 py-2 rounded-full bg-[#0593C6] hover:bg-[#047da8] text-[#FCFFFF] font-semibold text-xs transition-colors cursor-pointer shrink-0 shadow-xs"
-          >
-            Set Goal Time
-          </button>
-        </div>
+          <div className="flex items-center space-x-2">
+            <span className="text-[11px] font-semibold text-neutral-400 dark:text-neutral-500 hidden sm:inline">
+              Target Not Set
+            </span>
+            <div className={`p-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+              <ChevronDown className="w-4 h-4" />
+            </div>
+          </div>
+        </button>
+
+        {isExpanded && (
+          <div className="pt-4 mt-3 border-t border-neutral-100 dark:border-neutral-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 animate-in fade-in duration-150">
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-xl">
+              Set a target time for your {targetDistKm}K to calculate your future progression trajectory, estimated weeks remaining, and intermediate split milestones.
+            </p>
+            <button
+              onClick={onOpenSettings}
+              className="px-4 py-2 rounded-full bg-[#0593C6] hover:bg-[#047da8] text-[#FCFFFF] font-semibold text-xs transition-colors cursor-pointer shrink-0 shadow-xs"
+            >
+              Set Goal Time
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -85,37 +103,53 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
   const activeScenarioData = projection.scenarios[selectedScenario];
 
   return (
-    <div className="rounded-2xl bg-[#FCFFFF] dark:bg-[#12222f] border border-neutral-200/90 dark:border-neutral-800 shadow-xs p-5 sm:p-6 transition-colors">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
-        <div>
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-xl bg-[#0593C6]/15 text-[#0593C6] flex items-center justify-center shrink-0">
-              <TrendingDown className="w-4 h-4 stroke-[2.5]" />
-            </div>
-            <h2 className="text-lg font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight">
-              Goal Projection & Timeframe
-            </h2>
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#0593C6]/10 text-[#0593C6]">
-              {projection.confidence}
-            </span>
+    <div className="rounded-2xl bg-[#FCFFFF] dark:bg-[#12222f] border border-neutral-200/90 dark:border-neutral-800 shadow-xs p-4 sm:p-5 transition-colors">
+      {/* Clickable Dropdown Header (Resting state shows only title) */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between text-left cursor-pointer group"
+      >
+        <div className="flex items-center space-x-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-xl bg-[#0593C6]/15 text-[#0593C6] flex items-center justify-center shrink-0">
+            <TrendingDown className="w-4 h-4 stroke-[2.5]" />
           </div>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-            Projected trajectory and estimated weeks remaining until target {targetDistKm} km time is achieved
-          </p>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base sm:text-lg font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight group-hover:text-[#0593C6] transition-colors">
+                Goal Projection & Timeframe
+              </h2>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#0593C6]/10 text-[#0593C6]">
+                {projection.isAchieved ? 'Achieved 🎯' : `~${activeScenarioData.weeks} Weeks (${projection.confidence})`}
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* Action / Methodology Toggle */}
-        <div className="flex items-center space-x-2 self-start sm:self-auto">
-          <button
-            onClick={() => setShowMethodology(!showMethodology)}
-            className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 transition-colors cursor-pointer"
-          >
-            <Info className="w-3.5 h-3.5 text-neutral-500" />
-            <span>{showMethodology ? 'Hide Model' : 'Projection Science'}</span>
-          </button>
+        {/* Chevron Dropdown Toggle */}
+        <div className="flex items-center space-x-2 shrink-0 ml-2">
+          <div className={`p-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+            <ChevronDown className="w-4 h-4" />
+          </div>
         </div>
-      </div>
+      </button>
+
+      {/* Expanded Content Dropdown */}
+      {isExpanded && (
+        <div className="pt-4 mt-3 border-t border-neutral-100 dark:border-neutral-800 space-y-5 animate-in fade-in duration-150">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              Projected trajectory and estimated weeks remaining until target {targetDistKm} km time is achieved
+            </p>
+
+            <button
+              onClick={() => setShowMethodology(!showMethodology)}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 transition-colors cursor-pointer self-start sm:self-auto"
+            >
+              <Info className="w-3.5 h-3.5 text-neutral-500" />
+              <span>{showMethodology ? 'Hide Model' : 'Projection Science'}</span>
+            </button>
+          </div>
 
       {/* Projection Highlights: When Achieved vs In Progress */}
       {projection.isAchieved ? (
@@ -373,25 +407,27 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
         </div>
       )}
 
-      {/* Expandable Methodology Explanation */}
-      {showMethodology && (
-        <div className="mt-4 p-4 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-600 dark:text-neutral-300 space-y-2 animate-in fade-in duration-200">
-          <div className="font-semibold text-neutral-900 dark:text-white">
-            Projection Calculation Model
-          </div>
-          <p className="text-[11px] leading-relaxed">
-            {projection.basisDescription}
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
-            <div>
-              <strong className="text-neutral-800 dark:text-neutral-200 block">Aerobic Adaptation Formula:</strong>
-              Each quality session (Intervals + Lactate Tempo + Aerobic Long Run) produces neuromuscular and mitochondrial density adaptations yielding 12s-18s 6K race improvement per week.
+        {/* Expandable Methodology Explanation */}
+        {showMethodology && (
+          <div className="mt-4 p-4 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-600 dark:text-neutral-300 space-y-2 animate-in fade-in duration-200">
+            <div className="font-semibold text-neutral-900 dark:text-white">
+              Projection Calculation Model
             </div>
-            <div>
-              <strong className="text-neutral-800 dark:text-neutral-200 block">Timeline Calibration:</strong>
-              Estimated weeks remaining = <code className="bg-neutral-200/60 dark:bg-neutral-800 px-1 py-0.5 rounded-xs font-mono text-neutral-900 dark:text-white">GapSeconds / WeeklyProgressionRate</code>.
+            <p className="text-[11px] leading-relaxed">
+              {projection.basisDescription}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+              <div>
+                <strong className="text-neutral-800 dark:text-neutral-200 block">Aerobic Adaptation Formula:</strong>
+                Each quality session (Intervals + Lactate Tempo + Aerobic Long Run) produces neuromuscular and mitochondrial density adaptations yielding 12s-18s 6K race improvement per week.
+              </div>
+              <div>
+                <strong className="text-neutral-800 dark:text-neutral-200 block">Timeline Calibration:</strong>
+                Estimated weeks remaining = <code className="bg-neutral-200/60 dark:bg-neutral-800 px-1 py-0.5 rounded-xs font-mono text-neutral-900 dark:text-white">GapSeconds / WeeklyProgressionRate</code>.
+              </div>
             </div>
           </div>
+        )}
         </div>
       )}
     </div>

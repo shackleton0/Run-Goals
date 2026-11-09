@@ -23,6 +23,8 @@ import {
   isRunInCurrentWeek,
   calculateIntervalMetrics,
   getSuggestedWeeklySchedule,
+  isHillRun,
+  calculateMonthlyConsistency,
 } from './runningCalculations';
 import { RunRecord } from '../types/running';
 
@@ -443,6 +445,34 @@ test('getSuggestedWeeklySchedule calibrates paces from real improvement data whe
   assert.ok(planReal.slots[0].suggestedPaceFormatted);
   assert.ok(planReal.slots[1].suggestedPaceFormatted);
   assert.ok(planReal.slots[2].suggestedPaceFormatted);
+});
+
+test('isHillRun only labels run as hill workout if explicit runType option was selected', () => {
+  assert.equal(isHillRun('Hill Repeats'), true);
+  assert.equal(isHillRun('Hill Run'), true);
+  assert.equal(isHillRun('Easy', '8x200m Hill Sprints'), false); // Only labeled if explicit option selected
+  assert.equal(isHillRun('Easy', 'Morning Jog'), false);
+  assert.equal(isHillRun('Aerobic', 'Rolling Hills 5K'), false);
+});
+
+test('calculateMonthlyConsistency computes month-to-date volume, 4 actual weeks breakdown, and hill stats', () => {
+  const novemberRuns: RunRecord[] = [
+    { id: 'r1', userId: 'u1', date: '2026-11-02', title: '6x200m Hill Repeats', distanceKm: 6, durationSeconds: 1500, averagePaceSecPerKm: 250, runType: 'Hill Repeats', elevationGainMeters: 120, source: 'manual' },
+    { id: 'r2', userId: 'u1', date: '2026-11-04', title: '6K Tempo', distanceKm: 6, durationSeconds: 1440, averagePaceSecPerKm: 240, runType: 'Tempo', elevationGainMeters: 30, source: 'manual' },
+    { id: 'r3', userId: 'u1', date: '2026-11-07', title: 'Aerobic Long Run', distanceKm: 12, durationSeconds: 3600, averagePaceSecPerKm: 300, runType: 'Long Run', elevationGainMeters: 80, source: 'manual' },
+  ];
+
+  const analysis = calculateMonthlyConsistency(novemberRuns, 24, 3, new Date('2026-11-15'));
+  assert.equal(analysis.monthName, 'November');
+  assert.equal(analysis.totalDistanceKm, 24.0);
+  assert.equal(analysis.totalRuns, 3);
+  assert.equal(analysis.hillRunsCount, 1);
+  assert.equal(analysis.totalElevationGainMeters, 230); // Elevation reflects all runs
+  assert.equal(analysis.weeks.length, 4); // Exactly 4 actual weeks in month
+  assert.equal(analysis.weeks[0].dateRangeLabel, 'Nov 1 – Nov 7');
+  assert.equal(analysis.weeks[1].dateRangeLabel, 'Nov 8 – Nov 14');
+  assert.equal(analysis.weeks[2].dateRangeLabel, 'Nov 15 – Nov 21');
+  assert.equal(analysis.weeks[3].dateRangeLabel, 'Nov 22 – Nov 30');
 });
 
 

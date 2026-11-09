@@ -8,7 +8,9 @@ export type RunType =
   | 'Race'
   | 'Easy'
   | 'Intervals'
-  | 'Recovery';
+  | 'Recovery'
+  | 'Hill Repeats'
+  | 'Hill Run';
 
 export interface IntervalDetails {
   targetPaceSecPerKm?: number; // Target / Aimed interval pace in seconds per km (e.g. 210 for 3:30/km)
@@ -36,6 +38,8 @@ export interface RunRecord {
   maxHeartRate?: number;
   avgCadence?: number; // SPM
   elevationGainMeters?: number;
+  hillReps?: number;
+  hillGradePercent?: number;
   source: 'garmin' | 'garmin_tcx' | 'garmin_gpx' | 'garmin_csv' | 'manual';
   notes?: string;
   garminActivityId?: string;
