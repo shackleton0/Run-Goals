@@ -65,36 +65,36 @@ export const Navbar: React.FC<NavbarProps> = ({
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#0c151c]/95 backdrop-blur-md border-b border-neutral-200 dark:border-neutral-800 transition-colors">
+    <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#09121B]/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-xs transition-colors">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between h-16 gap-4">
           {/* Brand Identity */}
           <div className="flex items-center space-x-3 shrink-0">
-            <div className="w-9 h-9 rounded-xl bg-[#0593C6] text-white flex items-center justify-center font-bold shadow-xs">
-              <Activity className="w-5 h-5 stroke-[2.4]" />
+            <div className="w-9 h-9 rounded-xl bg-[#0593C6] text-[#FCFFFF] flex items-center justify-center font-bold shadow-xs">
+              <Activity className="w-5 h-5 stroke-[2.5]" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="font-extrabold text-base sm:text-lg tracking-tight text-neutral-900 dark:text-white uppercase font-sans">
+                <span className="font-extrabold text-base sm:text-lg tracking-tight text-slate-900 dark:text-white uppercase font-sans">
                   RunGoals
                 </span>
               </div>
-              <p className="text-[10px] text-neutral-400 dark:text-neutral-500 font-medium">
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
                 Distance Performance Telemetry
               </p>
             </div>
           </div>
 
           {/* Right Action Controls */}
-          <div className="flex items-center space-x-2 shrink-0">
-            {/* Sync Garmin Action */}
+          <div className="flex items-center space-x-2.5 shrink-0">
+            {/* Sync Data Action */}
             <button
               onClick={onOpenGarminSync}
-              className="flex items-center space-x-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-[#0593C6] hover:bg-[#047da8] text-white transition-colors cursor-pointer shadow-xs"
-              aria-label="Sync Garmin"
+              className="flex items-center space-x-1.5 px-3.5 py-2 min-h-[40px] rounded-xl text-xs font-bold bg-[#0593C6] hover:bg-[#047ea8] active:scale-[0.96] text-white transition-all cursor-pointer shadow-sm"
+              aria-label="Sync Data"
             >
               <UploadCloud className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Sync Garmin</span>
+              <span className="hidden sm:inline">Sync Data</span>
               <span className="sm:hidden">Sync</span>
             </button>
 
@@ -102,10 +102,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                className={`flex items-center space-x-2 px-3.5 py-2 min-h-[40px] rounded-xl text-xs font-bold border transition-all cursor-pointer active:scale-[0.96] ${
                   isDropdownOpen
-                    ? 'bg-neutral-100 dark:bg-neutral-800 border-[#0593C6] text-neutral-900 dark:text-white'
-                    : 'bg-white hover:bg-neutral-100 dark:bg-[#111c24] dark:hover:bg-[#16232e] text-neutral-800 dark:text-neutral-200 border-neutral-200 dark:border-neutral-800'
+                    ? 'bg-sky-50 dark:bg-sky-950/60 border-[#0EA5E9] text-slate-900 dark:text-white shadow-sm'
+                    : 'bg-slate-50 hover:bg-slate-100 dark:bg-[#132232] dark:hover:bg-[#182B3E] text-slate-800 dark:text-slate-100 border-slate-300 dark:border-slate-700'
                 }`}
                 aria-expanded={isDropdownOpen}
                 aria-haspopup="true"
@@ -114,35 +114,40 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <img
                     src={user.photoURL}
                     alt=""
-                    className="w-4 h-4 rounded-full border border-neutral-300 dark:border-neutral-700"
+                    className="w-4 h-4 rounded-full border border-slate-300 dark:border-slate-600"
                   />
                 ) : (
-                  <Settings className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300" />
+                  <Settings className="w-3.5 h-3.5 text-[#0EA5E9]" />
                 )}
-                <span className="hidden sm:inline">Menu</span>
+                <span>Menu</span>
                 <ChevronDown
-                  className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${
-                    isDropdownOpen ? 'rotate-180' : ''
+                  className={`w-3.5 h-3.5 text-slate-500 dark:text-slate-300 transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                    isDropdownOpen ? 'rotate-180 text-[#0EA5E9]' : ''
                   }`}
                 />
               </button>
 
-              {/* Dropdown Popover */}
-              {isDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-64 rounded-xl bg-white dark:bg-[#111c24] border border-neutral-200 dark:border-neutral-800 shadow-xl py-1.5 z-50 text-xs transition-all">
-                  {/* Tool Actions */}
-                  <div className="px-1.5 py-1 space-y-0.5">
-                    {/* Log Run in Dropdown Menu */}
-                    <button
-                      onClick={() => {
-                        setIsDropdownOpen(false);
-                        onOpenAddRun();
-                      }}
-                      className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-left cursor-pointer group"
-                    >
-                      <div className="w-6 h-6 rounded-md bg-[#10B981]/15 text-[#10B981] flex items-center justify-center group-hover:bg-[#10B981] group-hover:text-white transition-colors">
-                        <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                      </div>
+              {/* Dropdown Popover with snappy 150ms enter/exit transition */}
+              <div
+                className={`absolute right-0 mt-2 w-64 rounded-xl bg-white dark:bg-[#0F1C28] border border-slate-200 dark:border-slate-700 shadow-2xl py-1.5 z-50 text-xs origin-top-right transition-all duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                  isDropdownOpen
+                    ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto visible'
+                    : 'opacity-0 scale-95 -translate-y-1.5 pointer-events-none invisible'
+                }`}
+              >
+                {/* Tool Actions */}
+                <div className="px-1.5 py-1 space-y-0.5">
+                  {/* Log Run in Dropdown Menu */}
+                  <button
+                    onClick={() => {
+                      setIsDropdownOpen(false);
+                      onOpenAddRun();
+                    }}
+                    className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 active:bg-neutral-200/80 dark:active:bg-neutral-700/80 transition-colors text-left cursor-pointer group"
+                  >
+                    <div className="w-6 h-6 rounded-md bg-[#10B981]/15 text-[#10B981] flex items-center justify-center group-hover:bg-[#10B981] group-hover:text-white transition-colors">
+                      <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                    </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-neutral-900 dark:text-white flex items-center justify-between">
                           <span>Log Run</span>
@@ -205,8 +210,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                         <UploadCloud className="w-3.5 h-3.5" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-neutral-900 dark:text-white">Garmin & Watch Sync</div>
-                        <div className="text-[10px] text-neutral-500 truncate">Upload FIT/CSV training files</div>
+                        <div className="font-semibold text-neutral-900 dark:text-white">Sync Data</div>
+                        <div className="text-[10px] text-neutral-500 truncate">Upload FIT/CSV watch & training files</div>
                       </div>
                     </button>
 
@@ -295,7 +300,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                     )}
                   </div>
                 </div>
-              )}
             </div>
           </div>
         </div>

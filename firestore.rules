@@ -57,7 +57,8 @@ service cloud.firestore {
         && (!('averagePaceSecPerKm' in data) || (data.averagePaceSecPerKm is number))
         && (!('best6kTimeSeconds' in data) || (data.best6kTimeSeconds is number))
         && (!('targetEquivalentSeconds' in data) || (data.targetEquivalentSeconds is number))
-        && data.runType in ['Aerobic', 'Interval Training', '6K Time Trial', 'Time Trial', 'Tempo', 'Long Run', 'Race', 'Easy', 'Intervals', 'Recovery']
+        && data.runType in ['Aerobic', 'Interval Training', '6K Time Trial', 'Time Trial', 'Tempo', 'Long Run', 'Race', 'Easy', 'Intervals', 'Recovery', 'Hill Repeats', 'Hill Run']
+        && (!('slotId' in data) || (data.slotId is string && data.slotId.size() <= 32))
         && (!('avgHeartRate' in data) || (data.avgHeartRate is number))
         && (!('maxHeartRate' in data) || (data.maxHeartRate is number))
         && (!('avgCadence' in data) || (data.avgCadence is number))

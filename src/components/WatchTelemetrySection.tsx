@@ -456,27 +456,29 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
   const displayedRuns = shouldShowAll ? filteredRuns : filteredRuns.slice(0, 1);
 
   return (
-    <div className="rounded-2xl bg-[#FCFFFF] dark:bg-[#12222f] border border-neutral-200/90 dark:border-neutral-800 shadow-xs p-4 sm:p-5 transition-colors">
-      {/* Clickable Dropdown Header (Resting state shows only title) */}
+    <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#0F1C28] border border-slate-200/95 dark:border-slate-700/75 shadow-sm transition-colors">
+      {/* Full-bleed sensitive Dropdown Header */}
       <button
         type="button"
-        onClick={() => setIsSectionExpanded(!isSectionExpanded)}
-        className="w-full flex items-center justify-between text-left cursor-pointer group"
+        onClick={() => setIsSectionExpanded((prev) => !prev)}
+        className="w-full px-4 py-4 sm:px-5 sm:py-4.5 flex items-center justify-between text-left cursor-pointer group accordion-trigger select-none hover:bg-slate-50/90 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/70"
+        data-no-scale
+        aria-expanded={isSectionExpanded}
       >
-        <div className="flex items-center space-x-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-[#0593C6]/15 text-[#0593C6] flex items-center justify-center shrink-0">
-            <Watch className="w-4 h-4 stroke-[2.2]" />
+        <div className="flex items-center space-x-3 min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-rose-500 flex items-center justify-center shrink-0 transition-transform duration-150 group-hover:scale-105">
+            <Watch className="w-4.5 h-4.5 stroke-[2.3]" />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base sm:text-lg font-bold text-neutral-900 dark:text-[#FCFFFF] tracking-tight group-hover:text-[#0593C6] transition-colors">
+              <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight transition-colors">
                 Garmin & Fitness Watch Telemetry
               </h2>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#0593C6]/10 text-[#0593C6]">
-                {runs.length} Activities Logged
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums">
+                · {runs.length} Activities
               </span>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#10B981]/10 text-[#10B981] dark:text-[#34d399] tabular-nums hidden sm:inline">
-                Max HR: {maxHrToUse} bpm
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums hidden sm:inline">
+                · Max HR {maxHrToUse} bpm
               </span>
             </div>
           </div>
@@ -484,19 +486,29 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
 
         {/* Dropdown Chevron */}
         <div className="flex items-center space-x-2 shrink-0 ml-2">
-          <div className={`p-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-500 transition-transform duration-200 ${isSectionExpanded ? 'rotate-180' : ''}`}>
+          <div
+            className={`p-2 rounded-lg border chevron-badge transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+              isSectionExpanded
+                ? 'rotate-180 text-slate-900 dark:text-white bg-slate-200/80 dark:bg-slate-700 border-slate-300 dark:border-slate-600'
+                : 'bg-slate-100 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+            }`}
+          >
             <ChevronDown className="w-4 h-4" />
           </div>
         </div>
       </button>
 
-      {/* Expanded Content Dropdown */}
-      {isSectionExpanded && (
-        <div className="pt-4 mt-3 border-t border-neutral-100 dark:border-neutral-800 space-y-6 animate-in fade-in duration-150">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              Peak pace benchmarks, maximum cardiac load, 5-zone cardiovascular distribution, and unified activity logs
-            </p>
+      {/* Expanded Content Dropdown with snappy CSS grid interpolation */}
+      <div
+        className={`accordion-collapse-wrapper ${isSectionExpanded ? 'is-expanded' : ''}`}
+        aria-hidden={!isSectionExpanded}
+      >
+        <div className="accordion-collapse-inner">
+          <div className="px-4 pb-5 pt-4 sm:px-5 border-t border-slate-100 dark:border-slate-800 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                Peak pace benchmarks, maximum cardiac load, 5-zone cardiovascular distribution, and unified activity logs
+              </p>
 
             {/* Max HR Baseline Setting */}
             <div className="flex items-center space-x-2 self-start sm:self-auto shrink-0">
@@ -558,18 +570,18 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
       {/* Top 3 Key Highlights Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         {/* Card 1: Fastest Pace Recorded */}
-        <div className="p-4 rounded-xl bg-neutral-50 dark:bg-[#0c151c] border border-neutral-200/80 dark:border-neutral-800/80 flex flex-col justify-between">
+        <div className="p-4 rounded-xl bg-amber-50/70 dark:bg-amber-950/25 border border-amber-200/80 dark:border-amber-800/60 flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1.5">
+            <div className="flex items-center justify-between text-[10px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider mb-1.5">
               <span>Peak Velocity / Fastest Pace</span>
-              <Zap className="w-4 h-4 text-[#0593C6]" />
+              <Zap className="w-4 h-4 text-amber-500" />
             </div>
 
-            <div className="text-3xl font-extrabold text-neutral-900 dark:text-white tracking-tight tabular-nums mt-1 font-sans">
+            <div className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight tabular-nums mt-1 font-sans">
               {metrics.fastestPaceSec > 0 ? formatPace(metrics.fastestPaceSec, unit) : '--:--'}
             </div>
 
-            <div className="flex items-center space-x-2 text-xs text-neutral-500 dark:text-neutral-400 mt-1 tabular-nums">
+            <div className="flex items-center space-x-2 text-xs text-slate-600 dark:text-slate-300 mt-1 tabular-nums">
               <span>{unit === 'miles' ? `${speedMph} mph` : `${speedKmh} km/h`}</span>
               <span aria-hidden="true">·</span>
               <span>
@@ -578,36 +590,36 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-neutral-200/80 dark:border-neutral-800/80">
+          <div className="mt-4 pt-3 border-t border-amber-200/70 dark:border-amber-800/50">
             {metrics.fastestRun ? (
-              <div className="text-[11px] text-neutral-600 dark:text-neutral-300 truncate">
-                <span className="font-semibold text-neutral-900 dark:text-white">
+              <div className="text-[11px] text-slate-700 dark:text-slate-200 truncate">
+                <span className="font-bold text-slate-900 dark:text-white">
                   {metrics.fastestRun.title}
                 </span>{' '}
                 ({metrics.fastestRun.distanceKm} km in {formatDuration(metrics.fastestRun.durationSeconds)})
               </div>
             ) : (
-              <div className="text-[11px] text-neutral-400">
-                Log a workout or sync Garmin to record your peak speed.
+              <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                Log a workout or sync data to record your peak speed.
               </div>
             )}
           </div>
         </div>
 
         {/* Card 2: Highest Heart Rate Recorded */}
-        <div className="p-4 rounded-xl bg-neutral-50 dark:bg-[#0c151c] border border-neutral-200/80 dark:border-neutral-800/80 flex flex-col justify-between">
+        <div className="p-4 rounded-xl bg-rose-50/70 dark:bg-rose-950/25 border border-rose-200/80 dark:border-rose-800/60 flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1.5">
+            <div className="flex items-center justify-between text-[10px] font-bold text-rose-700 dark:text-rose-300 uppercase tracking-wider mb-1.5">
               <span>Maximum Cardiac Load</span>
-              <Heart className="w-4 h-4 text-[#10B981] fill-[#10B981]/20" />
+              <Heart className="w-4 h-4 text-rose-500 fill-rose-500/20" />
             </div>
 
-            <div className="text-3xl font-extrabold text-[#10B981] dark:text-[#34d399] tracking-tight tabular-nums mt-1 flex items-baseline space-x-1.5 font-sans">
+            <div className="text-3xl font-extrabold text-rose-600 dark:text-rose-400 tracking-tight tabular-nums mt-1 flex items-baseline space-x-1.5 font-sans">
               <span>{metrics.peakHeartRate > 0 ? metrics.peakHeartRate : '--'}</span>
-              <span className="text-sm font-semibold text-neutral-500">BPM</span>
+              <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">BPM</span>
             </div>
 
-            <div className="flex items-center space-x-2 text-xs text-neutral-500 dark:text-neutral-400 mt-1 tabular-nums">
+            <div className="flex items-center space-x-2 text-xs text-slate-600 dark:text-slate-300 mt-1 tabular-nums">
               <span>
                 {metrics.peakHeartRate > 0
                   ? `${Math.round((metrics.peakHeartRate / maxHrToUse) * 100)}% of Max HR`
@@ -620,46 +632,46 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-neutral-200/80 dark:border-neutral-800/80 flex items-center justify-between text-[11px] text-neutral-600 dark:text-neutral-300">
+          <div className="mt-4 pt-3 border-t border-rose-200/70 dark:border-rose-800/50 flex items-center justify-between text-[11px] text-slate-700 dark:text-slate-200">
             <span>Overall Avg HR:</span>
-            <span className="font-semibold text-neutral-900 dark:text-white tabular-nums">
+            <span className="font-bold text-slate-900 dark:text-white tabular-nums">
               {metrics.overallAvgHeartRate > 0 ? `${metrics.overallAvgHeartRate} bpm` : '--'}
             </span>
           </div>
         </div>
 
         {/* Card 3: Fitness Tracker Biometrics Summary */}
-        <div className="p-4 rounded-xl bg-neutral-50 dark:bg-[#0c151c] border border-neutral-200/80 dark:border-neutral-800/80 flex flex-col justify-between">
+        <div className="p-4 rounded-xl bg-cyan-50/70 dark:bg-cyan-950/25 border border-cyan-200/80 dark:border-cyan-800/60 flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1.5">
+            <div className="flex items-center justify-between text-[10px] font-bold text-cyan-700 dark:text-cyan-300 uppercase tracking-wider mb-1.5">
               <span>Biometric Workload & Cadence</span>
-              <Gauge className="w-4 h-4 text-[#0593C6]" />
+              <Gauge className="w-4 h-4 text-cyan-500" />
             </div>
 
             <div className="grid grid-cols-2 gap-3 mt-2">
               <div>
-                <span className="text-[10px] text-neutral-400 uppercase font-semibold">Avg Cadence</span>
-                <div className="text-xl font-extrabold text-neutral-900 dark:text-white tabular-nums">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold">Avg Cadence</span>
+                <div className="text-xl font-extrabold text-slate-900 dark:text-white tabular-nums">
                   {metrics.overallAvgCadence > 0 ? `${metrics.overallAvgCadence} spm` : '--'}
                 </div>
-                <span className="text-[10px] text-neutral-500">
+                <span className="text-[10px] text-slate-600 dark:text-slate-300">
                   {metrics.overallAvgCadence >= 170 ? 'Optimal turnover' : 'Steps per minute'}
                 </span>
               </div>
 
               <div>
-                <span className="text-[10px] text-neutral-400 uppercase font-semibold">Elevation Climb</span>
-                <div className="text-xl font-extrabold text-neutral-900 dark:text-white tabular-nums">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold">Elevation Climb</span>
+                <div className="text-xl font-extrabold text-slate-900 dark:text-white tabular-nums">
                   {metrics.totalElevationMeters > 0 ? `${metrics.totalElevationMeters} m` : '--'}
                 </div>
-                <span className="text-[10px] text-neutral-500">Total vertical gain</span>
+                <span className="text-[10px] text-slate-600 dark:text-slate-300">Total vertical gain</span>
               </div>
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-neutral-200/80 dark:border-neutral-800/80 flex items-center justify-between text-[11px] text-neutral-600 dark:text-neutral-300">
+          <div className="mt-4 pt-3 border-t border-cyan-200/70 dark:border-cyan-800/50 flex items-center justify-between text-[11px] text-slate-700 dark:text-slate-200">
             <span>Synced Activities:</span>
-            <span className="font-semibold text-[#0593C6] tabular-nums">
+            <span className="font-bold text-cyan-600 dark:text-cyan-400 tabular-nums">
               {watchRuns.length} workouts
             </span>
           </div>
@@ -983,8 +995,8 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
               const isCheckedForCombine = selectedCombineIds.has(run.id);
 
               const eqTarget =
-                run.targetEquivalentSeconds ||
                 calculateTargetDistanceEquivalent(run.distanceKm, run.durationSeconds, targetDistanceKm) ||
+                run.targetEquivalentSeconds ||
                 run.best6kTimeSeconds ||
                 0;
               const isPr = best6kSec && eqTarget === best6kSec;
@@ -1273,9 +1285,10 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
             )}
           </div>
         )}
-      </div>
         </div>
-      )}
+      </div>
+    </div>
+  </div>
 
       {/* Interval & Rest Calibration Modal for any existing workout */}
       {calibratingRun && (

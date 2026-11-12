@@ -43,6 +43,7 @@ export interface RunRecord {
   source: 'garmin' | 'garmin_tcx' | 'garmin_gpx' | 'garmin_csv' | 'manual';
   notes?: string;
   garminActivityId?: string;
+  slotId?: 'interval' | 'tempo' | 'long_run';
   // Interval & Rest Calibration metrics
   intervalDetails?: IntervalDetails;
   targetIntervalPaceSecPerKm?: number;

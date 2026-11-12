@@ -40,23 +40,76 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* Mobile tap latency removal */
+  button, 
+  [role="button"],
+  a,
+  input[type="button"],
+  input[type="submit"] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
   /* Premium tactile click and tap animations on interactive elements */
   button, 
   [role="button"],
   input[type="button"],
   input[type="submit"] {
-    transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), 
-                box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), 
-                background-color 0.15s ease, 
-                border-color 0.15s ease, 
-                opacity 0.15s ease;
+    transition: transform 0.1s cubic-bezier(0.16, 1, 0.3, 1), 
+                box-shadow 0.15s cubic-bezier(0.16, 1, 0.3, 1), 
+                background-color 0.12s ease, 
+                border-color 0.12s ease, 
+                opacity 0.12s ease;
   }
 
-  button:active, 
-  [role="button"]:active,
-  input[type="button"]:active,
-  input[type="submit"]:active {
-    transform: scale(0.972);
+  /* Scoped tactile press micro-interaction: exempt wide accordion triggers and cards to prevent jarring page shifts */
+  button:not([data-no-scale]):not(.accordion-trigger):not(.no-press-scale):active, 
+  [role="button"]:not([data-no-scale]):not(.accordion-trigger):not(.no-press-scale):active,
+  input[type="button"]:not([data-no-scale]):not(.accordion-trigger):not(.no-press-scale):active,
+  input[type="submit"]:not([data-no-scale]):not(.accordion-trigger):not(.no-press-scale):active {
+    transform: scale(0.96);
+  }
+
+  /* Full-bleed sensitive accordion header trigger feedback */
+  .accordion-trigger {
+    position: relative;
+    transition: background-color 120ms ease, opacity 120ms ease;
+  }
+
+  .accordion-trigger:hover .chevron-badge {
+    transform: translateY(1px) scale(1.06);
+  }
+
+  .accordion-trigger:active .chevron-badge {
+    transform: scale(0.86);
+    background-color: rgba(14, 165, 233, 0.22);
+  }
+}
+
+/* Snappy & Fluid CSS-Grid Accordion Transitions */
+.accordion-collapse-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 220ms cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 170ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: grid-template-rows, opacity;
+}
+
+.accordion-collapse-wrapper.is-expanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.accordion-collapse-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Reduced motion preference respect */
+@media (prefers-reduced-motion: reduce) {
+  .accordion-collapse-wrapper {
+    transition: none !important;
   }
 }
 

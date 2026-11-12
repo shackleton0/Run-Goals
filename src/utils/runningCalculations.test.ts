@@ -8,6 +8,7 @@ import {
   parsePace,
   calculate6kEquivalent,
   calculateTargetDistanceEquivalent,
+  selectBestTargetEquivalent,
   calculateTargetCutoff,
   groupRunsByWeek,
   inferRunType,
@@ -45,8 +46,50 @@ test('calculatePaceSecPerKm calculates pace and parsePace parses formats correct
   assert.equal(parsePace('5:38 /mi'), 210); // 338 / 1.60934 = 210
 });
 
-test('calculate6kEquivalent projects correctly', () => {
+test('calculate6kEquivalent projects correctly including short 1k distance fatigue decay', () => {
   assert.equal(calculate6kEquivalent(6.0, 1300), 1300);
+
+  // 1K in 3:56 (236s) should extrapolate to a significantly slower 6K pace (~5:03/km => ~1821s / 30:21), never ~3:56/km
+  const projected1kTo6k = calculate6kEquivalent(1.0, 236);
+  const projectedPace = projected1kTo6k / 6.0;
+  assert.ok(projectedPace >= 290, `Projected 6K pace from 1K 3:56 should be >= 4:50/km (290s), was ${projectedPace}s`);
+  assert.ok(projected1kTo6k >= 1750, `Projected 6K total from 1K 3:56 should be >= 29:10, was ${projected1kTo6k}s`);
+});
+
+test('selectBestTargetEquivalent prioritizes continuous 2.5km+ runs over short 1k sprints or intervals', () => {
+  const runs: RunRecord[] = [
+    {
+      id: 'fast_1k',
+      userId: 'u1',
+      date: '2026-11-10',
+      title: 'Fast 1K Test',
+      distanceKm: 1.0,
+      durationSeconds: 236, // 3:56/km
+      averagePaceSecPerKm: 236,
+      runType: 'Time Trial',
+      source: 'manual',
+    },
+    {
+      id: 'tempo_5k',
+      userId: 'u1',
+      date: '2026-11-08',
+      title: 'Steady 5K',
+      distanceKm: 5.0,
+      durationSeconds: 1500, // 5:00/km -> 6K eq ~30:23
+      averagePaceSecPerKm: 300,
+      runType: 'Tempo',
+      source: 'manual',
+    },
+  ];
+  const res = selectBestTargetEquivalent(runs, 6.0);
+  assert.equal(res.basisRun?.id, 'tempo_5k');
+  assert.equal(res.isShortDistanceEstimate, false);
+
+  // When only 1K run exists, flags as short distance estimate with steep fatigue curve
+  const shortOnly = selectBestTargetEquivalent([runs[0]], 6.0);
+  assert.equal(shortOnly.basisRun?.id, 'fast_1k');
+  assert.equal(shortOnly.isShortDistanceEstimate, true);
+  assert.ok((shortOnly.bestSeconds || 0) >= 1750);
 });
 
 test('calculateTargetCutoff calculates 23 seconds cut off from 4:43/km to 4:20/km', () => {
@@ -214,10 +257,12 @@ test('calculateRecoveryStatus handles empty runs gracefully', () => {
   const status = calculateRecoveryStatus([]);
   assert.equal(status.hasRuns, false);
   assert.equal(status.recoveryPercentage, 100);
+  assert.equal(status.bodyBatteryScore, 100);
+  assert.equal(status.batteryStatusLabel, 'Prime Charge');
   assert.equal(status.readinessState, 'Fully Rested');
 });
 
-test('calculateRecoveryStatus reflects low recovery after recent hard workout', () => {
+test('calculateRecoveryStatus reflects low recovery and Body Battery drain after recent hard workout', () => {
   const now = new Date('2026-10-31T15:00:00Z');
   const recentHardRun: RunRecord = {
     id: 'hard_race',
@@ -239,10 +284,13 @@ test('calculateRecoveryStatus reflects low recovery after recent hard workout', 
   assert.ok(status.effortScore > 50, `Effort score should be high, was ${status.effortScore}`);
   assert.ok(status.recommendedRecoveryHours >= 24, `Should recommend >= 24h recovery, was ${status.recommendedRecoveryHours}`);
   assert.ok(status.recoveryPercentage < 40, `Recovery percentage after 3h should be < 40%, was ${status.recoveryPercentage}`);
+  assert.ok(status.bodyBatteryScore < 50, `Body Battery after hard race 3h ago should be < 50, was ${status.bodyBatteryScore}`);
+  assert.ok(status.drainedPoints >= 30, `Drained points should be significant, was ${status.drainedPoints}`);
+  assert.equal(status.batteryTimeline.length, 6);
   assert.equal(status.readinessState, 'Deep Recovery');
 });
 
-test('calculateRecoveryStatus reflects high recovery after sufficient elapsed time', () => {
+test('calculateRecoveryStatus reflects high recovery and full Body Battery recharge after sufficient elapsed time', () => {
   const now = new Date('2026-10-31T12:00:00Z');
   const pastRun: RunRecord = {
     id: 'easy_run',
@@ -260,6 +308,8 @@ test('calculateRecoveryStatus reflects high recovery after sufficient elapsed ti
   const status = calculateRecoveryStatus([pastRun], now, 190);
   assert.equal(status.hasRuns, true);
   assert.equal(status.recoveryPercentage, 100);
+  assert.equal(status.bodyBatteryScore, 100);
+  assert.equal(status.batteryStatusLabel, 'Prime Charge');
   assert.equal(status.readinessState, 'Fully Rested');
   assert.equal(status.remainingRecoveryHours, 0);
 });

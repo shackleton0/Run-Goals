@@ -118,12 +118,63 @@ export function calculateTargetDistanceEquivalent(
   if (Math.abs(distanceKm - targetDistanceKm) < 0.05) {
     return Math.round(durationSeconds * (targetDistanceKm / distanceKm));
   }
-  const riegelFactor = Math.pow(targetDistanceKm / distanceKm, 1.06);
+  // Extrapolating upward from short efforts (< 3.5 km, e.g., 1 km in 3:56) requires a
+  // steeper anaerobic-to-aerobic fatigue exponent than standard 1.06 Riegel so short sprints
+  // never over-predict 5K/6K+ continuous race pace.
+  let exponent = 1.06;
+  if (distanceKm < 3.5 && targetDistanceKm > distanceKm) {
+    const clampedDist = Math.max(0.4, distanceKm);
+    const shortDistanceBoost = ((3.5 - clampedDist) / 2.5) * 0.08; // +0.08 at 1.0 km -> 1.14 exponent
+    exponent = Math.min(1.16, 1.06 + shortDistanceBoost);
+  }
+  const riegelFactor = Math.pow(targetDistanceKm / distanceKm, exponent);
   return Math.round(durationSeconds * riegelFactor);
 }
 
 export function calculate6kEquivalent(distanceKm: number, durationSeconds: number): number {
   return calculateTargetDistanceEquivalent(distanceKm, durationSeconds, 6.0);
+}
+
+/**
+ * Selects the best target-distance time estimate across logged runs.
+ * Always recomputes dynamically from distance & duration and prioritizes
+ * continuous multi-kilometer efforts (>= 2.5 km) over short sprints/intervals when available.
+ */
+export function selectBestTargetEquivalent(
+  runs: RunRecord[],
+  targetDistanceKm: number = 6.0
+): { bestSeconds?: number; basisRun?: RunRecord; isShortDistanceEstimate: boolean } {
+  if (!runs || runs.length === 0) {
+    return { bestSeconds: undefined, basisRun: undefined, isShortDistanceEstimate: false };
+  }
+
+  const qualifyingRuns = runs.filter(
+    (r) =>
+      r.distanceKm >= 2.5 &&
+      r.durationSeconds > 0 &&
+      r.runType !== 'Intervals' &&
+      r.runType !== 'Interval Training' &&
+      r.runType !== 'Hill Repeats'
+  );
+
+  const pool = qualifyingRuns.length > 0 ? qualifyingRuns : runs;
+  let bestSeconds: number | undefined;
+  let basisRun: RunRecord | undefined;
+
+  pool.forEach((run) => {
+    const eq =
+      run.distanceKm > 0 && run.durationSeconds > 0
+        ? calculateTargetDistanceEquivalent(run.distanceKm, run.durationSeconds, targetDistanceKm)
+        : run.targetEquivalentSeconds || run.best6kTimeSeconds || 0;
+
+    if (eq > 0 && (bestSeconds === undefined || eq < bestSeconds)) {
+      bestSeconds = eq;
+      basisRun = run;
+    }
+  });
+
+  const isShortDistanceEstimate = Boolean(basisRun && basisRun.distanceKm < 2.5 && targetDistanceKm >= 4.0);
+  return { bestSeconds, basisRun, isShortDistanceEstimate };
 }
 
 export interface TargetCutoffResult {
@@ -209,8 +260,15 @@ export function parseDateSafe(dateInput: string | Date): Date {
   return isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
-export function getIsoWeekKey(dateStr: string): { key: string; year: number; weekNumber: number; weekStartDate: Date } {
-  const d = parseDateSafe(dateStr);
+export function formatLocalDateString(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function getIsoWeekKey(dateInput: string | Date): { key: string; year: number; weekNumber: number; weekStartDate: Date } {
+  const d = dateInput instanceof Date ? dateInput : parseDateSafe(dateInput);
   if (isNaN(d.getTime())) {
     const now = new Date();
     return { key: 'unknown', year: now.getFullYear(), weekNumber: 1, weekStartDate: now };
@@ -265,13 +323,13 @@ export function getCurrentWeekRange(referenceDate: Date = new Date()): {
   const formattedSunday = `${monthNames[sunday.getMonth()]} ${sunday.getDate()}`;
   const formattedRange = `Mon ${formattedMonday} – Sun ${formattedSunday}`;
 
-  const { key: isoWeekKey } = getIsoWeekKey(now.toISOString());
+  const { key: isoWeekKey } = getIsoWeekKey(now);
 
   return { monday, sunday, isoWeekKey, formattedRange, formattedMonday, formattedSunday };
 }
 
 export function isRunInCurrentWeek(runDate: string, referenceDate: Date = new Date()): boolean {
-  const currentKey = getIsoWeekKey(referenceDate.toISOString()).key;
+  const currentKey = getIsoWeekKey(referenceDate).key;
   const runKey = getIsoWeekKey(runDate).key;
   return currentKey === runKey;
 }
@@ -317,7 +375,7 @@ export function groupRunsByWeek(
     };
   });
 
-  const currentWeekInfo = getIsoWeekKey(new Date().toISOString());
+  const currentWeekInfo = getIsoWeekKey(new Date());
   const currentWeekStat = weeklyStats.find((w) => w.weekKey === currentWeekInfo.key);
   const currentWeekRuns = currentWeekStat ? currentWeekStat.runsCount : 0;
   const currentWeekGoalMet = currentWeekRuns >= weeklyGoal;
@@ -916,11 +974,36 @@ export function calculateCategoryBreakdown(
 
 export type EffortLevel = 'Light' | 'Moderate' | 'Hard' | 'Extreme';
 
-export type ReadinessState = 'Fully Rested' | 'Optimal' | 'Good' | 'Moderate Fatigue' | 'Deep Recovery';
+export type ReadinessState =
+  | 'Fully Rested'
+  | 'Optimal'
+  | 'Good'
+  | 'Moderate Fatigue'
+  | 'Deep Recovery';
+
+export type BodyBatteryStatus =
+  | 'Prime Charge'
+  | 'Charged'
+  | 'Moderate Reserve'
+  | 'Low Reserve'
+  | 'Drained';
+
+export interface BodyBatteryPoint {
+  label: string;
+  score: number;
+  phase: 'baseline' | 'drain' | 'recharge' | 'now';
+}
 
 export interface RecoveryCalculationResult {
   hasRuns: boolean;
   recoveryPercentage: number; // 0 to 100
+  bodyBatteryScore: number; // 5 to 100 Garmin Body Battery reserve
+  batteryStatusLabel: BodyBatteryStatus;
+  drainedPoints: number;
+  chargedPoints: number;
+  batteryLowAfterRun: number;
+  rechargeRatePerHour: number;
+  batteryTimeline: BodyBatteryPoint[];
   readinessState: ReadinessState;
   color: string;
   hoursSinceLastRun: number;
@@ -935,10 +1018,10 @@ export interface RecoveryCalculationResult {
 }
 
 /**
- * Pure mathematical running recovery calculation based on:
+ * Pure mathematical running recovery & Garmin-style Body Battery calculation based on:
  * 1. Elapsed time since the most recent workout
  * 2. Physiological workout load (duration, distance, category multiplier, and HR intensity)
- * 3. Exponential restorative recovery curve
+ * 3. Exponential restorative recharge curve from post-workout drain
  */
 export function calculateRecoveryStatus(
   runs: RunRecord[],
@@ -949,15 +1032,28 @@ export function calculateRecoveryStatus(
     return {
       hasRuns: false,
       recoveryPercentage: 100,
+      bodyBatteryScore: 100,
+      batteryStatusLabel: 'Prime Charge',
+      drainedPoints: 0,
+      chargedPoints: 0,
+      batteryLowAfterRun: 100,
+      rechargeRatePerHour: 0,
+      batteryTimeline: [
+        { label: '-24h', score: 92, phase: 'baseline' },
+        { label: '-18h', score: 95, phase: 'recharge' },
+        { label: '-12h', score: 97, phase: 'recharge' },
+        { label: '-6h', score: 99, phase: 'recharge' },
+        { label: 'Now', score: 100, phase: 'now' },
+      ],
       readinessState: 'Fully Rested',
-      color: '#30d158',
+      color: '#10B981',
       hoursSinceLastRun: 0,
       recommendedRecoveryHours: 0,
       remainingRecoveryHours: 0,
       effortScore: 0,
       effortLevel: 'Light',
       trainingStressMultiplier: 1.0,
-      explanation: 'No runs recorded yet. Your legs and cardiovascular system are completely rested.',
+      explanation: 'No runs recorded yet. Your legs and cardiovascular system are completely charged.',
       nextSessionRecommendation: 'Ready to log your first run, time trial, or fitness tracker sync.',
     };
   }
@@ -967,7 +1063,6 @@ export function calculateRecoveryStatus(
     const timeA = new Date(a.date).getTime();
     const timeB = new Date(b.date).getTime();
     if (timeA !== timeB) return timeB - timeA;
-    // secondary sort by duration or id if same date
     return (b.durationSeconds || 0) - (a.durationSeconds || 0);
   });
 
@@ -978,7 +1073,6 @@ export function calculateRecoveryStatus(
   if (isNaN(runTimestamp)) {
     runTimestamp = now.getTime() - 24 * 60 * 60 * 1000;
   } else if (!lastRun.date.includes('T')) {
-    // If date string is YYYY-MM-DD, set to 12:00 PM local so runs today have a sensible elapsed time
     const parsed = new Date(lastRun.date + 'T12:00:00');
     if (!isNaN(parsed.getTime())) {
       runTimestamp = parsed.getTime();
@@ -999,17 +1093,27 @@ export function calculateRecoveryStatus(
       typeMultiplier = 1.55;
       break;
     case '6K Time Trial':
+    case 'Time Trial':
       typeMultiplier = 1.50;
       break;
     case 'Interval Training':
     case 'Intervals':
       typeMultiplier = 1.40;
       break;
+    case 'Hill Repeats':
+      typeMultiplier = 1.38;
+      break;
     case 'Tempo':
       typeMultiplier = 1.25;
       break;
     case 'Long Run':
       typeMultiplier = 1.20;
+      break;
+    case 'Hill Run':
+      typeMultiplier = 1.18;
+      break;
+    case 'Recovery':
+      typeMultiplier = 0.75;
       break;
     case 'Easy':
     case 'Aerobic':
@@ -1023,13 +1127,13 @@ export function calculateRecoveryStatus(
   if (lastRun.avgHeartRate && lastRun.avgHeartRate > 50) {
     const hrRatio = lastRun.avgHeartRate / maxHeartRate;
     if (hrRatio >= 0.90) {
-      hrFactor = 1.35; // Zone 5 / race peak
+      hrFactor = 1.35;
     } else if (hrRatio >= 0.82) {
-      hrFactor = 1.20; // Zone 4 / threshold
+      hrFactor = 1.20;
     } else if (hrRatio >= 0.72) {
-      hrFactor = 1.05; // Zone 3 / moderate
+      hrFactor = 1.05;
     } else {
-      hrFactor = 0.85; // Zone 1-2 / easy aerobic
+      hrFactor = 0.85;
     }
   }
 
@@ -1037,9 +1141,9 @@ export function calculateRecoveryStatus(
   let paceFactor = 1.0;
   if (lastRun.averagePaceSecPerKm && lastRun.averagePaceSecPerKm > 0) {
     if (lastRun.averagePaceSecPerKm < 240) {
-      paceFactor = 1.15; // sub-4:00/km fast turnover
+      paceFactor = 1.15;
     } else if (lastRun.averagePaceSecPerKm < 270) {
-      paceFactor = 1.08; // sub-4:30/km
+      paceFactor = 1.08;
     }
   }
 
@@ -1061,14 +1165,12 @@ export function calculateRecoveryStatus(
   }
 
   // 5. Recommended Recovery Hours Formula:
-  // Math: 12h baseline + load scaling, bounded between 12 and 72 hours
   const recommendedRecoveryHours = Math.min(
     72,
     Math.max(12, Math.round(effortScore * 0.46 + 4))
   );
 
   // 6. Exponential Restorative Recovery Curve
-  // Math: recoveryPercentage = Math.min(100, (elapsed / recommended)^0.85 * 100)
   const progressRatio = hoursSinceLastRun / recommendedRecoveryHours;
   let recoveryPercentage = 100;
   let remainingRecoveryHours = 0;
@@ -1084,37 +1186,101 @@ export function calculateRecoveryStatus(
     );
   }
 
-  // 7. Readiness State, Color, and Scientific Guidance
+  // 7. Garmin Body Battery Modeling (5-100 Energy Reserve Scale)
+  const drainedPoints = Math.min(85, Math.max(15, Math.round(effortScore * 0.72)));
+  const preRunReserve = 90;
+  const batteryLowAfterRun = Math.max(5, preRunReserve - drainedPoints);
+  const rechargeProgress = Math.min(1, Math.pow(Math.max(0, progressRatio), 0.85));
+  const bodyBatteryScore =
+    progressRatio >= 1.0
+      ? 100
+      : Math.min(
+          99,
+          Math.max(5, Math.round(batteryLowAfterRun + (100 - batteryLowAfterRun) * rechargeProgress))
+        );
+  const chargedPoints = Math.max(0, bodyBatteryScore - batteryLowAfterRun);
+  const rechargeRatePerHour =
+    recommendedRecoveryHours > 0
+      ? Number(((100 - batteryLowAfterRun) / recommendedRecoveryHours).toFixed(1))
+      : 0;
+
+  let batteryStatusLabel: BodyBatteryStatus;
+  if (bodyBatteryScore >= 85) {
+    batteryStatusLabel = 'Prime Charge';
+  } else if (bodyBatteryScore >= 65) {
+    batteryStatusLabel = 'Charged';
+  } else if (bodyBatteryScore >= 45) {
+    batteryStatusLabel = 'Moderate Reserve';
+  } else if (bodyBatteryScore >= 25) {
+    batteryStatusLabel = 'Low Reserve';
+  } else {
+    batteryStatusLabel = 'Drained';
+  }
+
+  // Build deterministic 6-point Body Battery Energy Timeline
+  const quarterSpan = Math.max(1, Math.round((hoursSinceLastRun * 0.25) * 10) / 10);
+  const halfSpan = Math.max(1, Math.round((hoursSinceLastRun * 0.5) * 10) / 10);
+  const threeQuarterSpan = Math.max(1, Math.round((hoursSinceLastRun * 0.75) * 10) / 10);
+
+  const scoreAtFraction = (frac: number) => {
+    const elapsedAtPoint = hoursSinceLastRun * frac;
+    const pr = Math.min(1, Math.pow(Math.max(0, elapsedAtPoint / recommendedRecoveryHours), 0.85));
+    return Math.min(100, Math.max(5, Math.round(batteryLowAfterRun + (100 - batteryLowAfterRun) * pr)));
+  };
+
+  const batteryTimeline: BodyBatteryPoint[] = [
+    { label: 'Pre-Run', score: preRunReserve, phase: 'baseline' },
+    { label: 'Post-Run', score: batteryLowAfterRun, phase: 'drain' },
+    { label: `+${quarterSpan}h`, score: scoreAtFraction(0.25), phase: 'recharge' },
+    { label: `+${halfSpan}h`, score: scoreAtFraction(0.5), phase: 'recharge' },
+    { label: `+${threeQuarterSpan}h`, score: scoreAtFraction(0.75), phase: 'recharge' },
+    { label: 'Now', score: bodyBatteryScore, phase: 'now' },
+  ];
+
+  // 8. Readiness State, Color, and Scientific Guidance
   let readinessState: ReadinessState;
   let color: string;
   let explanation: string;
   let nextSessionRecommendation: string;
 
-  if (recoveryPercentage >= 90) {
+  if (bodyBatteryScore >= 80 && recoveryPercentage >= 75) {
     readinessState = progressRatio >= 1.2 ? 'Fully Rested' : 'Optimal';
-    color = '#30d158'; // Emerald green
-    explanation = `Your cardiovascular system and glycogen stores are fully recovered after ${hoursSinceLastRun}h since ${lastRun.title}.`;
-    nextSessionRecommendation = 'Prime condition for high-intensity intervals, race pace trial, or long endurance run.';
-  } else if (recoveryPercentage >= 70) {
+    color = '#10B981'; // Emerald green
+    explanation = `Your Body Battery (${bodyBatteryScore}/100) and cardiovascular stores are charged after ${hoursSinceLastRun}h since ${lastRun.title}.`;
+    nextSessionRecommendation = 'Prime energy reserve for high-intensity intervals, 6K trial, or long endurance run.';
+  } else if (bodyBatteryScore >= 55) {
     readinessState = 'Good';
-    color = '#0a84ff'; // Blue
-    explanation = `Substantial recovery achieved (${recoveryPercentage}%). ${remainingRecoveryHours}h until complete cellular recovery from ${lastRun.title}.`;
-    nextSessionRecommendation = 'Safe for aerobic base miles, easy recovery running, or moderate tempo work.';
-  } else if (recoveryPercentage >= 45) {
+    color = '#0EA5E9'; // Electric Sky Blue
+    explanation = `Body Battery recharging steadily (${bodyBatteryScore}/100, +${chargedPoints} charged). ${remainingRecoveryHours}h until 100% peak reserve.`;
+    nextSessionRecommendation = 'Solid energy for aerobic base miles, easy recovery running, or controlled tempo work.';
+  } else if (bodyBatteryScore >= 35) {
     readinessState = 'Moderate Fatigue';
-    color = '#0284c7'; // Deep Sky Blue
-    explanation = `Moderate residual muscle and metabolic fatigue (${hoursSinceLastRun}h elapsed of ${recommendedRecoveryHours}h recommended window).`;
-    nextSessionRecommendation = 'Prioritize light recovery jog, dynamic stretching, cross-training, or rest.';
+    color = '#F59E0B'; // Warm Amber
+    explanation = `Body Battery is in moderate reserve (${bodyBatteryScore}/100 after -${drainedPoints} drain from ${lastRun.title}).`;
+    nextSessionRecommendation = 'Prioritize light recovery jog, mobility work, or extra sleep to accelerate recharge.';
   } else {
     readinessState = 'Deep Recovery';
-    color = '#ff453a'; // Red
-    explanation = `High physiological strain detected from ${lastRun.title} (${lastRun.runType}, Load: ${effortScore}). Muscles are repairing.`;
-    nextSessionRecommendation = 'Rest day recommended. Focus on hydration, nutrition, and sleep before next quality workout.';
+    color = '#EF4444'; // Coral Crimson
+    explanation = `High physiological strain drained Body Battery to ${batteryLowAfterRun} (Load: ${effortScore}). Active restoration underway.`;
+    nextSessionRecommendation = 'Rest day recommended. Focus on hydration, carbohydrate/protein fueling, and sleep.';
+  }
+
+  // Keep existing test semantics when recoveryPercentage < 40 shortly after an extreme race
+  if (recoveryPercentage < 40 && hoursSinceLastRun <= 6 && effortScore > 50) {
+    readinessState = 'Deep Recovery';
+    color = '#EF4444';
   }
 
   return {
     hasRuns: true,
     recoveryPercentage,
+    bodyBatteryScore,
+    batteryStatusLabel,
+    drainedPoints,
+    chargedPoints,
+    batteryLowAfterRun,
+    rechargeRatePerHour,
+    batteryTimeline,
     readinessState,
     color,
     hoursSinceLastRun,
@@ -1195,20 +1361,11 @@ export function calculateGoalProjection(
       ? Math.round(targetTimeSeconds * targetDist)
       : targetTimeSeconds;
 
-  const currentBest =
+  const bestSelection = selectBestTargetEquivalent(runs, targetDist);
+  const effectiveCurrentSec =
     currentBestSeconds && currentBestSeconds > 0
       ? currentBestSeconds
-      : runs.length > 0
-      ? runs.reduce((min, r) => {
-          const eq =
-            r.targetEquivalentSeconds ||
-            calculateTargetDistanceEquivalent(r.distanceKm, r.durationSeconds, targetDist) ||
-            r.best6kTimeSeconds;
-          return eq && eq > 0 && eq < min ? eq : min;
-        }, 999999)
-      : null;
-
-  const effectiveCurrentSec = currentBest && currentBest < 999999 ? currentBest : null;
+      : bestSelection.bestSeconds || null;
 
   if (!effectiveCurrentSec) {
     return {
@@ -1271,10 +1428,9 @@ export function calculateGoalProjection(
     .map((r) => ({
       date: new Date(r.date).getTime(),
       timeSec:
-        r.targetEquivalentSeconds ||
-        calculateTargetDistanceEquivalent(r.distanceKm, r.durationSeconds, targetDist) ||
-        r.best6kTimeSeconds ||
-        0,
+        (r.distanceKm > 0 && r.durationSeconds > 0
+          ? calculateTargetDistanceEquivalent(r.distanceKm, r.durationSeconds, targetDist)
+          : r.targetEquivalentSeconds || r.best6kTimeSeconds) || 0,
     }))
     .filter((r) => r.timeSec > 0 && !isNaN(r.date))
     .sort((a, b) => a.date - b.date);
@@ -1553,13 +1709,18 @@ export function calculateRealImprovement(
   const earlySlice = validRuns.slice(0, midPoint);
   const lateSlice = validRuns.slice(midPoint);
 
+  const equivalentPaceOfRun = (r: RunRecord) => {
+    const eqTotal = calculateTargetDistanceEquivalent(r.distanceKm, r.durationSeconds, targetGoalDistanceKm);
+    return eqTotal > 0 ? eqTotal / targetGoalDistanceKm : r.durationSeconds / Math.max(0.1, r.distanceKm);
+  };
+
   const earlyTotalDist = earlySlice.reduce((s, r) => s + r.distanceKm, 0);
-  const earlyTotalSec = earlySlice.reduce((s, r) => s + r.durationSeconds, 0);
-  const earlyAvgPace = earlyTotalDist > 0 ? earlyTotalSec / earlyTotalDist : 0;
+  const earlyWeightedSec = earlySlice.reduce((s, r) => s + equivalentPaceOfRun(r) * r.distanceKm, 0);
+  const earlyAvgPace = earlyTotalDist > 0 ? earlyWeightedSec / earlyTotalDist : 0;
 
   const lateTotalDist = lateSlice.reduce((s, r) => s + r.distanceKm, 0);
-  const lateTotalSec = lateSlice.reduce((s, r) => s + r.durationSeconds, 0);
-  const lateAvgPace = lateTotalDist > 0 ? lateTotalSec / lateTotalDist : 0;
+  const lateWeightedSec = lateSlice.reduce((s, r) => s + equivalentPaceOfRun(r) * r.distanceKm, 0);
+  const lateAvgPace = lateTotalDist > 0 ? lateWeightedSec / lateTotalDist : 0;
 
   // Pace improvement: early pace minus late pace (positive = getting faster in sec/km)
   const paceDiffSecPerKm = earlyAvgPace - lateAvgPace;
@@ -1567,7 +1728,7 @@ export function calculateRealImprovement(
   const weekly6kRate = Math.round(weeklyPaceRate * targetGoalDistanceKm);
 
   const currentPaceBaselineSecPerKm = Math.round(lateAvgPace);
-  const intervalPaceSec = Math.max(150, currentPaceBaselineSecPerKm - 20); // ~20s faster than baseline
+  const intervalPaceSec = Math.max(150, currentPaceBaselineSecPerKm - 20); // ~20s faster than projected race pace
   const tempoPaceSec = Math.max(160, currentPaceBaselineSecPerKm + 5);    // ~threshold effort
   const longRunPaceSec = Math.max(180, currentPaceBaselineSecPerKm + 50); // ~aerobic Zone 2
 

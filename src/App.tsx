@@ -24,12 +24,14 @@ import {
   groupRunsByWeek,
   calculate6kEquivalent,
   calculateTargetDistanceEquivalent,
+  selectBestTargetEquivalent,
   findDuplicateRuns,
 } from './utils/runningCalculations';
 import { Navbar } from './components/Navbar';
 import { GoalBanner } from './components/GoalBanner';
 import { GoalProjectionCard } from './components/GoalProjectionCard';
-import { WeeklyAdherenceCard } from './components/WeeklyAdherenceCard';
+import { WeeklyAdherenceCard, AddRunPrefillOptions } from './components/WeeklyAdherenceCard';
+import { BodyBatteryCard } from './components/BodyBatteryCard';
 import { ProgressVisualizer } from './components/ProgressVisualizer';
 import { MotivationalGreeting } from './components/MotivationalGreeting';
 import { FirstTimeNameModal } from './components/FirstTimeNameModal';
@@ -142,6 +144,17 @@ export default function App() {
   const [preParsedGarminRuns, setPreParsedGarminRuns] = useState<RunRecord[]>([]);
   const [isAiExportOpen, setIsAiExportOpen] = useState(false);
   const [isAddRunOpen, setIsAddRunOpen] = useState(false);
+  const [addRunPrefill, setAddRunPrefill] = useState<AddRunPrefillOptions | null>(null);
+
+  const handleOpenAddRunWithPrefill = (prefill?: AddRunPrefillOptions) => {
+    setAddRunPrefill(prefill || null);
+    setIsAddRunOpen(true);
+  };
+
+  const handleCloseAddRun = () => {
+    setIsAddRunOpen(false);
+    setAddRunPrefill(null);
+  };
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [isFirstTimeNameOpen, setIsFirstTimeNameOpen] = useState(false);
@@ -270,12 +283,8 @@ export default function App() {
   const { weeklyStats, adherence } = groupRunsByWeek(runs, profile.weeklyRunGoal);
 
   const targetDistKm = profile.targetDistanceKm || 6.0;
-  const best6kSec = runs.reduce<number | undefined>((best, run) => {
-    const eq = calculateTargetDistanceEquivalent(run.distanceKm, run.durationSeconds, targetDistKm);
-    if (!eq || eq <= 0) return best;
-    if (best === undefined || eq < best) return eq;
-    return best;
-  }, undefined);
+  const bestTargetSelection = selectBestTargetEquivalent(runs, targetDistKm);
+  const best6kSec = bestTargetSelection.bestSeconds;
 
   // Duplicate Check & Processing
   const handleProcessIncomingRuns = (incoming: RunRecord[]) => {
@@ -535,8 +544,8 @@ export default function App() {
 
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
-      <div className="min-h-screen bg-[#F2F8FB] dark:bg-[#0c1822] text-neutral-900 dark:text-[#FCFFFF] flex flex-col font-sans transition-colors selection:bg-[#0593C6] selection:text-[#FCFFFF]">
-        {/* Apple-style Navigation */}
+      <div className="min-h-screen bg-[#ECF3F8] dark:bg-[#070E16] text-slate-900 dark:text-white flex flex-col font-sans transition-colors selection:bg-[#0EA5E9] selection:text-white">
+        {/* Top Navigation */}
         <Navbar
           user={user}
           profile={profile}
@@ -548,7 +557,7 @@ export default function App() {
           onToggleTheme={toggleTheme}
           onOpenGarminSync={handleOpenGarminSync}
           onOpenAiExport={() => setIsAiExportOpen(true)}
-          onOpenAddRun={() => setIsAddRunOpen(true)}
+          onOpenAddRun={() => handleOpenAddRunWithPrefill()}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenShare={() => setIsShareOpen(true)}
           onSignIn={handleSignIn}
@@ -556,7 +565,7 @@ export default function App() {
         />
 
         {/* Cloud / Guest Status Banner */}
-        <div className="bg-[#FCFFFF]/85 dark:bg-[#12222f]/85 border-b border-[#0593C6]/15 dark:border-[#0593C6]/20 px-4 py-2 text-xs text-neutral-500 dark:text-neutral-400 backdrop-blur-xs">
+        <div className="bg-white/90 dark:bg-[#0D1823]/95 border-b border-slate-200 dark:border-slate-800 px-4 py-2 text-xs text-slate-600 dark:text-slate-300 backdrop-blur-xs">
           <div className="max-w-6xl mx-auto flex items-center justify-between">
             <div className="flex items-center space-x-2">
               {user ? (
@@ -679,7 +688,9 @@ export default function App() {
                 weeklyStats={weeklyStats}
                 adherence={adherence}
                 runs={runs}
-                onOpenAddRun={() => setIsAddRunOpen(true)}
+                onOpenAddRun={handleOpenAddRunWithPrefill}
+                onOpenGarminSync={handleOpenGarminSync}
+                onSaveRun={handleSaveRun}
                 unit={profile.unitPreference}
                 weeklyDistanceGoalKm={profile.weeklyDistanceGoalKm}
                 weeklyRunGoal={profile.weeklyRunGoal || 3}
@@ -693,7 +704,7 @@ export default function App() {
                 onProcessIncomingRuns={handleProcessIncomingRuns}
                 onOpenGarminSync={handleOpenGarminSync}
                 onOpenGarminSyncWithRuns={handleOpenGarminSyncWithRuns}
-                onOpenAddRun={() => setIsAddRunOpen(true)}
+                onOpenAddRun={() => handleOpenAddRunWithPrefill()}
                 onOpenSettings={() => setIsSettingsOpen(true)}
               />
             </div>
@@ -704,6 +715,7 @@ export default function App() {
                 profile={profile}
                 adherence={adherence}
                 best6kSec={best6kSec}
+                isShortDistanceEstimate={bestTargetSelection.isShortDistanceEstimate}
                 onEditGoal={() => setIsSettingsOpen(true)}
                 onShare={() => setIsShareOpen(true)}
               />
@@ -722,7 +734,9 @@ export default function App() {
                 weeklyStats={weeklyStats}
                 adherence={adherence}
                 runs={runs}
-                onOpenAddRun={() => setIsAddRunOpen(true)}
+                onOpenAddRun={handleOpenAddRunWithPrefill}
+                onOpenGarminSync={handleOpenGarminSync}
+                onSaveRun={handleSaveRun}
                 unit={profile.unitPreference}
                 weeklyDistanceGoalKm={profile.weeklyDistanceGoalKm}
                 weeklyRunGoal={profile.weeklyRunGoal || 3}
@@ -732,7 +746,13 @@ export default function App() {
                 onOpenSettings={() => setIsSettingsOpen(true)}
               />
 
-              {/* 4. PERFORMANCE ANALYTICS (Recovery readiness, progression curves, aerobic base, interval training) */}
+              {/* 4. BODY BATTERY (Garmin-style Physiological Energy Reserve & Recovery) */}
+              <BodyBatteryCard
+                runs={runs}
+                maxHeartRate={profile.maxHeartRate}
+              />
+
+              {/* 5. PERFORMANCE ANALYTICS (30-day category breakdown, progression curves, aerobic base, intervals) */}
               <ProgressVisualizer
                 runs={runs}
                 weeklyStats={weeklyStats}
@@ -742,7 +762,7 @@ export default function App() {
                 unit={profile.unitPreference}
                 maxHeartRate={profile.maxHeartRate}
                 onOpenGarminSync={handleOpenGarminSync}
-                onOpenAddRun={() => setIsAddRunOpen(true)}
+                onOpenAddRun={() => handleOpenAddRunWithPrefill()}
               />
 
               {/* 5. FITNESS TRACKER DATA & UNIFIED ACTIVITY LOGS (Fastest Pace, Peak HR, HR Training Zones, Workout Combining, Categories & Deletion) */}
@@ -759,7 +779,7 @@ export default function App() {
                 onUpdateRun={handleUpdateRun}
                 onCombineRuns={handleCombineRuns}
                 onOpenGarminSync={handleOpenGarminSync}
-                onOpenAddRun={() => setIsAddRunOpen(true)}
+                onOpenAddRun={() => handleOpenAddRunWithPrefill()}
                 savedDefaultInterval={savedDefaultInterval}
                 onSaveDefaultInterval={handleSaveDefaultInterval}
               />
@@ -811,12 +831,14 @@ export default function App() {
 
         <AddRunModal
           isOpen={isAddRunOpen}
-          onClose={() => setIsAddRunOpen(false)}
+          onClose={handleCloseAddRun}
           userId={user ? user.uid : 'local_user'}
           onSaveRun={handleSaveRun}
           unit={profile.unitPreference}
           targetDistanceKm={profile.targetDistanceKm}
           savedDefaultInterval={savedDefaultInterval}
+          initialData={addRunPrefill}
+          onOpenGarminSync={handleOpenGarminSync}
         />
 
         <GoalSettingsModal

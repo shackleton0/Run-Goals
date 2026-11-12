@@ -140,7 +140,7 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
           <div className="inline-flex p-0.5 rounded-lg bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs">
             <button
               onClick={() => setTimeWindow('30d')}
-              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer active:scale-[0.96] ${
                 timeWindow === '30d'
                   ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-xs'
                   : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
@@ -150,7 +150,7 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
             </button>
             <button
               onClick={() => setTimeWindow('all')}
-              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer active:scale-[0.96] ${
                 timeWindow === 'all'
                   ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-xs'
                   : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
@@ -164,7 +164,7 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
           <div className="inline-flex p-0.5 rounded-lg bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs">
             <button
               onClick={() => setMetricMode('distance')}
-              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer active:scale-[0.96] ${
                 metricMode === 'distance'
                   ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-xs'
                   : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
@@ -174,7 +174,7 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
             </button>
             <button
               onClick={() => setMetricMode('count')}
-              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer active:scale-[0.96] ${
                 metricMode === 'count'
                   ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-xs'
                   : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'

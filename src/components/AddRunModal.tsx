@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { RunRecord, RunType } from '../types/running';
 import {
   formatDuration,
@@ -9,8 +9,10 @@ import {
   calculate6kEquivalent,
   calculateTargetDistanceEquivalent,
   calculateIntervalMetrics,
+  formatLocalDateString,
+  KM_TO_MILES,
 } from '../utils/runningCalculations';
-import { X, Plus, Zap, Clock, Target, Mountain } from 'lucide-react';
+import { X, Plus, Zap, Clock, Target, Mountain, UploadCloud, AlertCircle } from 'lucide-react';
 
 interface AddRunModalProps {
   isOpen: boolean;
@@ -25,6 +27,8 @@ interface AddRunModalProps {
     restDurationSeconds?: number;
     repCount?: number;
   };
+  initialData?: (Partial<RunRecord> & { defaultIntervalPace?: string; slotId?: 'interval' | 'tempo' | 'long_run'; slotName?: string }) | null;
+  onOpenGarminSync?: () => void;
 }
 
 export const AddRunModal: React.FC<AddRunModalProps> = ({
@@ -35,8 +39,10 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
   unit,
   targetDistanceKm = 6.0,
   savedDefaultInterval,
+  initialData,
+  onOpenGarminSync,
 }) => {
-  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState<string>(formatLocalDateString(new Date()));
   const [title, setTitle] = useState<string>('');
   const [distanceKm, setDistanceKm] = useState<string>('');
   const [durationStr, setDurationStr] = useState<string>('');
@@ -46,6 +52,7 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
   const [avgCadence, setAvgCadence] = useState<string>('');
   const [elevationGain, setElevationGain] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Retrieve cached local defaults if available
   const initialDefaultInterval = (() => {
@@ -81,6 +88,56 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
     String(initialDefaultInterval.restDurationSeconds !== undefined ? initialDefaultInterval.restDurationSeconds : 90)
   );
 
+  // Synchronize prefilled values whenever modal opens with initialData
+  useEffect(() => {
+    if (isOpen) {
+      setFormError(null);
+      if (initialData) {
+        setDate(initialData.date || formatLocalDateString(new Date()));
+        setTitle(initialData.title || '');
+        if (initialData.distanceKm && initialData.distanceKm > 0) {
+          const displayDist = unit === 'miles'
+            ? (initialData.distanceKm * KM_TO_MILES).toFixed(1)
+            : initialData.distanceKm.toFixed(1);
+          setDistanceKm(displayDist);
+        } else {
+          setDistanceKm('');
+        }
+        if (initialData.durationSeconds && initialData.durationSeconds > 0) {
+          setDurationStr(formatDuration(initialData.durationSeconds));
+        } else {
+          setDurationStr('');
+        }
+        setRunType(initialData.runType || 'Aerobic');
+        setIsIntervalWorkout(
+          initialData.runType === 'Intervals' ||
+          initialData.runType === 'Interval Training' ||
+          initialData.slotId === 'interval'
+        );
+        if (initialData.defaultIntervalPace) {
+          setTargetIntervalPaceStr(initialData.defaultIntervalPace);
+        }
+        setAvgHeartRate(initialData.avgHeartRate ? String(initialData.avgHeartRate) : '');
+        setMaxHeartRate(initialData.maxHeartRate ? String(initialData.maxHeartRate) : '');
+        setAvgCadence(initialData.avgCadence ? String(initialData.avgCadence) : '');
+        setElevationGain(initialData.elevationGainMeters ? String(initialData.elevationGainMeters) : '');
+        setNotes(initialData.notes || '');
+      } else {
+        setDate(formatLocalDateString(new Date()));
+        setTitle('');
+        setDistanceKm('');
+        setDurationStr('');
+        setRunType('Aerobic');
+        setIsIntervalWorkout(false);
+        setAvgHeartRate('');
+        setMaxHeartRate('');
+        setAvgCadence('');
+        setElevationGain('');
+        setNotes('');
+      }
+    }
+  }, [isOpen, initialData, unit]);
+
   if (!isOpen) return null;
 
   const rawDist = parseFloat(distanceKm) || 0;
@@ -113,7 +170,15 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (distNum <= 0 || durationSec <= 0) return;
+    if (!distNum || distNum <= 0) {
+      setFormError('Please enter a valid workout distance.');
+      return;
+    }
+    if (!durationSec || durationSec <= 0) {
+      setFormError('Please enter workout duration (e.g. 24:30 or 25m).');
+      return;
+    }
+    setFormError(null);
 
     const finalRunType = (isIntervalWorkout || runType === 'Intervals') ? 'Intervals' : runType;
 
@@ -121,13 +186,14 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
       id: `run_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       userId,
       date,
-      title: title.trim() || (finalRunType === 'Intervals' ? 'Track Intervals' : 'Running Workout'),
+      title: title.trim() || (finalRunType === 'Intervals' ? 'Track Intervals' : finalRunType === 'Tempo' ? 'Threshold Tempo' : 'Running Workout'),
       distanceKm: Number(distNum.toFixed(2)),
       durationSeconds: durationSec,
       averagePaceSecPerKm: Math.round(avgPaceSec),
       best6kTimeSeconds: eq6kSec,
       targetEquivalentSeconds: eqTargetSec,
       runType: finalRunType,
+      slotId: initialData?.slotId,
       avgHeartRate: avgHeartRate ? parseInt(avgHeartRate, 10) : undefined,
       maxHeartRate: maxHeartRate ? parseInt(maxHeartRate, 10) : undefined,
       avgCadence: avgCadence ? parseInt(avgCadence, 10) : undefined,
@@ -162,12 +228,19 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-      <div className="relative w-full max-w-lg rounded-2xl bg-white dark:bg-[#1c1c1e] border border-neutral-200 dark:border-neutral-800 shadow-2xl p-6 overflow-hidden">
+      <div className="relative w-full max-w-lg rounded-2xl bg-white dark:bg-[#1c1c1e] border border-neutral-200 dark:border-neutral-800 shadow-2xl p-6 overflow-hidden max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-neutral-200 dark:border-neutral-800">
-          <h2 className="text-lg font-bold text-neutral-900 dark:text-white tracking-tight">
-            Log Workout
-          </h2>
+        <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-neutral-800">
+          <div>
+            <h2 className="text-lg font-bold text-neutral-900 dark:text-white tracking-tight">
+              Log Workout
+            </h2>
+            {initialData?.slotName && (
+              <p className="text-xs text-[#0593C6] font-semibold mt-0.5">
+                Targeting Weekly Microcycle: {initialData.slotName}
+              </p>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="p-1.5 rounded-full text-neutral-400 hover:text-neutral-700 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
@@ -176,6 +249,14 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Slot Auto-Matching Badge & Validation Alerts */}
+        {formError && (
+          <div className="mt-3 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center space-x-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{formError}</span>
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
@@ -490,21 +571,37 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
             />
           </div>
 
-          {/* Action buttons */}
-          <div className="flex items-center justify-end space-x-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-full text-xs font-medium text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 rounded-full text-xs font-semibold text-black bg-[#30d158] hover:bg-[#28cd41] transition-colors cursor-pointer"
-            >
-              Save Workout
-            </button>
+          {/* Garmin Watch Shortcut & Action Buttons */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-neutral-200/80 dark:border-neutral-800">
+            {onOpenGarminSync ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenGarminSync();
+                }}
+                className="inline-flex items-center space-x-1.5 text-xs text-[#0593C6] hover:text-[#047da8] dark:hover:text-[#38bdf8] font-semibold cursor-pointer active:scale-[0.97]"
+              >
+                <UploadCloud className="w-3.5 h-3.5" />
+                <span>Upload Garmin FIT / CSV instead</span>
+              </button>
+            ) : <div />}
+
+            <div className="flex items-center space-x-2 self-end sm:self-auto">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 rounded-full text-xs font-medium text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer active:scale-[0.96]"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-full text-xs font-semibold text-black bg-[#30d158] hover:bg-[#28cd41] active:bg-[#20a833] transition-all cursor-pointer shadow-xs active:scale-[0.96]"
+              >
+                Save Workout
+              </button>
+            </div>
           </div>
         </form>
       </div>
