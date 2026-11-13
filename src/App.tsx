@@ -588,14 +588,15 @@ export default function App() {
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
       <div className="relative min-h-screen bg-[#ECF3F8] dark:bg-[#070E16] text-slate-900 dark:text-white flex flex-col font-sans transition-colors selection:bg-[#0EA5E9] selection:text-white">
-        {/* Subtle Ambient Backdrop for Liquid Glass Refraction */}
+        {/* Ambient Mesh Backdrop for Liquid Glass Refraction */}
         <div
           aria-hidden="true"
           className="pointer-events-none fixed inset-0 overflow-hidden z-0"
         >
-          <div className="absolute -bottom-32 -left-24 w-[480px] h-[480px] rounded-full bg-[#0593C6]/12 dark:bg-[#0593C6]/14 blur-3xl" />
-          <div className="absolute bottom-24 right-0 w-[440px] h-[440px] rounded-full bg-violet-500/8 dark:bg-violet-500/12 blur-3xl" />
-          <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[560px] h-[340px] rounded-full bg-emerald-500/6 dark:bg-sky-500/8 blur-3xl" />
+          <div className="absolute -bottom-24 -left-20 w-[560px] h-[560px] rounded-full bg-sky-400/22 dark:bg-[#0593C6]/22 blur-3xl" />
+          <div className="absolute bottom-10 right-[-6%] w-[520px] h-[520px] rounded-full bg-violet-400/18 dark:bg-violet-500/18 blur-3xl" />
+          <div className="absolute top-[42%] left-[22%] w-[600px] h-[340px] rounded-full bg-emerald-400/14 dark:bg-cyan-500/14 blur-3xl" />
+          <div className="absolute -bottom-36 left-1/2 -translate-x-1/2 w-[780px] h-[280px] rounded-full bg-cyan-400/20 dark:bg-sky-500/18 blur-3xl" />
         </div>
         {/* Top Navigation */}
         <Navbar

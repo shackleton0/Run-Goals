@@ -168,56 +168,98 @@
 /* Scroll-Reactive Liquid Glass Card Headers */
 .liquid-glass-scroll-shell {
   --lg-clarity: 1;
-  opacity: calc(0.42 + var(--lg-clarity, 1) * 0.58);
-  transform: scale(calc(0.986 + var(--lg-clarity, 1) * 0.014));
+  --lg-mx: 50%;
+  --lg-my: 0%;
+  opacity: calc(0.40 + var(--lg-clarity, 1) * 0.60);
+  transform: translateY(calc((1 - var(--lg-clarity, 1)) * 7px))
+    scale(calc(0.984 + var(--lg-clarity, 1) * 0.016));
   transform-origin: center top;
-  transition: opacity 150ms ease-out, transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 170ms ease-out, transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
   will-change: opacity, transform;
 }
 
 .liquid-glass-scroll-shell > div {
   position: relative;
-  backdrop-filter: blur(calc(24px - var(--lg-clarity, 1) * 6px)) saturate(calc(150% + var(--lg-clarity, 1) * 40%));
-  -webkit-backdrop-filter: blur(calc(24px - var(--lg-clarity, 1) * 6px)) saturate(calc(150% + var(--lg-clarity, 1) * 40%));
+  backdrop-filter: blur(calc(28px - var(--lg-clarity, 1) * 4px))
+    saturate(calc(175% + var(--lg-clarity, 1) * 45%))
+    brightness(1.04);
+  -webkit-backdrop-filter: blur(calc(28px - var(--lg-clarity, 1) * 4px))
+    saturate(calc(175% + var(--lg-clarity, 1) * 45%))
+    brightness(1.04);
   background: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, calc(0.66 + var(--lg-clarity, 1) * 0.24)) 0%,
-    rgba(241, 248, 254, calc(0.54 + var(--lg-clarity, 1) * 0.30)) 100%
+    135deg,
+    rgba(255, 255, 255, calc(0.46 + var(--lg-clarity, 1) * 0.24)) 0%,
+    rgba(229, 244, 255, calc(0.32 + var(--lg-clarity, 1) * 0.24)) 52%,
+    rgba(246, 250, 255, calc(0.42 + var(--lg-clarity, 1) * 0.26)) 100%
   ) !important;
-  border-color: rgba(255, 255, 255, calc(0.62 + var(--lg-clarity, 1) * 0.32)) !important;
+  border: 1px solid rgba(255, 255, 255, calc(0.68 + var(--lg-clarity, 1) * 0.28)) !important;
   box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.94),
-    inset 0 -1px 0 0 rgba(5, 147, 198, calc(0.08 + var(--lg-clarity, 1) * 0.1)),
-    0 12px 30px -12px rgba(5, 147, 198, calc(0.07 + var(--lg-clarity, 1) * 0.15)),
-    0 4px 12px -4px rgba(15, 23, 42, calc(0.04 + var(--lg-clarity, 1) * 0.06));
+    inset 0 1.5px 1px 0 rgba(255, 255, 255, 0.96),
+    inset 1px 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1.5px 3px 0 rgba(5, 147, 198, calc(0.12 + var(--lg-clarity, 1) * 0.14)),
+    inset 0 0 18px 0 rgba(255, 255, 255, calc(0.22 + var(--lg-clarity, 1) * 0.18)),
+    0 16px 38px -14px rgba(5, 147, 198, calc(0.10 + var(--lg-clarity, 1) * 0.18)),
+    0 6px 16px -6px rgba(15, 23, 42, calc(0.05 + var(--lg-clarity, 1) * 0.08));
+  transition: background 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.liquid-glass-scroll-shell[data-glass-expanded="true"] > div {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.86) 0%,
+    rgba(243, 249, 255, 0.82) 100%
+  ) !important;
 }
 
 .dark .liquid-glass-scroll-shell > div {
+  backdrop-filter: blur(calc(28px - var(--lg-clarity, 1) * 4px))
+    saturate(calc(170% + var(--lg-clarity, 1) * 40%))
+    brightness(1.08);
+  -webkit-backdrop-filter: blur(calc(28px - var(--lg-clarity, 1) * 4px))
+    saturate(calc(170% + var(--lg-clarity, 1) * 40%))
+    brightness(1.08);
   background: linear-gradient(
-    145deg,
-    rgba(22, 40, 56, calc(0.56 + var(--lg-clarity, 1) * 0.30)) 0%,
-    rgba(12, 24, 36, calc(0.48 + var(--lg-clarity, 1) * 0.34)) 100%
+    135deg,
+    rgba(28, 50, 74, calc(0.44 + var(--lg-clarity, 1) * 0.22)) 0%,
+    rgba(12, 24, 38, calc(0.36 + var(--lg-clarity, 1) * 0.24)) 55%,
+    rgba(20, 38, 58, calc(0.44 + var(--lg-clarity, 1) * 0.24)) 100%
   ) !important;
-  border-color: rgba(186, 230, 253, calc(0.11 + var(--lg-clarity, 1) * 0.14)) !important;
+  border-color: rgba(186, 230, 253, calc(0.16 + var(--lg-clarity, 1) * 0.18)) !important;
   box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, calc(0.12 + var(--lg-clarity, 1) * 0.14)),
-    inset 0 -1px 0 0 rgba(5, 147, 198, calc(0.10 + var(--lg-clarity, 1) * 0.15)),
-    0 14px 34px -12px rgba(0, 0, 0, 0.56),
-    0 0 24px -10px rgba(5, 147, 198, calc(0.08 + var(--lg-clarity, 1) * 0.15));
+    inset 0 1.5px 1px 0 rgba(255, 255, 255, calc(0.18 + var(--lg-clarity, 1) * 0.16)),
+    inset 1px 0 1px 0 rgba(186, 230, 253, 0.12),
+    inset 0 -1.5px 3px 0 rgba(5, 147, 198, calc(0.14 + var(--lg-clarity, 1) * 0.18)),
+    inset 0 0 22px 0 rgba(56, 189, 248, calc(0.04 + var(--lg-clarity, 1) * 0.06)),
+    0 18px 40px -12px rgba(0, 0, 0, 0.62),
+    0 0 28px -10px rgba(5, 147, 198, calc(0.12 + var(--lg-clarity, 1) * 0.18));
 }
 
-/* Specular Liquid Glass Top Bevel Highlight */
+.dark .liquid-glass-scroll-shell[data-glass-expanded="true"] > div {
+  background: linear-gradient(
+    135deg,
+    rgba(18, 34, 50, 0.84) 0%,
+    rgba(12, 24, 36, 0.82) 100%
+  ) !important;
+}
+
+/* Curved Upper Liquid Meniscus Reflection */
 .liquid-glass-scroll-shell > div::before {
   content: '';
   position: absolute;
   inset: 0 0 auto 0;
-  height: 52%;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, calc(0.42 + var(--lg-clarity, 1) * 0.18)) 0%,
-    rgba(255, 255, 255, 0.04) 55%,
-    transparent 100%
-  );
+  height: 54%;
+  background:
+    radial-gradient(
+      120% 80% at 50% -15%,
+      rgba(255, 255, 255, calc(0.55 + var(--lg-clarity, 1) * 0.22)) 0%,
+      rgba(255, 255, 255, 0.12) 48%,
+      transparent 74%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, calc(0.36 + var(--lg-clarity, 1) * 0.18)) 0%,
+      transparent 100%
+    );
   pointer-events: none;
   border-top-left-radius: inherit;
   border-top-right-radius: inherit;
@@ -225,17 +267,91 @@
 }
 
 .dark .liquid-glass-scroll-shell > div::before {
-  background: linear-gradient(
-    180deg,
-    rgba(186, 230, 253, calc(0.11 + var(--lg-clarity, 1) * 0.08)) 0%,
-    rgba(255, 255, 255, 0.02) 50%,
-    transparent 100%
+  background:
+    radial-gradient(
+      120% 80% at 50% -15%,
+      rgba(224, 242, 254, calc(0.16 + var(--lg-clarity, 1) * 0.10)) 0%,
+      rgba(56, 189, 248, 0.04) 48%,
+      transparent 75%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, calc(0.08 + var(--lg-clarity, 1) * 0.05)) 0%,
+      transparent 100%
+    );
+}
+
+/* Interactive Caustic Spotlight Tracking Cursor Across Liquid Glass */
+.liquid-glass-scroll-shell > div::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    320px circle at var(--lg-mx, 50%) var(--lg-my, 0%),
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(186, 230, 253, 0.14) 38%,
+    transparent 70%
   );
+  opacity: calc(0.25 + var(--lg-clarity, 1) * 0.35);
+  transition: opacity 220ms ease;
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 0;
+}
+
+.dark .liquid-glass-scroll-shell > div::after {
+  background: radial-gradient(
+    320px circle at var(--lg-mx, 50%) var(--lg-my, 0%),
+    rgba(186, 230, 253, 0.16) 0%,
+    rgba(56, 189, 248, 0.06) 40%,
+    transparent 72%
+  );
+  opacity: calc(0.35 + var(--lg-clarity, 1) * 0.45);
+}
+
+.liquid-glass-scroll-shell[data-glass-hovered="true"] > div::after {
+  opacity: 0.95;
 }
 
 .liquid-glass-scroll-shell > div > * {
   position: relative;
   z-index: 1;
+}
+
+/* Sculpted Frosted Glass Icon & Chevron Droplets Inside Headers */
+.liquid-glass-scroll-shell .accordion-trigger:hover {
+  background-color: rgba(255, 255, 255, 0.24) !important;
+}
+
+.dark .liquid-glass-scroll-shell .accordion-trigger:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+.liquid-glass-scroll-shell .accordion-trigger > div:first-child > div:first-child,
+.liquid-glass-scroll-shell .chevron-badge {
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.72) 0%,
+    rgba(226, 241, 252, 0.42) 100%
+  ) !important;
+  border-color: rgba(255, 255, 255, 0.85) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 3px 10px -3px rgba(5, 147, 198, 0.18);
+  backdrop-filter: blur(10px);
+}
+
+.dark .liquid-glass-scroll-shell .accordion-trigger > div:first-child > div:first-child,
+.dark .liquid-glass-scroll-shell .chevron-badge {
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.12) 0%,
+    rgba(56, 189, 248, 0.05) 100%
+  ) !important;
+  border-color: rgba(186, 230, 253, 0.20) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 4px 12px -4px rgba(0, 0, 0, 0.45);
 }
 
 @media (prefers-reduced-motion: reduce) {
