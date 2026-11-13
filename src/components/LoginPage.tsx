@@ -43,6 +43,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isInstantSigningIn, setIsInstantSigningIn] = useState(false);
   const [copiedDomain, setCopiedDomain] = useState(false);
+  const [showBetaBanner, setShowBetaBanner] = useState(true);
 
   const isUnauthorizedDomain = Boolean(authError && authError.startsWith('UNAUTHORIZED_DOMAIN:'));
   const unauthorizedDomain = authError && isUnauthorizedDomain
@@ -104,6 +105,38 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             </button>
           </div>
         </header>
+
+        {/* Beta & Testing Warning Banner (Top of App) */}
+        {showBetaBanner && (
+          <div className="bg-amber-500/10 border-b border-amber-500/25 px-4 py-2 text-xs text-amber-950 dark:text-amber-100">
+            <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 font-extrabold uppercase tracking-wider text-[10px] shrink-0">
+                  Beta
+                </span>
+                <p className="text-[11px] sm:text-xs leading-snug">
+                  RunGoals is still in <span className="font-semibold">beta &amp; testing format</span>. Found any bugs or have ideas on how to improve the app? Send an email to{' '}
+                  <a
+                    href="mailto:lootah07070@gmail.com"
+                    className="font-bold text-amber-800 dark:text-amber-300 underline decoration-amber-500/50 hover:text-amber-950 dark:hover:text-amber-200"
+                  >
+                    lootah07070@gmail.com
+                  </a>
+                  .
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBetaBanner(false)}
+                className="p-1 rounded-md text-amber-700/70 dark:text-amber-300/70 hover:text-amber-950 dark:hover:text-amber-100 hover:bg-amber-500/15 transition-colors cursor-pointer shrink-0"
+                aria-label="Dismiss beta warning"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Unauthorized Domain Guide Card */}
         {isUnauthorizedDomain && (
@@ -366,10 +399,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             </div>
           </div>
 
-          {/* Security & Reliability Footer Note */}
-          <div className="mt-5 flex items-center space-x-2 text-[11px] text-neutral-400 dark:text-neutral-500">
+          {/* Security Footer Note */}
+          <div className="mt-5 flex items-center justify-center space-x-2 text-center text-[11px] text-neutral-400 dark:text-neutral-500">
             <ShieldCheck className="w-3.5 h-3.5 text-[#0593C6]" />
-            <span>Secure Firebase Firestore cloud database · Direct Garmin watch telemetry</span>
+            <span>Secure Firebase Firestore cloud database · Garmin &amp; Apple Watch telemetry</span>
           </div>
         </main>
       </div>

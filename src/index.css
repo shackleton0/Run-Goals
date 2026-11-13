@@ -361,3 +361,60 @@
     transform: none !important;
   }
 }
+
+/* Lightweight / Low-Demand Mode: Remove animations, transitions, backdrop blur & liquid glass */
+.low-power-mode *,
+.low-power-mode *::before,
+.low-power-mode *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
+.low-power-mode button:active,
+.low-power-mode [role="button"]:active,
+.low-power-mode input[type="button"]:active,
+.low-power-mode input[type="submit"]:active {
+  transform: none !important;
+}
+
+.low-power-mode .accordion-collapse-wrapper {
+  transition: none !important;
+  will-change: auto !important;
+}
+
+.low-power-mode [class*="backdrop-blur"],
+.low-power-mode .liquid-glass-active,
+.low-power-mode .liquid-glass-muted,
+.low-power-mode .liquid-glass-scroll-shell,
+.low-power-mode .liquid-glass-scroll-shell > div,
+.low-power-mode .liquid-glass-scroll-shell .accordion-trigger > div:first-child > div:first-child,
+.low-power-mode .liquid-glass-scroll-shell .chevron-badge {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  will-change: auto !important;
+}
+
+.low-power-mode .liquid-glass-scroll-shell {
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+.low-power-mode .liquid-glass-scroll-shell > div::before,
+.low-power-mode .liquid-glass-scroll-shell > div::after,
+.low-power-mode .liquid-glass-sheen::after {
+  display: none !important;
+}
+
+.low-power-mode .liquid-glass-active {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06) !important;
+}
+
+.dark.low-power-mode .liquid-glass-active,
+.low-power-mode .dark .liquid-glass-active {
+  background: #101c28 !important;
+  border: 1px solid #1e293b !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35) !important;
+}

@@ -58,7 +58,9 @@ import {
   Check,
   ExternalLink,
   ShieldAlert,
+  Zap,
 } from 'lucide-react';
+import { usePerformanceMode } from './contexts/PerformanceModeContext';
 import confetti from 'canvas-confetti';
 
 const LOCAL_STORAGE_RUNS_KEY = 'xc_6k_user_runs_data';
@@ -69,6 +71,13 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [showBetaBanner, setShowBetaBanner] = useState(true);
+  const {
+    isLightweight,
+    showAutoNotice,
+    dismissAutoNotice,
+    setPreference: setPerformancePref,
+  } = usePerformanceMode();
 
   // Guest Testing Mode
   const [isGuest, setIsGuest] = useState<boolean>(() => {
@@ -588,16 +597,18 @@ export default function App() {
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
       <div className="relative min-h-screen bg-[#ECF3F8] dark:bg-[#070E16] text-slate-900 dark:text-white flex flex-col font-sans transition-colors selection:bg-[#0EA5E9] selection:text-white">
-        {/* Ambient Mesh Backdrop for Liquid Glass Refraction */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none fixed inset-0 overflow-hidden z-0"
-        >
-          <div className="absolute -bottom-24 -left-20 w-[560px] h-[560px] rounded-full bg-sky-400/22 dark:bg-[#0593C6]/22 blur-3xl" />
-          <div className="absolute bottom-10 right-[-6%] w-[520px] h-[520px] rounded-full bg-violet-400/18 dark:bg-violet-500/18 blur-3xl" />
-          <div className="absolute top-[42%] left-[22%] w-[600px] h-[340px] rounded-full bg-emerald-400/14 dark:bg-cyan-500/14 blur-3xl" />
-          <div className="absolute -bottom-36 left-1/2 -translate-x-1/2 w-[780px] h-[280px] rounded-full bg-cyan-400/20 dark:bg-sky-500/18 blur-3xl" />
-        </div>
+        {/* Ambient Mesh Backdrop for Liquid Glass Refraction (skipped in Lightweight Mode) */}
+        {!isLightweight && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none fixed inset-0 overflow-hidden z-0"
+          >
+            <div className="absolute -bottom-24 -left-20 w-[560px] h-[560px] rounded-full bg-sky-400/22 dark:bg-[#0593C6]/22 blur-3xl" />
+            <div className="absolute bottom-10 right-[-6%] w-[520px] h-[520px] rounded-full bg-violet-400/18 dark:bg-violet-500/18 blur-3xl" />
+            <div className="absolute top-[42%] left-[22%] w-[600px] h-[340px] rounded-full bg-emerald-400/14 dark:bg-cyan-500/14 blur-3xl" />
+            <div className="absolute -bottom-36 left-1/2 -translate-x-1/2 w-[780px] h-[280px] rounded-full bg-cyan-400/20 dark:bg-sky-500/18 blur-3xl" />
+          </div>
+        )}
         {/* Top Navigation */}
         <Navbar
           user={user}
@@ -664,6 +675,76 @@ export default function App() {
             </div>
           </div>
         </div>
+
+        {/* Beta & Testing Warning Banner (Top of App) */}
+        {showBetaBanner && (
+          <div className="relative z-10 bg-amber-500/10 dark:bg-amber-500/10 border-b border-amber-500/25 px-4 py-2 text-xs text-amber-950 dark:text-amber-100">
+            <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 font-extrabold uppercase tracking-wider text-[10px] shrink-0">
+                  Beta
+                </span>
+                <p className="text-[11px] sm:text-xs leading-snug">
+                  RunGoals is still in <span className="font-semibold">beta &amp; testing format</span>. Found any bugs or have ideas on how to improve the app? Send an email to{' '}
+                  <a
+                    href="mailto:lootah07070@gmail.com"
+                    className="font-bold text-amber-800 dark:text-amber-300 underline decoration-amber-500/50 hover:text-amber-950 dark:hover:text-amber-200"
+                  >
+                    lootah07070@gmail.com
+                  </a>
+                  .
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBetaBanner(false)}
+                className="p-1 rounded-md text-amber-700/70 dark:text-amber-300/70 hover:text-amber-950 dark:hover:text-amber-100 hover:bg-amber-500/15 transition-colors cursor-pointer shrink-0"
+                aria-label="Dismiss beta warning"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Auto-Activated Lightweight Mode Notice */}
+        {showAutoNotice && (
+          <div className="relative z-10 bg-emerald-500/10 border-b border-emerald-500/25 px-4 py-2 text-xs text-emerald-950 dark:text-emerald-100">
+            <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Zap className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <p className="text-[11px] sm:text-xs leading-snug">
+                  <span className="font-semibold">Lightweight Mode activated automatically</span> — animations and liquid glass were paused because rendering slowed down.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] cursor-pointer"
+                >
+                  Settings
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPerformancePref('standard')}
+                  className="px-2.5 py-1 rounded-lg bg-white/80 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-semibold text-[11px] cursor-pointer"
+                >
+                  Restore Effects
+                </button>
+                <button
+                  type="button"
+                  onClick={dismissAutoNotice}
+                  className="p-1 rounded-md text-emerald-700/70 dark:text-emerald-300/70 hover:text-emerald-950 dark:hover:text-emerald-100 cursor-pointer"
+                  aria-label="Dismiss performance notice"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Auth Error Banner */}
         {authError && (
@@ -880,9 +961,13 @@ export default function App() {
           )}
         </main>
 
-        {/* Minimal Footer */}
-        <footer className="border-t border-neutral-200 dark:border-neutral-800 bg-white/50 dark:bg-black/50 py-5 text-center text-xs text-neutral-400 dark:text-neutral-500">
-          <p>RunGoals · Cross Country 6K Pace & Fitness Tracker Data</p>
+        {/* Footer */}
+        <footer className="relative z-10 border-t border-slate-200/80 dark:border-slate-800/80 bg-white/60 dark:bg-[#09121B]/75 backdrop-blur-md py-6 px-4 text-center text-xs text-slate-500 dark:text-slate-400">
+          <div className="max-w-4xl mx-auto">
+            <p className="font-semibold text-slate-700 dark:text-slate-300">
+              RUNGOALS · Garmin &amp; Apple Watch Telemetry · Goal Projections, Predictor &amp; YRAA Insights
+            </p>
+          </div>
         </footer>
 
         {/* Modals */}

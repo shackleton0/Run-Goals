@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useCallback } from 'react';
+import { usePerformanceMode } from '../contexts/PerformanceModeContext';
 
 interface LiquidGlassRevealProps {
   children: React.ReactNode;
@@ -9,6 +10,7 @@ export const LiquidGlassReveal: React.FC<LiquidGlassRevealProps> = ({
   children,
   className = '',
 }) => {
+  const { isLightweight } = usePerformanceMode();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isHoveredRef = useRef<boolean>(false);
   const isExpandedRef = useRef<boolean>(false);
@@ -53,6 +55,7 @@ export const LiquidGlassReveal: React.FC<LiquidGlassRevealProps> = ({
   }, []);
 
   useEffect(() => {
+    if (isLightweight) return;
     const el = containerRef.current;
     if (!el || typeof window === 'undefined') return;
 
@@ -105,9 +108,10 @@ export const LiquidGlassReveal: React.FC<LiquidGlassRevealProps> = ({
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();
     };
-  }, [updateClarity]);
+  }, [isLightweight, updateClarity]);
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isLightweight) return;
     const el = containerRef.current;
     if (!el) return;
     const clientX = e.clientX;
@@ -123,6 +127,10 @@ export const LiquidGlassReveal: React.FC<LiquidGlassRevealProps> = ({
       el.style.setProperty('--lg-my', `${yPct.toFixed(1)}%`);
     });
   };
+
+  if (isLightweight) {
+    return <div className={className}>{children}</div>;
+  }
 
   return (
     <div

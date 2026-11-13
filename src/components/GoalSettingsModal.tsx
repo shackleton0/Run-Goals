@@ -29,7 +29,12 @@ import {
   Moon,
   Minus,
   Plus,
+  Zap,
 } from 'lucide-react';
+import {
+  usePerformanceMode,
+  PerformancePreference,
+} from '../contexts/PerformanceModeContext';
 
 type SettingsSection = 'root' | 'profile' | 'race' | 'weekly' | 'units';
 
@@ -73,6 +78,13 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
 }) => {
   const [activeSection, setActiveSection] = useState<SettingsSection>('root');
   const [showSchedulePreview, setShowSchedulePreview] = useState(false);
+  const {
+    preference: performancePref,
+    setPreference: setPerformancePref,
+    isLightweight,
+    autoSlowDetected,
+    prefersReducedMotion,
+  } = usePerformanceMode();
 
   const [selectedPreset, setSelectedPreset] = useState<string>('6K');
   const [customDistanceStr, setCustomDistanceStr] = useState<string>('6');
@@ -518,6 +530,64 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
                         </div>
                       </div>
                     )}
+
+                    {/* Performance & Visual Effects */}
+                    <div className="py-3 -mx-2.5 px-2.5 space-y-2.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start space-x-3 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 flex items-center justify-center shrink-0 mt-0.5">
+                            <Zap className={`w-4 h-4 ${isLightweight ? 'text-emerald-500' : 'text-[#0593C6]'}`} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center flex-wrap gap-1.5">
+                              <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                                Performance Mode
+                              </span>
+                              {isLightweight && (
+                                <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
+                                  Lightweight On
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                              {performancePref === 'auto' && autoSlowDetected
+                                ? 'Slowness detected — animations & liquid glass were turned off automatically.'
+                                : performancePref === 'auto' && prefersReducedMotion
+                                  ? 'Following system reduced-motion — animations & liquid glass paused.'
+                                  : performancePref === 'lightweight'
+                                    ? 'Animations, blurs & liquid glass disabled for faster performance.'
+                                    : 'Auto switches to Lightweight without animations or liquid glass if the site runs slowly.'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80">
+                        {(
+                          [
+                            { id: 'auto', label: 'Auto' },
+                            { id: 'standard', label: 'Full Effects' },
+                            { id: 'lightweight', label: 'Lightweight' },
+                          ] as Array<{ id: PerformancePreference; label: string }>
+                        ).map((opt) => {
+                          const isSelected = performancePref === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setPerformancePref(opt.id)}
+                              className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-white dark:bg-[#162433] text-slate-900 dark:text-white shadow-xs'
+                                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

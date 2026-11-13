@@ -60,12 +60,17 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSignOut,
 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isBetaVersionOpen, setIsBetaVersionOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const betaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsDropdownOpen(false);
+      }
+      if (betaRef.current && !betaRef.current.contains(event.target as Node)) {
+        setIsBetaVersionOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -88,6 +93,44 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Right Action Controls */}
           <div className="flex items-center space-x-2.5 shrink-0">
+            {/* Beta Badge + Version Popover */}
+            <div className="relative" ref={betaRef}>
+              <button
+                type="button"
+                onClick={() => setIsBetaVersionOpen((prev) => !prev)}
+                className="flex items-center space-x-1.5 px-2.5 py-1.5 min-h-[34px] rounded-xl text-[11px] font-extrabold uppercase tracking-wider bg-orange-500/15 hover:bg-orange-500/25 active:scale-[0.96] text-orange-600 dark:text-orange-400 border border-orange-500/40 transition-all cursor-pointer shadow-xs"
+                aria-expanded={isBetaVersionOpen}
+                aria-haspopup="true"
+                title="Click to view RunGoals beta version"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
+                <span>Beta</span>
+              </button>
+
+              {isBetaVersionOpen && (
+                <div className="absolute right-0 mt-2 w-56 rounded-xl bg-white dark:bg-[#0F1C28] border border-orange-500/35 shadow-2xl p-3 z-50 text-xs">
+                  <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200 dark:border-slate-800">
+                    <span className="font-bold text-slate-900 dark:text-white">RunGoals</span>
+                    <span className="px-2 py-0.5 rounded-md bg-orange-500/15 text-orange-600 dark:text-orange-400 font-mono font-extrabold text-[11px] border border-orange-500/30">
+                      v1.2
+                    </span>
+                  </div>
+                  <p className="mt-2 text-[11px] font-semibold text-orange-600 dark:text-orange-400">
+                    Beta v1.2
+                  </p>
+                  <p className="mt-1.5 text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Bugs or feedback:{' '}
+                    <a
+                      href="mailto:lootah07070@gmail.com"
+                      className="font-semibold text-orange-600 dark:text-orange-400 hover:underline"
+                    >
+                      lootah07070@gmail.com
+                    </a>
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* Sync Data Action */}
             <button
               onClick={onOpenGarminSync}
