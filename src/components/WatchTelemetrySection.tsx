@@ -34,6 +34,7 @@ import {
   Clock,
   Target,
   Mountain,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { IntervalCalibrationModal } from './IntervalCalibrationModal';
 
@@ -213,10 +214,21 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
   const [combinedTitle, setCombinedTitle] = useState('');
   const [combinedCategory, setCombinedCategory] = useState<RunType>('Aerobic');
 
-  // Watch activities (from Garmin or with telemetry)
+  // Compare Workouts Mode State
+  const [isCompareMode, setIsCompareMode] = useState(false);
+  const [compareRunIds, setCompareRunIds] = useState<[string | null, string | null]>([null, null]);
+  const [compareSearch, setCompareSearch] = useState('');
+  const [compareCategoryFilter, setCompareCategoryFilter] = useState<string>('all');
+
+  // Watch activities (from Garmin, Apple Watch, or with telemetry)
   const watchRuns = useMemo(() => {
     return runs.filter(
-      (r) => r.source.startsWith('garmin') || r.avgHeartRate || r.maxHeartRate || r.avgCadence
+      (r) =>
+        r.source.startsWith('garmin') ||
+        r.source.startsWith('apple') ||
+        r.avgHeartRate ||
+        r.maxHeartRate ||
+        r.avgCadence
     );
   }, [runs]);
 
@@ -449,11 +461,145 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
     }
   };
 
+  // Compare Workouts helpers
+  const matchesCompareSearch = (run: RunRecord, query: string): boolean => {
+    const trimmed = query.trim().toLowerCase();
+    if (!trimmed) return true;
+    const tokens = trimmed.split(/\s+/).filter(Boolean);
+
+    let friendlyDate = '';
+    const parsed = new Date(`${run.date}T12:00:00`);
+    if (!isNaN(parsed.getTime())) {
+      friendlyDate = `${parsed.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })} ${parsed.toLocaleDateString('en-US', { month: 'long' })}`.toLowerCase();
+    }
+
+    const typeAliases: Record<string, string> = {
+      Tempo: 'tempo threshold cruise',
+      'Long Run': 'long run aerobic endurance',
+      'Interval Training': 'interval intervals track speed',
+      Intervals: 'interval intervals track speed',
+      Aerobic: 'aerobic easy base',
+      Easy: 'easy recovery aerobic',
+      Recovery: 'recovery easy shakeout',
+      '6K Time Trial': '6k time trial tt',
+      'Time Trial': 'time trial tt',
+      'Hill Repeats': 'hill repeats climb',
+      'Hill Run': 'hill run climb',
+      Race: 'race competition',
+    };
+
+    const distTags: string[] = [
+      `${run.distanceKm.toFixed(2)}km`,
+      `${run.distanceKm.toFixed(1)}km`,
+      `${(run.distanceKm * KM_TO_MILES).toFixed(2)}mi`,
+    ];
+    if (Math.abs(run.distanceKm - 6) <= 0.45) distTags.push('6k');
+    if (Math.abs(run.distanceKm - 5) <= 0.4) distTags.push('5k');
+    if (Math.abs(run.distanceKm - 8) <= 0.4) distTags.push('8k');
+    if (Math.abs(run.distanceKm - 10) <= 0.5) distTags.push('10k');
+    if (Math.abs(run.distanceKm - 1.61) <= 0.15) distTags.push('1mi 1 mile');
+
+    const sourceTag = run.source.startsWith('apple')
+      ? 'apple watch'
+      : run.source.startsWith('garmin')
+        ? 'garmin'
+        : 'manual';
+
+    const haystack = [
+      run.date,
+      friendlyDate,
+      run.title.toLowerCase(),
+      run.runType.toLowerCase(),
+      typeAliases[run.runType] || '',
+      distTags.join(' '),
+      sourceTag,
+      (run.notes || '').toLowerCase(),
+    ].join(' ');
+
+    return tokens.every((tok) => haystack.includes(tok));
+  };
+
+  const compareFilteredRuns = useMemo(() => {
+    return [...runs]
+      .filter((run) => {
+        if (compareCategoryFilter !== 'all') {
+          if (compareCategoryFilter === 'Tempo') {
+            const isTempoLike =
+              run.runType === 'Tempo' ||
+              run.title.toLowerCase().includes('threshold') ||
+              run.title.toLowerCase().includes('tempo');
+            if (!isTempoLike) return false;
+          } else if (compareCategoryFilter === 'Aerobic') {
+            if (run.runType !== 'Aerobic' && run.runType !== 'Easy') return false;
+          } else if (compareCategoryFilter === 'Interval Training') {
+            if (run.runType !== 'Interval Training' && run.runType !== 'Intervals') return false;
+          } else if (compareCategoryFilter === 'Recovery') {
+            if (run.runType !== 'Recovery' && run.runType !== 'Easy') return false;
+          } else if (run.runType !== compareCategoryFilter) {
+            return false;
+          }
+        }
+
+        if (!matchesCompareSearch(run, compareSearch)) {
+          return false;
+        }
+        return true;
+      })
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [runs, compareCategoryFilter, compareSearch]);
+
+  const compareOptionsA = useMemo(() => {
+    if (!compareRunIds[0]) return compareFilteredRuns;
+    const exists = compareFilteredRuns.some((r) => r.id === compareRunIds[0]);
+    if (exists) return compareFilteredRuns;
+    const pinned = runs.find((r) => r.id === compareRunIds[0]);
+    return pinned ? [pinned, ...compareFilteredRuns] : compareFilteredRuns;
+  }, [compareFilteredRuns, compareRunIds, runs]);
+
+  const compareOptionsB = useMemo(() => {
+    if (!compareRunIds[1]) return compareFilteredRuns;
+    const exists = compareFilteredRuns.some((r) => r.id === compareRunIds[1]);
+    if (exists) return compareFilteredRuns;
+    const pinned = runs.find((r) => r.id === compareRunIds[1]);
+    return pinned ? [pinned, ...compareFilteredRuns] : compareFilteredRuns;
+  }, [compareFilteredRuns, compareRunIds, runs]);
+
+  const toggleSelectRunForCompare = (id: string) => {
+    setCompareRunIds(([idA, idB]) => {
+      if (idA === id) return [idB, null];
+      if (idB === id) return [idA, null];
+      if (!idA) return [id, idB];
+      if (!idB) return [idA, id];
+      return [idA, id];
+    });
+  };
+
+  const compareRunA = useMemo(
+    () => (compareRunIds[0] ? runs.find((r) => r.id === compareRunIds[0]) || null : null),
+    [runs, compareRunIds]
+  );
+
+  const compareRunB = useMemo(
+    () => (compareRunIds[1] ? runs.find((r) => r.id === compareRunIds[1]) || null : null),
+    [runs, compareRunIds]
+  );
+
+  const formatSignedDeltaDuration = (diffSec: number): string => {
+    if (Math.abs(diffSec) < 1) return 'Even';
+    const sign = diffSec > 0 ? '+' : '-';
+    return `${sign}${formatDuration(Math.round(Math.abs(diffSec)))}`;
+  };
+
   // Determine which runs to render in list
   // Default: 1 most recent.
-  // Expanded or in combine mode or searching: show all filtered
-  const shouldShowAll = showAllActivityLogs || isCombineMode || searchQuery.trim().length > 0;
-  const displayedRuns = shouldShowAll ? filteredRuns : filteredRuns.slice(0, 1);
+  // Expanded or in combine/compare mode or searching: show all filtered
+  const shouldShowAll = showAllActivityLogs || isCombineMode || isCompareMode || searchQuery.trim().length > 0;
+  const activeActivityRuns = isCompareMode ? compareFilteredRuns : filteredRuns;
+  const displayedRuns = shouldShowAll ? activeActivityRuns : activeActivityRuns.slice(0, 1);
 
   return (
     <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#0F1C28] border border-slate-200/95 dark:border-slate-700/75 shadow-sm transition-colors">
@@ -472,7 +618,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight transition-colors">
-                Garmin & Fitness Watch Telemetry
+                Watch Telemetry
               </h2>
               <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums">
                 · {runs.length} Activities
@@ -852,14 +998,48 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Compare Workouts Mode Toggle */}
+            {runs.length >= 2 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !isCompareMode;
+                  setIsCompareMode(next);
+                  if (next) {
+                    setIsCombineMode(false);
+                    setSelectedCombineIds(new Set());
+                  } else {
+                    setCompareRunIds([null, null]);
+                    setCompareSearch('');
+                    setCompareCategoryFilter('all');
+                  }
+                }}
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                  isCompareMode
+                    ? 'bg-[#0593C6] text-white shadow-xs'
+                    : 'bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200'
+                }`}
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5" />
+                <span>{isCompareMode ? 'Exit Compare' : 'Compare Workouts'}</span>
+              </button>
+            )}
+
             {/* Combine Workouts Mode Toggle */}
             {runs.length >= 2 && onCombineRuns && (
               <button
                 type="button"
                 onClick={() => {
-                  setIsCombineMode(!isCombineMode);
+                  const next = !isCombineMode;
+                  setIsCombineMode(next);
                   setSelectedCombineIds(new Set());
+                  if (next) {
+                    setIsCompareMode(false);
+                    setCompareRunIds([null, null]);
+                    setCompareSearch('');
+                    setCompareCategoryFilter('all');
+                  }
                 }}
                 className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                   isCombineMode
@@ -885,6 +1065,487 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Compare Workouts Side-by-Side Panel */}
+        {isCompareMode && (
+          <div className="mb-4 p-4 rounded-xl bg-slate-50 dark:bg-[#0B1621] border border-slate-200 dark:border-slate-700/80 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <ArrowLeftRight className="w-4 h-4 text-[#0593C6]" />
+                  <span className="font-bold text-xs text-slate-900 dark:text-white">
+                    Compare Workouts Side-by-Side
+                  </span>
+                  <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 tabular-nums">
+                    · {compareFilteredRuns.length} {compareFilteredRuns.length === 1 ? 'match' : 'matches'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Filter by date, distance, or category (e.g. "threshold 6k"), then compare Latest vs First or pick any two runs.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                {compareFilteredRuns.length >= 2 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCompareRunIds([
+                          compareFilteredRuns[compareFilteredRuns.length - 1].id,
+                          compareFilteredRuns[0].id,
+                        ])
+                      }
+                      title="Compare earliest matching workout (A) vs latest matching workout (B)"
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#0593C6] hover:bg-[#047da8] text-white transition-colors cursor-pointer"
+                    >
+                      Latest vs First
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCompareRunIds([compareFilteredRuns[1].id, compareFilteredRuns[0].id])
+                      }
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                    >
+                      Latest 2
+                    </button>
+                  </>
+                )}
+                {(compareRunA || compareRunB) && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setCompareRunIds([compareRunIds[1], compareRunIds[0]])}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                    >
+                      Swap A ↔ B
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCompareRunIds([null, null])}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Narrow Down by Date / Search & Category */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="sm:col-span-2 relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={compareSearch}
+                  onChange={(e) => setCompareSearch(e.target.value)}
+                  placeholder="Search date, title, or workout (e.g. 2026-10, threshold 6k)..."
+                  aria-label="Filter comparison workouts by date or keyword"
+                  className="w-full pl-8 pr-8 py-2 rounded-lg bg-white dark:bg-[#0F1C28] border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-[#0593C6]"
+                />
+                {compareSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setCompareSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
+                    aria-label="Clear comparison search"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              <div>
+                <select
+                  value={compareCategoryFilter}
+                  onChange={(e) => setCompareCategoryFilter(e.target.value)}
+                  aria-label="Filter comparison workouts by category"
+                  className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#0F1C28] border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-[#0593C6]"
+                >
+                  <option value="all">All Categories</option>
+                  {CATEGORY_CHOICES.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Workout A & B Selectors */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="flex items-center space-x-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-sm bg-[#0593C6] text-white text-[10px] font-bold">
+                    A
+                  </span>
+                  <span>Baseline / First Workout (A)</span>
+                </label>
+                <select
+                  value={compareRunIds[0] || ''}
+                  onChange={(e) => setCompareRunIds([e.target.value || null, compareRunIds[1]])}
+                  aria-label="Select Workout A"
+                  className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#0F1C28] border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-[#0593C6]"
+                >
+                  <option value="">Select Workout A...</option>
+                  {compareOptionsA.map((r) => {
+                    const pace = r.activeIntervalPaceSecPerKm || r.averagePaceSecPerKm;
+                    const distLabel =
+                      unit === 'miles'
+                        ? `${(r.distanceKm * KM_TO_MILES).toFixed(2)} mi`
+                        : `${r.distanceKm.toFixed(2)} km`;
+                    return (
+                      <option key={r.id} value={r.id} disabled={r.id === compareRunIds[1]}>
+                        {r.date} · {r.title} ({distLabel}, {formatPace(pace, unit)})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div>
+                <label className="flex items-center space-x-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-sm bg-[#10B981] text-white text-[10px] font-bold">
+                    B
+                  </span>
+                  <span>Comparison / Latest Workout (B)</span>
+                </label>
+                <select
+                  value={compareRunIds[1] || ''}
+                  onChange={(e) => setCompareRunIds([compareRunIds[0], e.target.value || null])}
+                  aria-label="Select Workout B"
+                  className="w-full px-3 py-2 rounded-lg bg-white dark:bg-[#0F1C28] border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-[#10B981]"
+                >
+                  <option value="">Select Workout B...</option>
+                  {compareOptionsB.map((r) => {
+                    const pace = r.activeIntervalPaceSecPerKm || r.averagePaceSecPerKm;
+                    const distLabel =
+                      unit === 'miles'
+                        ? `${(r.distanceKm * KM_TO_MILES).toFixed(2)} mi`
+                        : `${r.distanceKm.toFixed(2)} km`;
+                    return (
+                      <option key={r.id} value={r.id} disabled={r.id === compareRunIds[0]}>
+                        {r.date} · {r.title} ({distLabel}, {formatPace(pace, unit)})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            </div>
+
+            {/* Side-by-Side Comparison Matrix */}
+            {compareRunA && compareRunB ? (
+              (() => {
+                const paceA = compareRunA.activeIntervalPaceSecPerKm || compareRunA.averagePaceSecPerKm;
+                const paceB = compareRunB.activeIntervalPaceSecPerKm || compareRunB.averagePaceSecPerKm;
+                const paceUnitFactor = unit === 'miles' ? MILES_TO_KM : 1;
+                const paceDiffDisplaySec = Math.round((paceB - paceA) * paceUnitFactor);
+
+                const eqA =
+                  calculateTargetDistanceEquivalent(
+                    compareRunA.distanceKm,
+                    compareRunA.durationSeconds,
+                    targetDistanceKm
+                  ) ||
+                  compareRunA.targetEquivalentSeconds ||
+                  compareRunA.best6kTimeSeconds ||
+                  0;
+                const eqB =
+                  calculateTargetDistanceEquivalent(
+                    compareRunB.distanceKm,
+                    compareRunB.durationSeconds,
+                    targetDistanceKm
+                  ) ||
+                  compareRunB.targetEquivalentSeconds ||
+                  compareRunB.best6kTimeSeconds ||
+                  0;
+
+                const distFactor = unit === 'miles' ? KM_TO_MILES : 1;
+                const distA = compareRunA.distanceKm * distFactor;
+                const distB = compareRunB.distanceKm * distFactor;
+                const distDiff = distB - distA;
+
+                const durationDiff = compareRunB.durationSeconds - compareRunA.durationSeconds;
+                const avgHrDiff =
+                  compareRunA.avgHeartRate && compareRunB.avgHeartRate
+                    ? compareRunB.avgHeartRate - compareRunA.avgHeartRate
+                    : null;
+                const maxHrDiff =
+                  compareRunA.maxHeartRate && compareRunB.maxHeartRate
+                    ? compareRunB.maxHeartRate - compareRunA.maxHeartRate
+                    : null;
+
+                const effA =
+                  compareRunA.avgHeartRate && compareRunA.durationSeconds > 0
+                    ? (compareRunA.distanceKm * 1000) / (compareRunA.durationSeconds / 60) / compareRunA.avgHeartRate
+                    : null;
+                const effB =
+                  compareRunB.avgHeartRate && compareRunB.durationSeconds > 0
+                    ? (compareRunB.distanceKm * 1000) / (compareRunB.durationSeconds / 60) / compareRunB.avgHeartRate
+                    : null;
+
+                const unitLabel = unit === 'miles' ? 'mi' : 'km';
+                const targetDistLabel = targetDistanceKm === 6 ? '6K' : `${targetDistanceKm}K`;
+
+                return (
+                  <div className="rounded-xl bg-white dark:bg-[#0F1C28] border border-slate-200 dark:border-slate-700/80 overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50">
+                          <th className="py-2.5 px-3 font-semibold text-slate-500 dark:text-slate-400 w-32">
+                            Metric
+                          </th>
+                          <th className="py-2.5 px-3 min-w-[140px]">
+                            <div className="flex items-center space-x-1.5">
+                              <span className="inline-flex items-center justify-center w-4 h-4 rounded-sm bg-[#0593C6] text-white text-[10px] font-bold shrink-0">
+                                A
+                              </span>
+                              <span className="font-bold text-slate-900 dark:text-white truncate max-w-[160px]">
+                                {compareRunA.title}
+                              </span>
+                            </div>
+                            <div className="text-[10px] font-normal text-slate-500 dark:text-slate-400 mt-0.5 pl-5.5">
+                              {compareRunA.date} · {compareRunA.runType}
+                            </div>
+                          </th>
+                          <th className="py-2.5 px-3 min-w-[140px]">
+                            <div className="flex items-center space-x-1.5">
+                              <span className="inline-flex items-center justify-center w-4 h-4 rounded-sm bg-[#10B981] text-white text-[10px] font-bold shrink-0">
+                                B
+                              </span>
+                              <span className="font-bold text-slate-900 dark:text-white truncate max-w-[160px]">
+                                {compareRunB.title}
+                              </span>
+                            </div>
+                            <div className="text-[10px] font-normal text-slate-500 dark:text-slate-400 mt-0.5 pl-5.5">
+                              {compareRunB.date} · {compareRunB.runType}
+                            </div>
+                          </th>
+                          <th className="py-2.5 px-3 font-semibold text-slate-500 dark:text-slate-400 text-right whitespace-nowrap">
+                            Delta (B vs A)
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                        {/* Distance */}
+                        <tr>
+                          <td className="py-2.5 px-3 font-medium text-slate-600 dark:text-slate-300">
+                            Distance
+                          </td>
+                          <td className={`py-2.5 px-3 font-bold tabular-nums ${distA > distB ? 'text-[#0593C6]' : 'text-slate-900 dark:text-white'}`}>
+                            {distA.toFixed(2)} {unitLabel}
+                          </td>
+                          <td className={`py-2.5 px-3 font-bold tabular-nums ${distB > distA ? 'text-[#10B981]' : 'text-slate-900 dark:text-white'}`}>
+                            {distB.toFixed(2)} {unitLabel}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-semibold tabular-nums text-slate-600 dark:text-slate-300">
+                            {Math.abs(distDiff) < 0.01
+                              ? 'Even'
+                              : `${distDiff > 0 ? '+' : ''}${distDiff.toFixed(2)} ${unitLabel}`}
+                          </td>
+                        </tr>
+
+                        {/* Duration */}
+                        <tr>
+                          <td className="py-2.5 px-3 font-medium text-slate-600 dark:text-slate-300">
+                            Duration
+                          </td>
+                          <td className="py-2.5 px-3 font-semibold tabular-nums text-slate-900 dark:text-white">
+                            {formatDuration(compareRunA.durationSeconds)}
+                          </td>
+                          <td className="py-2.5 px-3 font-semibold tabular-nums text-slate-900 dark:text-white">
+                            {formatDuration(compareRunB.durationSeconds)}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-semibold tabular-nums text-slate-600 dark:text-slate-300">
+                            {formatSignedDeltaDuration(durationDiff)}
+                          </td>
+                        </tr>
+
+                        {/* Pace */}
+                        <tr>
+                          <td className="py-2.5 px-3 font-medium text-slate-600 dark:text-slate-300">
+                            Pace
+                          </td>
+                          <td className={`py-2.5 px-3 font-bold tabular-nums ${paceA < paceB ? 'text-[#10B981]' : 'text-slate-900 dark:text-white'}`}>
+                            {formatPace(paceA, unit)}
+                            {compareRunA.activeIntervalPaceSecPerKm ? (
+                              <span className="ml-1 text-[10px] font-medium text-slate-400">(Active)</span>
+                            ) : null}
+                          </td>
+                          <td className={`py-2.5 px-3 font-bold tabular-nums ${paceB < paceA ? 'text-[#10B981]' : 'text-slate-900 dark:text-white'}`}>
+                            {formatPace(paceB, unit)}
+                            {compareRunB.activeIntervalPaceSecPerKm ? (
+                              <span className="ml-1 text-[10px] font-medium text-slate-400">(Active)</span>
+                            ) : null}
+                          </td>
+                          <td className={`py-2.5 px-3 text-right font-semibold tabular-nums ${
+                            paceDiffDisplaySec < 0
+                              ? 'text-[#10B981]'
+                              : paceDiffDisplaySec > 0
+                                ? 'text-amber-500'
+                                : 'text-slate-500'
+                          }`}>
+                            {paceDiffDisplaySec === 0
+                              ? 'Even'
+                              : `${paceDiffDisplaySec < 0 ? '-' : '+'}${formatDuration(Math.abs(paceDiffDisplaySec))}/${unitLabel} ${
+                                  paceDiffDisplaySec < 0 ? 'faster' : 'slower'
+                                }`}
+                          </td>
+                        </tr>
+
+                        {/* Goal Equivalent */}
+                        <tr>
+                          <td className="py-2.5 px-3 font-medium text-slate-600 dark:text-slate-300">
+                            {targetDistLabel} Equivalent
+                          </td>
+                          <td className={`py-2.5 px-3 font-bold tabular-nums ${eqA > 0 && eqB > 0 && eqA < eqB ? 'text-[#10B981]' : 'text-slate-900 dark:text-white'}`}>
+                            {eqA > 0 ? formatDuration(eqA) : '--'}
+                          </td>
+                          <td className={`py-2.5 px-3 font-bold tabular-nums ${eqA > 0 && eqB > 0 && eqB < eqA ? 'text-[#10B981]' : 'text-slate-900 dark:text-white'}`}>
+                            {eqB > 0 ? formatDuration(eqB) : '--'}
+                          </td>
+                          <td className={`py-2.5 px-3 text-right font-semibold tabular-nums ${
+                            eqA > 0 && eqB > 0
+                              ? eqB < eqA
+                                ? 'text-[#10B981]'
+                                : eqB > eqA
+                                  ? 'text-amber-500'
+                                  : 'text-slate-500'
+                              : 'text-slate-400'
+                          }`}>
+                            {eqA > 0 && eqB > 0 ? formatSignedDeltaDuration(eqB - eqA) : '--'}
+                          </td>
+                        </tr>
+
+                        {/* Avg Heart Rate */}
+                        <tr>
+                          <td className="py-2.5 px-3 font-medium text-slate-600 dark:text-slate-300">
+                            Avg Heart Rate
+                          </td>
+                          <td className="py-2.5 px-3 font-semibold tabular-nums text-rose-600 dark:text-rose-400">
+                            {compareRunA.avgHeartRate
+                              ? `${compareRunA.avgHeartRate} bpm (${Math.round((compareRunA.avgHeartRate / maxHrToUse) * 100)}%)`
+                              : '--'}
+                          </td>
+                          <td className="py-2.5 px-3 font-semibold tabular-nums text-rose-600 dark:text-rose-400">
+                            {compareRunB.avgHeartRate
+                              ? `${compareRunB.avgHeartRate} bpm (${Math.round((compareRunB.avgHeartRate / maxHrToUse) * 100)}%)`
+                              : '--'}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-semibold tabular-nums text-slate-600 dark:text-slate-300">
+                            {avgHrDiff === null
+                              ? '--'
+                              : avgHrDiff === 0
+                                ? 'Even'
+                                : `${avgHrDiff > 0 ? '+' : ''}${avgHrDiff} bpm`}
+                          </td>
+                        </tr>
+
+                        {/* Max Heart Rate */}
+                        {(compareRunA.maxHeartRate || compareRunB.maxHeartRate) && (
+                          <tr>
+                            <td className="py-2.5 px-3 font-medium text-slate-600 dark:text-slate-300">
+                              Max Heart Rate
+                            </td>
+                            <td className="py-2.5 px-3 font-semibold tabular-nums text-slate-900 dark:text-white">
+                              {compareRunA.maxHeartRate ? `${compareRunA.maxHeartRate} bpm` : '--'}
+                            </td>
+                            <td className="py-2.5 px-3 font-semibold tabular-nums text-slate-900 dark:text-white">
+                              {compareRunB.maxHeartRate ? `${compareRunB.maxHeartRate} bpm` : '--'}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-semibold tabular-nums text-slate-600 dark:text-slate-300">
+                              {maxHrDiff === null
+                                ? '--'
+                                : maxHrDiff === 0
+                                  ? 'Even'
+                                  : `${maxHrDiff > 0 ? '+' : ''}${maxHrDiff} bpm`}
+                            </td>
+                          </tr>
+                        )}
+
+                        {/* Cadence */}
+                        {(compareRunA.avgCadence || compareRunB.avgCadence) && (
+                          <tr>
+                            <td className="py-2.5 px-3 font-medium text-slate-600 dark:text-slate-300">
+                              Avg Cadence
+                            </td>
+                            <td className="py-2.5 px-3 font-semibold tabular-nums text-slate-900 dark:text-white">
+                              {compareRunA.avgCadence ? `${compareRunA.avgCadence} spm` : '--'}
+                            </td>
+                            <td className="py-2.5 px-3 font-semibold tabular-nums text-slate-900 dark:text-white">
+                              {compareRunB.avgCadence ? `${compareRunB.avgCadence} spm` : '--'}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-semibold tabular-nums text-slate-600 dark:text-slate-300">
+                              {compareRunA.avgCadence && compareRunB.avgCadence
+                                ? `${compareRunB.avgCadence - compareRunA.avgCadence > 0 ? '+' : ''}${
+                                    compareRunB.avgCadence - compareRunA.avgCadence
+                                  } spm`
+                                : '--'}
+                            </td>
+                          </tr>
+                        )}
+
+                        {/* Elevation */}
+                        {(compareRunA.elevationGainMeters || compareRunB.elevationGainMeters) && (
+                          <tr>
+                            <td className="py-2.5 px-3 font-medium text-slate-600 dark:text-slate-300">
+                              Elevation Gain
+                            </td>
+                            <td className="py-2.5 px-3 font-semibold tabular-nums text-slate-900 dark:text-white">
+                              {compareRunA.elevationGainMeters !== undefined ? `${compareRunA.elevationGainMeters} m` : '--'}
+                            </td>
+                            <td className="py-2.5 px-3 font-semibold tabular-nums text-slate-900 dark:text-white">
+                              {compareRunB.elevationGainMeters !== undefined ? `${compareRunB.elevationGainMeters} m` : '--'}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-semibold tabular-nums text-slate-600 dark:text-slate-300">
+                              {compareRunA.elevationGainMeters !== undefined && compareRunB.elevationGainMeters !== undefined
+                                ? `${compareRunB.elevationGainMeters - compareRunA.elevationGainMeters > 0 ? '+' : ''}${
+                                    compareRunB.elevationGainMeters - compareRunA.elevationGainMeters
+                                  } m`
+                                : '--'}
+                            </td>
+                          </tr>
+                        )}
+
+                        {/* Aerobic Efficiency (m/beat) */}
+                        {effA !== null && effB !== null && (
+                          <tr>
+                            <td className="py-2.5 px-3 font-medium text-slate-600 dark:text-slate-300">
+                              HR Efficiency
+                            </td>
+                            <td className={`py-2.5 px-3 font-semibold tabular-nums ${effA > effB ? 'text-[#10B981]' : 'text-slate-900 dark:text-white'}`}>
+                              {effA.toFixed(2)} m/beat
+                            </td>
+                            <td className={`py-2.5 px-3 font-semibold tabular-nums ${effB > effA ? 'text-[#10B981]' : 'text-slate-900 dark:text-white'}`}>
+                              {effB.toFixed(2)} m/beat
+                            </td>
+                            <td className={`py-2.5 px-3 text-right font-semibold tabular-nums ${
+                              effB > effA ? 'text-[#10B981]' : effB < effA ? 'text-amber-500' : 'text-slate-500'
+                            }`}>
+                              {Math.abs(effB - effA) < 0.01
+                                ? 'Even'
+                                : `${effB - effA > 0 ? '+' : ''}${(effB - effA).toFixed(2)} m/beat`}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()
+            ) : (
+              <div className="py-5 px-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-center text-xs text-slate-500 dark:text-slate-400">
+                {compareRunA && !compareRunB
+                  ? `Workout A (${compareRunA.title}) selected — now choose Workout B to compare side-by-side.`
+                  : !compareRunA && compareRunB
+                    ? `Workout B (${compareRunB.title}) selected — now choose Workout A to compare side-by-side.`
+                    : 'Select two runs above or click any two workouts below to view a side-by-side pace, distance, and heart rate breakdown.'}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Combine Workouts Banner */}
         {isCombineMode && (
@@ -958,7 +1619,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
               No Workouts Recorded Yet
             </h3>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-md mx-auto mt-1 mb-4">
-              Upload your Garmin Connect workout file or log a run to view cardiovascular training zones and telemetry.
+              Upload your Garmin Connect or Apple Watch / Apple Health workout file, or log a run to view cardiovascular training zones and telemetry.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-2">
               {onOpenGarminSync && (
@@ -967,7 +1628,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                   className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-[#0a84ff] hover:bg-[#0071e3] text-white cursor-pointer shadow-xs"
                 >
                   <UploadCloud className="w-3.5 h-3.5" />
-                  <span>Upload Garmin Data</span>
+                  <span>Sync Watch Data</span>
                 </button>
               )}
               {onOpenAddRun && (
@@ -981,9 +1642,9 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
               )}
             </div>
           </div>
-        ) : filteredRuns.length === 0 ? (
+        ) : activeActivityRuns.length === 0 ? (
           <div className="py-8 text-center text-xs text-neutral-400 rounded-xl bg-neutral-50 dark:bg-neutral-900/40 border border-neutral-200 dark:border-neutral-800">
-            No activities match your search or selected zone filter.
+            No activities match your search or selected {isCompareMode ? 'category' : 'zone'} filter.
           </div>
         ) : (
           <div className="space-y-2.5">
@@ -993,6 +1654,8 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
               const isFastestRun = metrics.fastestRun?.id === run.id;
               const isPeakHrRun = metrics.peakHeartRateRun?.id === run.id;
               const isCheckedForCombine = selectedCombineIds.has(run.id);
+              const isCompareA = compareRunIds[0] === run.id;
+              const isCompareB = compareRunIds[1] === run.id;
 
               const eqTarget =
                 calculateTargetDistanceEquivalent(run.distanceKm, run.durationSeconds, targetDistanceKm) ||
@@ -1007,13 +1670,19 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                   key={run.id}
                   onClick={() => {
                     if (isCombineMode) toggleSelectRunForCombine(run.id);
+                    else if (isCompareMode) toggleSelectRunForCompare(run.id);
                   }}
+                  data-no-scale
                   className={`p-3.5 rounded-xl border transition-all ${
-                    isCombineMode ? 'cursor-pointer' : ''
+                    isCombineMode || isCompareMode ? 'cursor-pointer' : ''
                   } ${
                     isCheckedForCombine
                       ? 'bg-purple-50 dark:bg-purple-950/40 border-purple-400 dark:border-purple-600 shadow-xs'
-                      : 'bg-neutral-50 dark:bg-neutral-900/60 border-neutral-200/80 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                      : isCompareA
+                        ? 'bg-sky-50/70 dark:bg-sky-950/30 border-[#0593C6] shadow-xs'
+                        : isCompareB
+                          ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-[#10B981] shadow-xs'
+                          : 'bg-neutral-50 dark:bg-neutral-900/60 border-neutral-200/80 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
                   }`}
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -1025,6 +1694,24 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                             <CheckSquare className="w-4 h-4" />
                           ) : (
                             <Square className="w-4 h-4 text-neutral-400" />
+                          )}
+                        </div>
+                      )}
+
+                      {isCompareMode && (
+                        <div className="mt-0.5 flex-shrink-0">
+                          {isCompareA ? (
+                            <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-[#0593C6] text-white text-[11px] font-bold">
+                              A
+                            </span>
+                          ) : isCompareB ? (
+                            <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-[#10B981] text-white text-[11px] font-bold">
+                              B
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center justify-center w-5 h-5 rounded-md border border-slate-300 dark:border-slate-600 text-[10px] font-semibold text-slate-400">
+                              +
+                            </span>
                           )}
                         </div>
                       )}
@@ -1112,12 +1799,17 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                         {/* Date, notes, and tracker badge */}
                         <div className="text-[11px] text-neutral-500 dark:text-neutral-400 flex flex-wrap items-center gap-1.5">
                           <span>{run.date}</span>
-                          {run.source.startsWith('garmin') && (
+                          {run.source.startsWith('apple') ? (
                             <>
                               <span>·</span>
-                              <span className="text-[#0a84ff] font-medium">Tracker Synced</span>
+                              <span className="text-rose-500 font-medium">Apple Watch</span>
                             </>
-                          )}
+                          ) : run.source.startsWith('garmin') ? (
+                            <>
+                              <span>·</span>
+                              <span className="text-[#0a84ff] font-medium">Garmin Synced</span>
+                            </>
+                          ) : null}
                           {run.notes && (
                             <>
                               <span>·</span>
@@ -1217,8 +1909,8 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                         </div>
                       ) : null}
 
-                      {/* Actions: Calibrate Interval & Delete (hidden when in combine mode) */}
-                      {!isCombineMode && (
+                      {/* Actions: Calibrate Interval & Delete (hidden when in combine or compare mode) */}
+                      {!isCombineMode && !isCompareMode && (
                         <div className="flex items-center space-x-1">
                           <button
                             type="button"
@@ -1257,8 +1949,8 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
               );
             })}
 
-            {/* Click to display more activities button (when not in search or combine mode) */}
-            {filteredRuns.length > 1 && !isCombineMode && !searchQuery.trim() && (
+            {/* Click to display more activities button (when not in search, combine, or compare mode) */}
+            {filteredRuns.length > 1 && !isCombineMode && !isCompareMode && !searchQuery.trim() && (
               <div className="pt-2.5 flex flex-col sm:flex-row items-center justify-between gap-2 border-t border-neutral-100 dark:border-neutral-800/80">
                 <span className="text-xs text-neutral-500 dark:text-neutral-400">
                   {showAllActivityLogs

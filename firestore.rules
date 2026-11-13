@@ -38,6 +38,7 @@ service cloud.firestore {
         && (!('weeklyDistanceGoalKm' in data) || (data.weeklyDistanceGoalKm is number && data.weeklyDistanceGoalKm >= 0 && data.weeklyDistanceGoalKm <= 500))
         && (!('unitPreference' in data) || (data.unitPreference in ['km', 'miles']))
         && (!('athleteLevel' in data) || (data.athleteLevel in ['Beginner', 'High School XC', 'Collegiate / Advanced', 'Masters']))
+        && (!('yraaDivision' in data) || (data.yraaDivision in ['novice_women', 'novice_men', 'para_men', 'junior_women', 'junior_men', 'senior_women', 'senior_men']))
         && (!('maxHeartRate' in data) || (data.maxHeartRate is number && data.maxHeartRate >= 100 && data.maxHeartRate <= 250))
         && (!('defaultIntervalPaceSecPerKm' in data) || (data.defaultIntervalPaceSecPerKm is number && data.defaultIntervalPaceSecPerKm > 0))
         && (!('defaultRepDistanceMeters' in data) || (data.defaultRepDistanceMeters is number && data.defaultRepDistanceMeters > 0))

@@ -19,7 +19,7 @@ import {
   firebaseConfig,
 } from './lib/firebase';
 import { RunRecord, UserProfile, DuplicateRunMatch, RunType } from './types/running';
-import { DEFAULT_RUNNER_PROFILE } from './data/sampleRuns';
+import { DEFAULT_RUNNER_PROFILE, createPlaceholderRuns, isPlaceholderRun } from './data/sampleRuns';
 import {
   groupRunsByWeek,
   calculate6kEquivalent,
@@ -32,6 +32,7 @@ import { GoalBanner } from './components/GoalBanner';
 import { GoalProjectionCard } from './components/GoalProjectionCard';
 import { WeeklyAdherenceCard, AddRunPrefillOptions } from './components/WeeklyAdherenceCard';
 import { BodyBatteryCard } from './components/BodyBatteryCard';
+import { CardioLoadCard } from './components/CardioLoadCard';
 import { ProgressVisualizer } from './components/ProgressVisualizer';
 import { MotivationalGreeting } from './components/MotivationalGreeting';
 import { FirstTimeNameModal } from './components/FirstTimeNameModal';
@@ -244,8 +245,9 @@ export default function App() {
                 if (savedLocalRuns) {
                   try {
                     const parsed: RunRecord[] = JSON.parse(savedLocalRuns);
-                    if (parsed.length > 0) {
-                      const toUpload = parsed.map((r) => ({ ...r, userId: currentUser.uid }));
+                    const realLocalRuns = parsed.filter((r) => !isPlaceholderRun(r));
+                    if (realLocalRuns.length > 0) {
+                      const toUpload = realLocalRuns.map((r) => ({ ...r, userId: currentUser.uid }));
                       await batchSaveRuns(toUpload);
                       setRuns(toUpload);
                     }
@@ -285,6 +287,43 @@ export default function App() {
   const targetDistKm = profile.targetDistanceKm || 6.0;
   const bestTargetSelection = selectBestTargetEquivalent(runs, targetDistKm);
   const best6kSec = bestTargetSelection.bestSeconds;
+  const hasPlaceholderData = runs.some((r) => isPlaceholderRun(r));
+
+  const [usedPlaceholderTarget, setUsedPlaceholderTarget] = useState(false);
+
+  const handleLoadPlaceholderData = () => {
+    const sampleRuns = createPlaceholderRuns(user ? user.uid : 'local_user', targetDistKm);
+    setRuns((prev) => [...sampleRuns, ...prev.filter((r) => !isPlaceholderRun(r))]);
+    if (!profile.target6kTimeSeconds) {
+      setUsedPlaceholderTarget(true);
+      setProfile((prev) => ({
+        ...prev,
+        targetDistanceKm: prev.targetDistanceKm || 6.0,
+        targetGoalName: prev.targetGoalName || '6K (Sample)',
+        target6kTimeSeconds: 1440,
+      }));
+    }
+  };
+
+  const handleClearPlaceholderData = () => {
+    setRuns((prev) => prev.filter((r) => !isPlaceholderRun(r)));
+    if (usedPlaceholderTarget && !profile.hasCustomTarget) {
+      setUsedPlaceholderTarget(false);
+      setProfile((prev) => {
+        const next = { ...prev };
+        delete next.target6kTimeSeconds;
+        if (next.targetGoalName === '6K (Sample)' || next.targetGoalName === '6K Cross Country (Sample)') {
+          delete next.targetGoalName;
+        }
+        return next;
+      });
+    }
+  };
+
+  const handleContinueWithPlaceholder = () => {
+    handleContinueAsGuest();
+    handleLoadPlaceholderData();
+  };
 
   // Duplicate Check & Processing
   const handleProcessIncomingRuns = (incoming: RunRecord[]) => {
@@ -364,7 +403,7 @@ export default function App() {
     setRuns(updatedRuns);
 
     const targetRun = updatedRuns.find((r) => r.id === runId);
-    if (targetRun && user) {
+    if (targetRun && user && !isPlaceholderRun(targetRun)) {
       await saveRunRecord(targetRun);
     }
   };
@@ -373,7 +412,7 @@ export default function App() {
     const runToSave = user ? { ...updatedRun, userId: user.uid } : updatedRun;
     setRuns((prev) => prev.map((r) => (r.id === updatedRun.id ? runToSave : r)));
 
-    if (user) {
+    if (user && !isPlaceholderRun(runToSave)) {
       await saveRunRecord(runToSave);
     }
   };
@@ -402,7 +441,7 @@ export default function App() {
 
   const handleDeleteRun = async (runId: string) => {
     setRuns((prev) => prev.filter((r) => r.id !== runId));
-    if (user) {
+    if (user && !isPlaceholderRun({ id: runId })) {
       await deleteRunRecord(runId);
     }
   };
@@ -418,7 +457,9 @@ export default function App() {
     if (user) {
       await saveRunRecord(runToSave);
       for (const id of sourceRunIds) {
-        await deleteRunRecord(id);
+        if (!isPlaceholderRun({ id })) {
+          await deleteRunRecord(id);
+        }
       }
     }
   };
@@ -517,8 +558,8 @@ export default function App() {
             <Activity className="w-6 h-6 stroke-[2.5]" />
           </div>
           <div className="text-center">
-            <span className="font-extrabold text-base tracking-tight text-neutral-900 dark:text-[#FCFFFF]">
-              RunGoals
+            <span className="font-extrabold text-base tracking-tight text-neutral-900 dark:text-[#FCFFFF] uppercase">
+              RUNGOALS
             </span>
             <p className="text-xs text-neutral-400 mt-0.5">Initializing training telemetry...</p>
           </div>
@@ -534,6 +575,7 @@ export default function App() {
         onSignIn={handleSignIn}
         onInstantCloudSignIn={handleInstantCloudSignIn}
         onContinueAsGuest={handleContinueAsGuest}
+        onContinueWithPlaceholder={handleContinueWithPlaceholder}
         authError={authError}
         onClearAuthError={() => setAuthError(null)}
         theme={theme}
@@ -553,6 +595,7 @@ export default function App() {
           best6kSec={best6kSec}
           theme={theme}
           isGuest={isGuest}
+          hasPlaceholderData={hasPlaceholderData}
           onExitGuestMode={handleExitGuestMode}
           onToggleTheme={toggleTheme}
           onOpenGarminSync={handleOpenGarminSync}
@@ -560,6 +603,8 @@ export default function App() {
           onOpenAddRun={() => handleOpenAddRunWithPrefill()}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenShare={() => setIsShareOpen(true)}
+          onLoadPlaceholderData={handleLoadPlaceholderData}
+          onClearPlaceholderData={handleClearPlaceholderData}
           onSignIn={handleSignIn}
           onSignOut={handleSignOut}
         />
@@ -682,6 +727,25 @@ export default function App() {
             onOpenSettings={() => setIsSettingsOpen(true)}
           />
 
+          {/* Placeholder Preview Bar */}
+          {hasPlaceholderData && (
+            <div className="px-4 py-2.5 rounded-xl bg-violet-500/10 border border-violet-500/30 flex flex-wrap items-center justify-between gap-2 text-xs text-violet-900 dark:text-violet-200">
+              <div className="flex items-center space-x-2">
+                <FlaskConical className="w-4 h-4 text-violet-500 shrink-0" />
+                <span>
+                  <strong className="font-bold">Placeholder Preview Active</strong> · Sample workouts are loaded locally so you can explore every chart and metric.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleClearPlaceholderData}
+                className="px-3 py-1 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-semibold text-xs cursor-pointer transition-colors"
+              >
+                Clear Placeholder Data
+              </button>
+            </div>
+          )}
+
           {runs.length === 0 ? (
             <div className="space-y-5">
               <WeeklyAdherenceCard
@@ -706,6 +770,7 @@ export default function App() {
                 onOpenGarminSyncWithRuns={handleOpenGarminSyncWithRuns}
                 onOpenAddRun={() => handleOpenAddRunWithPrefill()}
                 onOpenSettings={() => setIsSettingsOpen(true)}
+                onLoadPlaceholderData={handleLoadPlaceholderData}
               />
             </div>
           ) : (
@@ -727,6 +792,7 @@ export default function App() {
                 adherence={adherence}
                 best6kSec={best6kSec}
                 onOpenSettings={() => setIsSettingsOpen(true)}
+                onSaveProfile={handleSaveProfile}
               />
 
               {/* 3. WEEKLY TRAINING (Weekly Training Schedule: Interval, 6K Threshold Tempo, Aerobic Long Run) */}
@@ -752,7 +818,13 @@ export default function App() {
                 maxHeartRate={profile.maxHeartRate}
               />
 
-              {/* 5. PERFORMANCE ANALYTICS (30-day category breakdown, progression curves, aerobic base, intervals) */}
+              {/* 5. CARDIO LOAD (Fitbit-style Acute vs. Chronic Load & Training Phases) */}
+              <CardioLoadCard
+                runs={runs}
+                maxHeartRate={profile.maxHeartRate}
+              />
+
+              {/* 6. PERFORMANCE ANALYTICS (30-day category breakdown, progression curves, aerobic base, intervals) */}
               <ProgressVisualizer
                 runs={runs}
                 weeklyStats={weeklyStats}
@@ -846,6 +918,8 @@ export default function App() {
           onClose={() => setIsSettingsOpen(false)}
           profile={profile}
           onSaveProfile={handleSaveProfile}
+          theme={theme}
+          onToggleTheme={toggleTheme}
         />
 
         <ShareProgressModal

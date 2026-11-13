@@ -53,15 +53,26 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   // Set 30-Day Category Breakdown as the default view
   const [activeTab, setActiveTab] = useState<ViewMode>('categories_30d');
-  const [selectedRun, setSelectedRun] = useState<RunRecord | null>(null);
+  const [hoveredRun, setHoveredRun] = useState<RunRecord | null>(null);
+  const [pinnedRun, setPinnedRun] = useState<RunRecord | null>(null);
+  const [hoveredWeek, setHoveredWeek] = useState<WeeklyStat | null>(null);
+  const [pinnedWeek, setPinnedWeek] = useState<WeeklyStat | null>(null);
   const targetDistKm = targetDistanceKm || 6.0;
+  const targetLabel = targetGoalName || `${targetDistKm}K`;
+
+  const activeRun = hoveredRun || pinnedRun;
+  const activeWeek = hoveredWeek || pinnedWeek;
 
   // Filter categories
   const quality6kRuns = [...runs]
     .filter((r) => r.runType === '6K Time Trial' || r.runType === 'Time Trial' || r.runType === 'Race' || r.runType === 'Tempo')
     .map((r) => ({
       ...r,
-      calc6k: calculateTargetDistanceEquivalent(r.distanceKm, r.durationSeconds, targetDistKm) || r.targetEquivalentSeconds || r.best6kTimeSeconds || 0,
+      calc6k:
+        calculateTargetDistanceEquivalent(r.distanceKm, r.durationSeconds, targetDistKm) ||
+        r.targetEquivalentSeconds ||
+        r.best6kTimeSeconds ||
+        0,
     }))
     .filter((r) => r.calc6k > 0)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -76,8 +87,8 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
 
   // Chart Dimensions
   const width = 800;
-  const height = 280;
-  const padding = { top: 25, right: 25, bottom: 40, left: 60 };
+  const height = 290;
+  const padding = { top: 34, right: 28, bottom: 42, left: 64 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
@@ -109,6 +120,8 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
   const points6k = quality6kRuns.map((r, i) => ({
     x: getX(i, quality6kRuns.length),
     y: get6kY(r.calc6k),
+    valueLabel: `${targetLabel}: ${formatDuration(r.calc6k)}`,
+    subLabel: `${r.date} · ${unit === 'miles' ? `${(r.distanceKm * KM_TO_MILES).toFixed(2)} mi` : `${r.distanceKm} km`} (${formatPace(r.averagePaceSecPerKm, unit)})`,
     run: r,
   }));
 
@@ -134,6 +147,8 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
   const pointsAerobic = aerobicRuns.map((r, i) => ({
     x: getX(i, aerobicRuns.length),
     y: getAerobicY(r.averagePaceSecPerKm),
+    valueLabel: `Pace: ${formatPace(r.averagePaceSecPerKm, unit)}`,
+    subLabel: `${r.date} · ${unit === 'miles' ? `${(r.distanceKm * KM_TO_MILES).toFixed(2)} mi` : `${r.distanceKm} km`} · ${formatDuration(r.durationSeconds)}`,
     run: r,
   }));
 
@@ -142,8 +157,8 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
       ? pointsAerobic.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
       : '';
 
-  // Interval Chart Math
-  const intervalPaces = intervalRuns.map((r) => r.averagePaceSecPerKm);
+  // Interval Chart Math (prefer calibrated active interval pace when present)
+  const intervalPaces = intervalRuns.map((r) => r.activeIntervalPaceSecPerKm || r.averagePaceSecPerKm);
   const minIntervalPace = intervalPaces.length > 0 ? Math.min(...intervalPaces) : 200;
   const maxIntervalPace = intervalPaces.length > 0 ? Math.max(...intervalPaces) : 300;
   const yIntervalMin = Math.floor((minIntervalPace - 15) / 15) * 15;
@@ -154,11 +169,16 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
     return padding.top + ratio * chartHeight;
   };
 
-  const pointsInterval = intervalRuns.map((r, i) => ({
-    x: getX(i, intervalRuns.length),
-    y: getIntervalY(r.averagePaceSecPerKm),
-    run: r,
-  }));
+  const pointsInterval = intervalRuns.map((r, i) => {
+    const paceToPlot = r.activeIntervalPaceSecPerKm || r.averagePaceSecPerKm;
+    return {
+      x: getX(i, intervalRuns.length),
+      y: getIntervalY(paceToPlot),
+      valueLabel: `${r.activeIntervalPaceSecPerKm ? 'Active' : 'Pace'}: ${formatPace(paceToPlot, unit)}`,
+      subLabel: `${r.date} · ${unit === 'miles' ? `${(r.distanceKm * KM_TO_MILES).toFixed(2)} mi` : `${r.distanceKm} km`} · ${r.title}`,
+      run: r,
+    };
+  });
 
   const linePathInterval =
     pointsInterval.length > 0
@@ -168,6 +188,97 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
   // Weekly Volume
   const chronologicalWeeks = [...weeklyStats].reverse();
   const maxDistance = Math.max(...chronologicalWeeks.map((w) => w.totalDistanceKm), 25);
+
+  const resetPointSelection = () => {
+    setHoveredRun(null);
+    setPinnedRun(null);
+    setHoveredWeek(null);
+    setPinnedWeek(null);
+  };
+
+  const renderYAxisTicks = (
+    domainMin: number,
+    domainMax: number,
+    formatter: (val: number) => string
+  ) => {
+    return [0, 0.33, 0.67, 1].map((pct, idx) => {
+      const val = Math.round(domainMin + pct * (domainMax - domainMin));
+      const y = padding.top + pct * chartHeight;
+      return (
+        <g key={`ytick-${idx}`}>
+          <line
+            x1={padding.left}
+            y1={y}
+            x2={width - padding.right}
+            y2={y}
+            stroke="currentColor"
+            className="text-slate-300/60 dark:text-slate-700/60"
+            strokeDasharray="3 3"
+            strokeWidth="1"
+          />
+          <text
+            x={padding.left - 8}
+            y={y + 3.5}
+            fill="currentColor"
+            className="text-slate-500 dark:text-slate-400 font-mono text-[10px]"
+            textAnchor="end"
+          >
+            {formatter(val)}
+          </text>
+        </g>
+      );
+    });
+  };
+
+  const renderSvgTooltip = (
+    pt: { x: number; y: number; valueLabel: string; subLabel: string; run: RunRecord } | undefined,
+    accentHex: string
+  ) => {
+    if (!pt) return null;
+    const boxW = Math.max(195, pt.subLabel.length * 6.2 + 22);
+    const boxH = 44;
+    const clampedX = Math.max(
+      padding.left + 4,
+      Math.min(width - padding.right - boxW - 4, pt.x - boxW / 2)
+    );
+    const showBelow = pt.y - boxH - 14 < 6;
+    const boxY = showBelow ? pt.y + 14 : pt.y - boxH - 14;
+
+    return (
+      <g className="pointer-events-none">
+        <rect
+          x={clampedX}
+          y={boxY}
+          width={boxW}
+          height={boxH}
+          rx={8}
+          fill="#0F172A"
+          stroke={accentHex}
+          strokeWidth="1.25"
+          opacity="0.96"
+        />
+        <text
+          x={clampedX + 10}
+          y={boxY + 17}
+          fill="#FFFFFF"
+          fontSize="12"
+          fontWeight="700"
+          className="font-sans"
+        >
+          {pt.valueLabel}
+        </text>
+        <text
+          x={clampedX + 10}
+          y={boxY + 33}
+          fill="#94A3B8"
+          fontSize="10"
+          className="font-mono"
+        >
+          {pt.subLabel}
+        </text>
+      </g>
+    );
+  };
 
   return (
     <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#0F1C28] border border-slate-200/95 dark:border-slate-700/75 shadow-sm transition-colors">
@@ -225,7 +336,7 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
             <button
               onClick={() => {
                 setActiveTab('categories_30d');
-                setSelectedRun(null);
+                resetPointSelection();
               }}
               className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[40px] transition-all cursor-pointer ${
                 activeTab === 'categories_30d'
@@ -240,7 +351,7 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
             <button
               onClick={() => {
                 setActiveTab('6k_progression');
-                setSelectedRun(null);
+                resetPointSelection();
               }}
               className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[40px] transition-all cursor-pointer ${
                 activeTab === '6k_progression'
@@ -255,7 +366,7 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
             <button
               onClick={() => {
                 setActiveTab('aerobic_runs');
-                setSelectedRun(null);
+                resetPointSelection();
               }}
               className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[40px] transition-all cursor-pointer ${
                 activeTab === 'aerobic_runs'
@@ -270,7 +381,7 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
             <button
               onClick={() => {
                 setActiveTab('interval_training');
-                setSelectedRun(null);
+                resetPointSelection();
               }}
               className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[40px] transition-all cursor-pointer ${
                 activeTab === 'interval_training'
@@ -285,7 +396,7 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
             <button
               onClick={() => {
                 setActiveTab('weekly_volume');
-                setSelectedRun(null);
+                resetPointSelection();
               }}
               className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap min-h-[40px] transition-all cursor-pointer ${
                 activeTab === 'weekly_volume'
@@ -319,16 +430,16 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
                 No Time Trials or Races Recorded
               </h3>
               <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-md mx-auto mt-1 mb-4">
-                Import your Garmin workout files or log your first time trial to chart your official race pace progression.
+                Import your watch workout files or log your first time trial to chart your official race pace progression.
               </p>
               <div className="flex flex-wrap items-center justify-center gap-2">
                 {onOpenGarminSync && (
                   <button
                     onClick={onOpenGarminSync}
-                    className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-[#0593C6] hover:bg-[#047ea8] text-[#FCFFFF] cursor-pointer"
+                    className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-[#0593C6] hover:bg-[#047da8] text-[#FCFFFF] cursor-pointer"
                   >
                     <UploadCloud className="w-3.5 h-3.5" />
-                    <span>Upload Garmin</span>
+                    <span>Sync Watch Data</span>
                   </button>
                 )}
                 {onOpenAddRun && (
@@ -356,18 +467,25 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
                   )}
                   <span className="flex items-center space-x-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-[#0593C6] inline-block" />
-                    <span>Quality Trials & Races</span>
+                    <span>Quality Trials &amp; Races</span>
                   </span>
                 </div>
-                <div className="text-[11px] text-neutral-400">Tap or hover point for details</div>
+                <div className="text-[11px] text-neutral-400">
+                  Hover or click any point to inspect its exact value
+                </div>
               </div>
 
               {/* Chart Canvas with Smooth Touch Scrolling */}
-              <div className="w-full overflow-x-auto touch-pan-x rounded-lg border border-neutral-100 dark:border-neutral-800/80 p-1 sm:p-2 bg-neutral-50/40 dark:bg-neutral-900/30">
+              <div
+                className="w-full overflow-x-auto touch-pan-x rounded-lg border border-neutral-100 dark:border-neutral-800/80 p-1 sm:p-2 bg-neutral-50/40 dark:bg-neutral-900/30"
+                onMouseLeave={() => setHoveredRun(null)}
+              >
                 <svg
                   viewBox={`0 0 ${width} ${height}`}
-                  className="w-full h-auto min-w-[560px] sm:min-w-full select-none"
+                  className="w-full h-auto min-w-[560px] sm:min-w-full select-none overflow-visible"
                 >
+                  {renderYAxisTicks(yDomainMin, yDomainMax, (v) => formatDuration(v))}
+
                   {/* Goal Line */}
                   {targetY !== null && target6kSec && (
                     <>
@@ -405,34 +523,72 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
                     />
                   )}
 
-                  {/* Points */}
-                  {points6k.map((pt, i) => (
-                    <g
-                      key={pt.run.id || i}
-                      className="cursor-pointer"
-                      onClick={() => setSelectedRun(selectedRun?.id === pt.run.id ? null : pt.run)}
-                      onMouseEnter={() => setSelectedRun(pt.run)}
-                    >
-                      <circle
-                        cx={pt.x}
-                        cy={pt.y}
-                        r={selectedRun?.id === pt.run.id ? 7 : 4.5}
-                        fill="#0593C6"
-                        stroke="currentColor"
-                        className="text-[#FCFFFF] dark:text-[#12222f] transition-all"
-                        strokeWidth="2"
+                  {/* Active Crosshair */}
+                  {(() => {
+                    const activePt = points6k.find((p) => p.run.id === activeRun?.id);
+                    if (!activePt) return null;
+                    return (
+                      <line
+                        x1={activePt.x}
+                        y1={padding.top}
+                        x2={activePt.x}
+                        y2={padding.top + chartHeight}
+                        stroke="#0593C6"
+                        strokeWidth="1.25"
+                        strokeDasharray="3 3"
+                        opacity="0.7"
                       />
-                      <text
-                        x={pt.x}
-                        y={height - padding.bottom + 18}
-                        fill="currentColor"
-                        className="text-neutral-400 dark:text-neutral-500 font-mono text-[10px]"
-                        textAnchor="middle"
+                    );
+                  })()}
+
+                  {/* Points */}
+                  {points6k.map((pt, i) => {
+                    const isActive = activeRun?.id === pt.run.id;
+                    return (
+                      <g
+                        key={pt.run.id || i}
+                        className="cursor-pointer"
+                        onClick={() =>
+                          setPinnedRun((prev) => (prev?.id === pt.run.id ? null : pt.run))
+                        }
+                        onMouseEnter={() => setHoveredRun(pt.run)}
                       >
-                        {pt.run.date.slice(5)}
-                      </text>
-                    </g>
-                  ))}
+                        {/* Wide invisible hit target */}
+                        <circle cx={pt.x} cy={pt.y} r={20} fill="transparent" />
+                        {isActive && (
+                          <circle cx={pt.x} cy={pt.y} r={11} fill="#0593C6" opacity="0.2" />
+                        )}
+                        <circle
+                          cx={pt.x}
+                          cy={pt.y}
+                          r={isActive ? 7 : 5}
+                          fill="#0593C6"
+                          stroke="currentColor"
+                          className="text-[#FCFFFF] dark:text-[#12222f] transition-all"
+                          strokeWidth="2"
+                        />
+                        <text
+                          x={pt.x}
+                          y={height - padding.bottom + 18}
+                          fill="currentColor"
+                          className={`font-mono text-[10px] ${
+                            isActive
+                              ? 'text-[#0593C6] font-bold'
+                              : 'text-neutral-400 dark:text-neutral-500'
+                          }`}
+                          textAnchor="middle"
+                        >
+                          {pt.run.date.slice(5)}
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  {/* Floating Tooltip */}
+                  {renderSvgTooltip(
+                    points6k.find((p) => p.run.id === activeRun?.id),
+                    '#0593C6'
+                  )}
                 </svg>
               </div>
             </div>
@@ -469,15 +625,20 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
                   Aerobic Base Pace Trend
                 </span>
                 <span className="text-[11px] text-neutral-400 tabular-nums">
-                  {aerobicRuns.length} aerobic sessions logged
+                  {aerobicRuns.length} aerobic sessions · Hover or click point for exact pace
                 </span>
               </div>
 
-              <div className="w-full overflow-x-auto touch-pan-x rounded-lg border border-neutral-100 dark:border-neutral-800/80 p-1 sm:p-2 bg-neutral-50/40 dark:bg-neutral-900/30">
+              <div
+                className="w-full overflow-x-auto touch-pan-x rounded-lg border border-neutral-100 dark:border-neutral-800/80 p-1 sm:p-2 bg-neutral-50/40 dark:bg-neutral-900/30"
+                onMouseLeave={() => setHoveredRun(null)}
+              >
                 <svg
                   viewBox={`0 0 ${width} ${height}`}
-                  className="w-full h-auto min-w-[560px] sm:min-w-full select-none"
+                  className="w-full h-auto min-w-[560px] sm:min-w-full select-none overflow-visible"
                 >
+                  {renderYAxisTicks(yAerobicMin, yAerobicMax, (v) => formatPace(v, unit))}
+
                   {linePathAerobic && (
                     <path
                       d={linePathAerobic}
@@ -489,33 +650,68 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
                     />
                   )}
 
-                  {pointsAerobic.map((pt, i) => (
-                    <g
-                      key={pt.run.id || i}
-                      className="cursor-pointer"
-                      onClick={() => setSelectedRun(selectedRun?.id === pt.run.id ? null : pt.run)}
-                      onMouseEnter={() => setSelectedRun(pt.run)}
-                    >
-                      <circle
-                        cx={pt.x}
-                        cy={pt.y}
-                        r={selectedRun?.id === pt.run.id ? 7 : 4.5}
-                        fill="#0593C6"
-                        stroke="currentColor"
-                        className="text-[#FCFFFF] dark:text-[#12222f] transition-all"
-                        strokeWidth="2"
+                  {(() => {
+                    const activePt = pointsAerobic.find((p) => p.run.id === activeRun?.id);
+                    if (!activePt) return null;
+                    return (
+                      <line
+                        x1={activePt.x}
+                        y1={padding.top}
+                        x2={activePt.x}
+                        y2={padding.top + chartHeight}
+                        stroke="#0593C6"
+                        strokeWidth="1.25"
+                        strokeDasharray="3 3"
+                        opacity="0.7"
                       />
-                      <text
-                        x={pt.x}
-                        y={height - padding.bottom + 18}
-                        fill="currentColor"
-                        className="text-neutral-400 dark:text-neutral-500 font-mono text-[10px]"
-                        textAnchor="middle"
+                    );
+                  })()}
+
+                  {pointsAerobic.map((pt, i) => {
+                    const isActive = activeRun?.id === pt.run.id;
+                    return (
+                      <g
+                        key={pt.run.id || i}
+                        className="cursor-pointer"
+                        onClick={() =>
+                          setPinnedRun((prev) => (prev?.id === pt.run.id ? null : pt.run))
+                        }
+                        onMouseEnter={() => setHoveredRun(pt.run)}
                       >
-                        {pt.run.date.slice(5)}
-                      </text>
-                    </g>
-                  ))}
+                        <circle cx={pt.x} cy={pt.y} r={20} fill="transparent" />
+                        {isActive && (
+                          <circle cx={pt.x} cy={pt.y} r={11} fill="#0593C6" opacity="0.2" />
+                        )}
+                        <circle
+                          cx={pt.x}
+                          cy={pt.y}
+                          r={isActive ? 7 : 5}
+                          fill="#0593C6"
+                          stroke="currentColor"
+                          className="text-[#FCFFFF] dark:text-[#12222f] transition-all"
+                          strokeWidth="2"
+                        />
+                        <text
+                          x={pt.x}
+                          y={height - padding.bottom + 18}
+                          fill="currentColor"
+                          className={`font-mono text-[10px] ${
+                            isActive
+                              ? 'text-[#0593C6] font-bold'
+                              : 'text-neutral-400 dark:text-neutral-500'
+                          }`}
+                          textAnchor="middle"
+                        >
+                          {pt.run.date.slice(5)}
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  {renderSvgTooltip(
+                    pointsAerobic.find((p) => p.run.id === activeRun?.id),
+                    '#0593C6'
+                  )}
                 </svg>
               </div>
             </div>
@@ -552,15 +748,20 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
                   Interval Velocity Trend
                 </span>
                 <span className="text-[11px] text-neutral-400 tabular-nums">
-                  {intervalRuns.length} interval sessions recorded
+                  {intervalRuns.length} interval sessions · Hover or click point for exact pace
                 </span>
               </div>
 
-              <div className="w-full overflow-x-auto touch-pan-x rounded-lg border border-neutral-100 dark:border-neutral-800/80 p-1 sm:p-2 bg-neutral-50/40 dark:bg-neutral-900/30">
+              <div
+                className="w-full overflow-x-auto touch-pan-x rounded-lg border border-neutral-100 dark:border-neutral-800/80 p-1 sm:p-2 bg-neutral-50/40 dark:bg-neutral-900/30"
+                onMouseLeave={() => setHoveredRun(null)}
+              >
                 <svg
                   viewBox={`0 0 ${width} ${height}`}
-                  className="w-full h-auto min-w-[560px] sm:min-w-full select-none"
+                  className="w-full h-auto min-w-[560px] sm:min-w-full select-none overflow-visible"
                 >
+                  {renderYAxisTicks(yIntervalMin, yIntervalMax, (v) => formatPace(v, unit))}
+
                   {linePathInterval && (
                     <path
                       d={linePathInterval}
@@ -572,33 +773,68 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
                     />
                   )}
 
-                  {pointsInterval.map((pt, i) => (
-                    <g
-                      key={pt.run.id || i}
-                      className="cursor-pointer"
-                      onClick={() => setSelectedRun(selectedRun?.id === pt.run.id ? null : pt.run)}
-                      onMouseEnter={() => setSelectedRun(pt.run)}
-                    >
-                      <circle
-                        cx={pt.x}
-                        cy={pt.y}
-                        r={selectedRun?.id === pt.run.id ? 7 : 4.5}
-                        fill="#10B981"
-                        stroke="currentColor"
-                        className="text-[#FCFFFF] dark:text-[#12222f] transition-all"
-                        strokeWidth="2"
+                  {(() => {
+                    const activePt = pointsInterval.find((p) => p.run.id === activeRun?.id);
+                    if (!activePt) return null;
+                    return (
+                      <line
+                        x1={activePt.x}
+                        y1={padding.top}
+                        x2={activePt.x}
+                        y2={padding.top + chartHeight}
+                        stroke="#10B981"
+                        strokeWidth="1.25"
+                        strokeDasharray="3 3"
+                        opacity="0.7"
                       />
-                      <text
-                        x={pt.x}
-                        y={height - padding.bottom + 18}
-                        fill="currentColor"
-                        className="text-neutral-400 dark:text-neutral-500 font-mono text-[10px]"
-                        textAnchor="middle"
+                    );
+                  })()}
+
+                  {pointsInterval.map((pt, i) => {
+                    const isActive = activeRun?.id === pt.run.id;
+                    return (
+                      <g
+                        key={pt.run.id || i}
+                        className="cursor-pointer"
+                        onClick={() =>
+                          setPinnedRun((prev) => (prev?.id === pt.run.id ? null : pt.run))
+                        }
+                        onMouseEnter={() => setHoveredRun(pt.run)}
                       >
-                        {pt.run.date.slice(5)}
-                      </text>
-                    </g>
-                  ))}
+                        <circle cx={pt.x} cy={pt.y} r={20} fill="transparent" />
+                        {isActive && (
+                          <circle cx={pt.x} cy={pt.y} r={11} fill="#10B981" opacity="0.2" />
+                        )}
+                        <circle
+                          cx={pt.x}
+                          cy={pt.y}
+                          r={isActive ? 7 : 5}
+                          fill="#10B981"
+                          stroke="currentColor"
+                          className="text-[#FCFFFF] dark:text-[#12222f] transition-all"
+                          strokeWidth="2"
+                        />
+                        <text
+                          x={pt.x}
+                          y={height - padding.bottom + 18}
+                          fill="currentColor"
+                          className={`font-mono text-[10px] ${
+                            isActive
+                              ? 'text-[#10B981] font-bold'
+                              : 'text-neutral-400 dark:text-neutral-500'
+                          }`}
+                          textAnchor="middle"
+                        >
+                          {pt.run.date.slice(5)}
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  {renderSvgTooltip(
+                    pointsInterval.find((p) => p.run.id === activeRun?.id),
+                    '#10B981'
+                  )}
                 </svg>
               </div>
             </div>
@@ -614,85 +850,166 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
               No weekly volume recorded yet.
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 sm:gap-3">
-              {chronologicalWeeks.slice(-6).map((week) => {
-                const heightPct = Math.min(
-                  100,
-                  Math.round((week.totalDistanceKm / maxDistance) * 100)
-                );
-                const displayDist =
-                  unit === 'miles'
-                    ? `${(week.totalDistanceKm * KM_TO_MILES).toFixed(1)} mi`
-                    : `${week.totalDistanceKm} km`;
+            <div className="space-y-3">
+              <div
+                className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 sm:gap-3"
+                onMouseLeave={() => setHoveredWeek(null)}
+              >
+                {chronologicalWeeks.slice(-6).map((week) => {
+                  const heightPct = Math.min(
+                    100,
+                    Math.round((week.totalDistanceKm / maxDistance) * 100)
+                  );
+                  const displayDist =
+                    unit === 'miles'
+                      ? `${(week.totalDistanceKm * KM_TO_MILES).toFixed(1)} mi`
+                      : `${week.totalDistanceKm.toFixed(1)} km`;
+                  const isActive = activeWeek?.weekKey === week.weekKey;
 
-                return (
-                  <div
-                    key={week.weekKey}
-                    className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-800 flex flex-col items-center"
-                  >
-                    <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400 mb-2">
-                      {week.weekStart}
+                  return (
+                    <button
+                      type="button"
+                      key={week.weekKey}
+                      onMouseEnter={() => setHoveredWeek(week)}
+                      onClick={() =>
+                        setPinnedWeek((prev) => (prev?.weekKey === week.weekKey ? null : week))
+                      }
+                      className={`p-3 rounded-xl border flex flex-col items-center cursor-pointer transition-all text-center ${
+                        isActive
+                          ? 'bg-sky-50/70 dark:bg-sky-950/30 border-[#0593C6] shadow-sm scale-[1.02]'
+                          : 'bg-neutral-50 dark:bg-neutral-900/60 border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                      }`}
+                    >
+                      <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400 mb-2">
+                        {week.weekStart}
+                      </span>
+
+                      <div className="w-8 h-24 sm:h-28 bg-neutral-200 dark:bg-neutral-800 rounded-md relative flex items-end justify-center p-0.5 overflow-hidden">
+                        <div
+                          className={`w-full rounded-xs transition-all duration-300 ${
+                            isActive
+                              ? 'bg-[#0EA5E9]'
+                              : week.goalMet
+                              ? 'bg-[#0593C6]'
+                              : 'bg-neutral-400 dark:bg-neutral-600'
+                          }`}
+                          style={{ height: `${heightPct}%` }}
+                        />
+                      </div>
+
+                      <span className="text-xs font-bold text-neutral-900 dark:text-white mt-2 tabular-nums">
+                        {displayDist}
+                      </span>
+                      <span className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 tabular-nums">
+                        {week.runsCount} runs
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {activeWeek && (
+                <div className="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-[#0593C6]/40 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <span className="font-bold text-neutral-900 dark:text-white">
+                      Week of {activeWeek.weekStart}
                     </span>
-
-                    <div className="w-8 h-24 sm:h-28 bg-neutral-200 dark:bg-neutral-800 rounded-md relative flex items-end justify-center p-0.5 overflow-hidden">
-                      <div
-                        className={`w-full rounded-xs transition-all duration-300 ${
-                          week.goalMet ? 'bg-[#0593C6]' : 'bg-neutral-400 dark:bg-neutral-600'
-                        }`}
-                        style={{ height: `${heightPct}%` }}
-                      />
-                    </div>
-
-                    <span className="text-xs font-bold text-neutral-900 dark:text-white mt-2 tabular-nums">
-                      {displayDist}
-                    </span>
-                    <span className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 tabular-nums">
-                      {week.runsCount} / 3 runs
+                    <span className="text-neutral-500 dark:text-neutral-400 ml-2">
+                      · {activeWeek.runs.map((r) => r.title).join(', ') || 'Rest week'}
                     </span>
                   </div>
-                );
-              })}
+                  <div className="flex flex-wrap items-center gap-4 tabular-nums text-neutral-600 dark:text-neutral-300">
+                    <span>
+                      Volume:{' '}
+                      <strong className="text-neutral-900 dark:text-white">
+                        {unit === 'miles'
+                          ? `${(activeWeek.totalDistanceKm * KM_TO_MILES).toFixed(2)} mi`
+                          : `${activeWeek.totalDistanceKm.toFixed(2)} km`}
+                      </strong>
+                    </span>
+                    <span>
+                      Total Time:{' '}
+                      <strong className="text-neutral-900 dark:text-white">
+                        {formatDuration(activeWeek.totalDurationSeconds)}
+                      </strong>
+                    </span>
+                    {activeWeek.best6kInWeek && (
+                      <span>
+                        Best 6K Equiv:{' '}
+                        <strong className="text-[#10B981]">
+                          {formatDuration(activeWeek.best6kInWeek)}
+                        </strong>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
       )}
 
       {/* Inspection Card for Selected / Hovered Run on Curves */}
-      {selectedRun && (
-        <div className="mt-3.5 p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      {activeRun && (
+        <div className="mt-3.5 p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-[#0593C6]/40 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold text-neutral-900 dark:text-white">
-              {selectedRun.title}
+              {activeRun.title}
             </span>
-            <span className="text-neutral-400 tabular-nums">({selectedRun.date})</span>
+            <span className="text-neutral-400 tabular-nums">({activeRun.date})</span>
             <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
-              {selectedRun.runType}
+              · {activeRun.runType}
             </span>
+            {pinnedRun?.id === activeRun.id && (
+              <button
+                type="button"
+                onClick={() => setPinnedRun(null)}
+                className="text-[10px] font-semibold text-[#0593C6] hover:underline cursor-pointer"
+              >
+                (Pinned · Unpin)
+              </button>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-3 tabular-nums text-neutral-600 dark:text-neutral-300 text-xs">
             <span>
               Dist:{' '}
               <strong className="text-neutral-900 dark:text-white font-semibold">
                 {unit === 'miles'
-                  ? `${(selectedRun.distanceKm * KM_TO_MILES).toFixed(2)} mi`
-                  : `${selectedRun.distanceKm} km`}
+                  ? `${(activeRun.distanceKm * KM_TO_MILES).toFixed(2)} mi`
+                  : `${activeRun.distanceKm} km`}
               </strong>
             </span>
             <span>
               Pace:{' '}
               <strong className="text-neutral-900 dark:text-white font-semibold">
-                {formatPace(selectedRun.averagePaceSecPerKm, unit)}
+                {formatPace(activeRun.activeIntervalPaceSecPerKm || activeRun.averagePaceSecPerKm, unit)}
               </strong>
             </span>
             <span>
               Time:{' '}
               <strong className="text-neutral-900 dark:text-white font-semibold">
-                {formatDuration(selectedRun.durationSeconds)}
+                {formatDuration(activeRun.durationSeconds)}
               </strong>
             </span>
-            {selectedRun.avgHeartRate && (
+            {activeTab === '6k_progression' && (
               <span>
-                HR: <strong className="text-[#ff375f] font-semibold">{selectedRun.avgHeartRate} bpm</strong>
+                {targetLabel} Equiv:{' '}
+                <strong className="text-[#0593C6] font-bold">
+                  {formatDuration(
+                    calculateTargetDistanceEquivalent(
+                      activeRun.distanceKm,
+                      activeRun.durationSeconds,
+                      targetDistKm
+                    ) ||
+                      activeRun.best6kTimeSeconds ||
+                      activeRun.durationSeconds
+                  )}
+                </strong>
+              </span>
+            )}
+            {activeRun.avgHeartRate && (
+              <span>
+                HR: <strong className="text-[#ff375f] font-semibold">{activeRun.avgHeartRate} bpm</strong>
               </span>
             )}
           </div>

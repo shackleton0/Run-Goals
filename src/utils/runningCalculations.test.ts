@@ -26,7 +26,19 @@ import {
   getSuggestedWeeklySchedule,
   isHillRun,
   calculateMonthlyConsistency,
+  calculateRunCardioLoad,
+  calculateCardioLoadAnalysis,
+  parseAppleHealthXml,
+  parseAppleWatchJson,
+  parseWatchCsv,
+  estimateYraaPlacement,
+  formatOrdinalPlace,
 } from './runningCalculations';
+import {
+  INITIAL_SAMPLE_RUNS,
+  createPlaceholderRuns,
+  isPlaceholderRun,
+} from '../data/sampleRuns';
 import { RunRecord } from '../types/running';
 
 test('formatDuration and parseDuration roundtrip correctly', () => {
@@ -524,6 +536,249 @@ test('calculateMonthlyConsistency computes month-to-date volume, 4 actual weeks 
   assert.equal(analysis.weeks[2].dateRangeLabel, 'Nov 15 – Nov 21');
   assert.equal(analysis.weeks[3].dateRangeLabel, 'Nov 22 – Nov 30');
 });
+
+test('INITIAL_SAMPLE_RUNS stays empty while opt-in createPlaceholderRuns builds valid sample workouts', () => {
+  assert.equal(INITIAL_SAMPLE_RUNS.length, 0);
+
+  const refDate = new Date('2026-11-12T12:00:00');
+  const placeholder = createPlaceholderRuns('test_user', 6.0, refDate);
+  assert.ok(placeholder.length >= 6);
+  for (const run of placeholder) {
+    assert.equal(isPlaceholderRun(run), true);
+    assert.equal(run.userId, 'test_user');
+    assert.ok(run.distanceKm > 0);
+    assert.ok(run.durationSeconds > 0);
+  }
+  assert.equal(isPlaceholderRun({ id: 'real_run_123' }), false);
+});
+
+test('calculateCardioLoadAnalysis maps Calibrating, Detraining, Maintaining, and Overtraining phases', () => {
+  const ref = new Date('2026-11-12T12:00:00');
+
+  // 1. Empty or < 3 runs / < 7 days -> Calibrating
+  const emptyRes = calculateCardioLoadAnalysis([], 28, ref);
+  assert.equal(emptyRes.hasRuns, false);
+  assert.equal(emptyRes.currentPhase, 'Calibrating');
+  assert.equal(emptyRes.points.length, 28);
+
+  const singleRun: RunRecord[] = [
+    { id: 'c1', userId: 'u1', date: '2026-11-11', title: '1K Test', distanceKm: 1, durationSeconds: 236, averagePaceSecPerKm: 236, runType: 'Tempo', source: 'manual' },
+  ];
+  const calibRes = calculateCardioLoadAnalysis(singleRun, 14, ref);
+  assert.equal(calibRes.hasRuns, true);
+  assert.equal(calibRes.currentPhase, 'Calibrating');
+  assert.ok(calculateRunCardioLoad(singleRun[0]) > 0);
+
+  // 2. Consistent multi-week runs -> Maintaining or Improving; sudden spike after light base -> Overtraining
+  const spikeRuns: RunRecord[] = [
+    { id: 's1', userId: 'u1', date: '2026-10-16', title: 'Easy 1', distanceKm: 3, durationSeconds: 1080, averagePaceSecPerKm: 360, runType: 'Easy', source: 'manual' },
+    { id: 's2', userId: 'u1', date: '2026-10-22', title: 'Easy 2', distanceKm: 3, durationSeconds: 1080, averagePaceSecPerKm: 360, runType: 'Easy', source: 'manual' },
+    { id: 's3', userId: 'u1', date: '2026-10-29', title: 'Easy 3', distanceKm: 3, durationSeconds: 1080, averagePaceSecPerKm: 360, runType: 'Easy', source: 'manual' },
+    { id: 's4', userId: 'u1', date: '2026-11-10', title: 'Hard Race 1', distanceKm: 12, durationSeconds: 2800, averagePaceSecPerKm: 233, runType: 'Race', avgHeartRate: 182, source: 'manual' },
+    { id: 's5', userId: 'u1', date: '2026-11-11', title: 'Hard Race 2', distanceKm: 12, durationSeconds: 2800, averagePaceSecPerKm: 233, runType: 'Race', avgHeartRate: 182, source: 'manual' },
+    { id: 's6', userId: 'u1', date: '2026-11-12', title: 'Hard Race 3', distanceKm: 12, durationSeconds: 2800, averagePaceSecPerKm: 233, runType: 'Race', avgHeartRate: 182, source: 'manual' },
+  ];
+  const overtrainRes = calculateCardioLoadAnalysis(spikeRuns, 28, ref, 190);
+  assert.equal(overtrainRes.currentPhase, 'Overtraining');
+
+  // 3. Long gap after steady load -> Detraining
+  const detrainingRuns: RunRecord[] = [
+    { id: 'd1', userId: 'u1', date: '2026-10-15', title: 'Hard 1', distanceKm: 10, durationSeconds: 2500, averagePaceSecPerKm: 250, runType: 'Tempo', source: 'manual' },
+    { id: 'd2', userId: 'u1', date: '2026-10-18', title: 'Hard 2', distanceKm: 10, durationSeconds: 2500, averagePaceSecPerKm: 250, runType: 'Tempo', source: 'manual' },
+    { id: 'd3', userId: 'u1', date: '2026-10-21', title: 'Hard 3', distanceKm: 10, durationSeconds: 2500, averagePaceSecPerKm: 250, runType: 'Tempo', source: 'manual' },
+  ];
+  const detrainRes = calculateCardioLoadAnalysis(detrainingRuns, 28, ref, 190);
+  assert.equal(detrainRes.currentPhase, 'Detraining');
+
+  // 4. Steady regular training -> Maintaining or Improving (not Overtraining/Detraining)
+  const steadyRuns: RunRecord[] = [];
+  for (let d = 28; d >= 0; d -= 2) {
+    const dt = new Date(ref);
+    dt.setDate(dt.getDate() - d);
+    steadyRuns.push({
+      id: `st_${d}`,
+      userId: 'u1',
+      date: dt.toISOString().split('T')[0],
+      title: 'Steady Run',
+      distanceKm: 6,
+      durationSeconds: 1800,
+      averagePaceSecPerKm: 300,
+      runType: 'Aerobic',
+      source: 'manual',
+    });
+  }
+  const steadyRes = calculateCardioLoadAnalysis(steadyRuns, 28, ref, 190);
+  assert.ok(steadyRes.currentPhase === 'Maintaining' || steadyRes.currentPhase === 'Improving');
+});
+
+test('parseAppleHealthXml extracts Apple Watch running workouts, HR, cadence, elevation, and skips walking', () => {
+  const sampleXml = `<?xml version="1.0" encoding="UTF-8"?>
+<HealthData locale="en_US">
+  <Workout workoutActivityType="HKWorkoutActivityTypeWalking" duration="30" durationUnit="min" totalDistance="2.5" totalDistanceUnit="km" sourceName="Apple Watch" startDate="2026-11-08 08:00:00 -0800" endDate="2026-11-08 08:30:00 -0800"/>
+  <Workout workoutActivityType="HKWorkoutActivityTypeRunning" duration="24" durationUnit="min" totalDistance="6" totalDistanceUnit="km" sourceName="Adam&apos;s Apple Watch" startDate="2026-11-10 07:04:00 -0800" endDate="2026-11-10 07:28:00 -0800">
+    <MetadataEntry key="HKElevationAscended" value="5400 cm"/>
+    <MetadataEntry key="HKIndoorWorkout" value="0"/>
+    <WorkoutStatistics type="HKQuantityTypeIdentifierHeartRate" average="168.4" maximum="184" unit="count/min"/>
+    <WorkoutStatistics type="HKQuantityTypeIdentifierStepCount" sum="4224" unit="count"/>
+  </Workout>
+  <Workout workoutActivityType="HKWorkoutActivityTypeRunning" duration="1800" durationUnit="s" totalDistance="3.11" totalDistanceUnit="mi" sourceName="Apple Watch" startDate="2026-11-11 06:30:00 -0800" endDate="2026-11-11 07:00:00 -0800">
+    <MetadataEntry key="HKIndoorWorkout" value="1"/>
+  </Workout>
+</HealthData>`;
+
+  const runs = parseAppleHealthXml(sampleXml, 'apple_u1');
+  assert.equal(runs.length, 2); // Walking skipped
+
+  // Sorted newest first -> Nov 11 first, Nov 10 second
+  const nov11 = runs[0];
+  assert.equal(nov11.date, '2026-11-11');
+  assert.equal(nov11.source, 'apple_health_xml');
+  assert.ok(nov11.title.includes('Indoor'));
+  assert.ok(Math.abs(nov11.distanceKm - 5.01) <= 0.03); // 3.11 mi -> ~5.01 km
+  assert.equal(nov11.durationSeconds, 1800);
+
+  const nov10 = runs[1];
+  assert.equal(nov10.date, '2026-11-10');
+  assert.equal(nov10.distanceKm, 6);
+  assert.equal(nov10.durationSeconds, 1440);
+  assert.equal(nov10.avgHeartRate, 168);
+  assert.equal(nov10.maxHeartRate, 184);
+  assert.equal(nov10.elevationGainMeters, 54); // 5400 cm -> 54 m
+  assert.equal(nov10.avgCadence, 176); // 4224 / 24 min = 176 spm
+});
+
+test('parseAppleWatchJson and parseWatchCsv parse Health Auto Export JSON and Apple Watch CSV in miles', () => {
+  const healthAutoExportJson = JSON.stringify({
+    data: {
+      workouts: [
+        {
+          name: 'Outdoor Run',
+          start: '2026-11-12T07:00:00-08:00',
+          end: '2026-11-12T07:24:00-08:00',
+          distance: { qty: 3.73, units: 'mi' },
+          heartRate: { avg: { qty: 165 }, max: { qty: 181 } },
+          elevationUp: { qty: 42, units: 'm' },
+        },
+        {
+          name: 'Outdoor Cycling',
+          start: '2026-11-12T09:00:00-08:00',
+          end: '2026-11-12T09:40:00-08:00',
+          distance: { qty: 20, units: 'km' },
+        },
+      ],
+    },
+  });
+
+  const jsonRuns = parseAppleWatchJson(healthAutoExportJson, 'u1');
+  assert.equal(jsonRuns.length, 1);
+  assert.equal(jsonRuns[0].source, 'apple_watch');
+  assert.ok(Math.abs(jsonRuns[0].distanceKm - 6.0) <= 0.05);
+  assert.equal(jsonRuns[0].durationSeconds, 1440);
+  assert.equal(jsonRuns[0].avgHeartRate, 165);
+  assert.equal(jsonRuns[0].maxHeartRate, 181);
+  assert.equal(jsonRuns[0].elevationGainMeters, 42);
+
+  const appleCsv = `Workout Type,Date,Distance (mi),Duration (min),Average Heart Rate,Max HR,Elevation Ascended
+Running,2026-11-11,3.11,25:00,162,179,35
+Cycling,2026-11-10,12.0,45:00,140,160,120`;
+
+  const csvRuns = parseWatchCsv(appleCsv, 'u1');
+  assert.equal(csvRuns.length, 1); // Cycling skipped
+  assert.equal(csvRuns[0].source, 'apple_watch_csv');
+  assert.ok(Math.abs(csvRuns[0].distanceKm - 5.01) <= 0.03);
+  assert.equal(csvRuns[0].durationSeconds, 1500);
+});
+
+test('calculateGoalProjection ignores recovery jog dips and tracks historical quality improvement + curve', () => {
+  const progressionRuns: RunRecord[] = [
+    {
+      id: 'q1',
+      userId: 'u1',
+      date: '2026-10-01',
+      title: 'Early 6K Time Trial',
+      distanceKm: 6.0,
+      durationSeconds: 1620, // 27:00
+      averagePaceSecPerKm: 270,
+      runType: '6K Time Trial',
+      source: 'manual',
+    },
+    {
+      id: 'q2',
+      userId: 'u1',
+      date: '2026-10-15',
+      title: 'Mid-Season Tempo',
+      distanceKm: 6.0,
+      durationSeconds: 1540, // 25:40
+      averagePaceSecPerKm: 256.6,
+      runType: 'Tempo',
+      source: 'manual',
+    },
+    {
+      id: 'q3',
+      userId: 'u1',
+      date: '2026-10-29',
+      title: 'Latest 6K Time Trial',
+      distanceKm: 6.0,
+      durationSeconds: 1470, // 24:30
+      averagePaceSecPerKm: 245,
+      runType: '6K Time Trial',
+      source: 'manual',
+    },
+    {
+      id: 'easy_latest',
+      userId: 'u1',
+      date: '2026-10-31',
+      title: 'Very Slow Shakeout',
+      distanceKm: 4.0,
+      durationSeconds: 1440, // 6:00/km easy recovery jog
+      averagePaceSecPerKm: 360,
+      runType: 'Recovery',
+      source: 'manual',
+    },
+  ];
+
+  const result = calculateGoalProjection(progressionRuns, 6.0, 1320, undefined, 3, 2); // Target: 22:00 (1320s)
+  assert.equal(result.currentBestSeconds, 1470);
+  assert.equal(result.improvementSummary.hasHistory, true);
+  assert.equal(result.improvementSummary.baselineSeconds, 1620);
+  assert.equal(result.improvementSummary.totalDroppedSeconds, 150); // 27:00 -> 24:30 = 150s cut
+  assert.ok((result.improvementSummary.empiricalWeeklyRateSec || 0) > 25); // ~37.5s/wk
+  assert.equal(result.historyPoints.length, 3); // Easy recovery excluded from quality benchmark series
+  assert.equal(result.allRunsHistoryPoints.length, 4);
+  assert.ok(result.projectedCurve.length >= 2);
+});
+
+test('estimateYraaPlacement ranks current and goal times accurately across YRAA divisions', () => {
+  assert.equal(formatOrdinalPlace(1), '1st');
+  assert.equal(formatOrdinalPlace(2), '2nd');
+  assert.equal(formatOrdinalPlace(3), '3rd');
+  assert.equal(formatOrdinalPlace(11), '11th');
+  assert.equal(formatOrdinalPlace(22), '22nd');
+
+  // Senior Men 6K: 1st place ran 1195s (~19:55), 237 finishers
+  const seniorWinnerPace = estimateYraaPlacement(1190, 6.0, 'senior_men');
+  assert.ok(seniorWinnerPace);
+  assert.equal(seniorWinnerPace.estimatedPlace, 1);
+  assert.equal(seniorWinnerPace.finishersCount, 237);
+  assert.equal(seniorWinnerPace.wasDistanceConverted, false);
+
+  // Senior Men 6K: 24:00 (1440s) should place well inside Top 25 (20th time was 1435s, 21st was 1459s -> 21st!)
+  const senior24 = estimateYraaPlacement(1440, 6.0, 'senior_men');
+  assert.ok(senior24);
+  assert.equal(senior24.estimatedPlace, 21);
+  assert.equal(senior24.percentileTop, Math.round((21 / 237) * 100));
+
+  // Cross-distance conversion: 24:00 6K athlete checked against Junior Men 5K converts down to ~19:46 (1186s)
+  const juniorConv = estimateYraaPlacement(1440, 6.0, 'junior_men');
+  assert.ok(juniorConv);
+  assert.equal(juniorConv.wasDistanceConverted, true);
+  assert.ok(juniorConv.equivalentDivisionTimeSeconds < 1210 && juniorConv.equivalentDivisionTimeSeconds > 1150);
+  assert.ok(juniorConv.estimatedPlace >= 10 && juniorConv.estimatedPlace <= 20);
+});
+
+
+
+
 
 
 

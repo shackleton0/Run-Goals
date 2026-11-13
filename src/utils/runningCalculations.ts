@@ -1,4 +1,5 @@
 import { RunRecord, UserProfile, WeeklyStat, AdherenceSummary, RunType, DuplicateRunMatch } from '../types/running';
+import { YRAA_DIVISIONS, YraaDivisionData, YraaDivisionId } from '../data/yraaBenchmarks';
 
 export const KM_TO_MILES = 0.621371;
 export const MILES_TO_KM = 1.60934;
@@ -461,7 +462,11 @@ export function findDuplicateRuns(
 
   incomingRuns.forEach((incoming) => {
     const match = existingRuns.find((existing) => {
-      // 1. Check Garmin Activity ID if both have one
+      // 1. Check exact ID match (e.g. re-importing same Apple Health export.xml workout)
+      if (incoming.id && existing.id && incoming.id === existing.id) {
+        return true;
+      }
+      // 2. Check Garmin/Tracker Activity ID if both have one
       if (
         incoming.garminActivityId &&
         existing.garminActivityId &&
@@ -469,7 +474,7 @@ export function findDuplicateRuns(
       ) {
         return true;
       }
-      // 2. Check identical date + distance (within 0.05 km) + duration (within 10 seconds)
+      // 3. Check identical date + distance (within 0.05 km) + duration (within 10 seconds)
       const sameDate = incoming.date === existing.date;
       const sameDist = Math.abs(incoming.distanceKm - existing.distanceKm) <= 0.05;
       const sameDur = Math.abs(incoming.durationSeconds - existing.durationSeconds) <= 10;
@@ -486,21 +491,85 @@ export function findDuplicateRuns(
   return { uniqueRuns, duplicateMatches };
 }
 
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function extractXmlAttr(tagText: string, attrName: string): string | undefined {
+  const regex = new RegExp(`\\b${attrName}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i');
+  const match = tagText.match(regex);
+  if (!match) return undefined;
+  return decodeXmlEntities((match[1] ?? match[2] ?? '').trim());
+}
+
+function parseAppleDateToYmd(rawDate?: string): string {
+  if (!rawDate) return formatLocalDateString(new Date());
+  const ymdMatch = rawDate.match(/(\d{4}-\d{2}-\d{2})/);
+  if (ymdMatch) return ymdMatch[1];
+  const parsed = new Date(rawDate);
+  if (!isNaN(parsed.getTime())) {
+    return formatLocalDateString(parsed);
+  }
+  return formatLocalDateString(new Date());
+}
+
+function parseAppleTimestampMs(rawDate?: string): number | null {
+  if (!rawDate) return null;
+  // Convert "2026-11-10 07:04:00 -0800" -> "2026-11-10T07:04:00-08:00"
+  const normalized = rawDate
+    .trim()
+    .replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})\s*([+-]\d{2})(\d{2})$/, '$1T$2$3:$4');
+  const t = new Date(normalized).getTime();
+  return isNaN(t) ? null : t;
+}
+
+function parseElevationStringToMeters(rawValue?: string): number | undefined {
+  if (!rawValue) return undefined;
+  const num = parseFloat(rawValue.replace(/[^0-9.-]/g, ''));
+  if (isNaN(num) || num <= 0) return undefined;
+  const lower = rawValue.toLowerCase();
+  if (lower.includes('cm')) return Math.round(num / 100);
+  if (lower.includes('ft') || lower.includes('feet')) return Math.round(num * 0.3048);
+  return Math.round(num);
+}
+
 export function parseGarminCsv(csvText: string, userId: string): RunRecord[] {
   const lines = csvText.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
 
-  const header = lines[0].split(',').map((h) => h.replace(/["']/g, '').trim().toLowerCase());
+  const headerRaw = lines[0].split(',').map((h) => h.replace(/["']/g, '').trim());
+  const header = headerRaw.map((h) => h.toLowerCase());
 
-  const dateIdx = header.findIndex((h) => h.includes('date'));
-  const titleIdx = header.findIndex((h) => h.includes('title') || h.includes('activity name'));
+  const isAppleCsv =
+    header.some(
+      (h) =>
+        h.includes('workout type') ||
+        h.includes('active energy') ||
+        h.includes('apple') ||
+        h.includes('healthfit') ||
+        h.includes('elevation ascended')
+    ) ||
+    csvText.includes('HKWorkoutActivityType') ||
+    csvText.includes('Apple Watch');
+
+  const typeIdx = header.findIndex((h) => h.includes('activity type') || h.includes('workout type') || h === 'type');
+  const dateIdx = header.findIndex((h) => h.includes('date') || h === 'start' || h.includes('start time'));
+  const titleIdx = header.findIndex((h) => h.includes('title') || h.includes('activity name') || h.includes('workout name'));
   const distIdx = header.findIndex((h) => h.includes('distance'));
-  const timeIdx = header.findIndex((h) => h.includes('time') || h.includes('duration'));
-  const hrIdx = header.findIndex((h) => h.includes('avg hr') || h.includes('average heart rate') || h.includes('hr'));
-  const maxHrIdx = header.findIndex((h) => h.includes('max hr'));
+  const timeIdx = header.findIndex((h) => h.includes('elapsed time') || h.includes('duration') || h.includes('time'));
+  const hrIdx = header.findIndex((h) => h.includes('avg hr') || h.includes('average heart rate') || h.includes('heart rate (avg') || h === 'hr');
+  const maxHrIdx = header.findIndex((h) => h.includes('max hr') || h.includes('maximum heart rate') || h.includes('heart rate (max'));
   const cadIdx = header.findIndex((h) => h.includes('cadence') || h.includes('run cadence'));
-  const elevIdx = header.findIndex((h) => h.includes('elevation') || h.includes('elev gain'));
-  const idIdx = header.findIndex((h) => h.includes('activity id') || h.includes('activity_id'));
+  const elevIdx = header.findIndex((h) => h.includes('elevation') || h.includes('elev gain') || h.includes('ascended'));
+  const idIdx = header.findIndex((h) => h.includes('activity id') || h.includes('activity_id') || h.includes('uuid'));
+  const distHeader = distIdx >= 0 ? header[distIdx] : '';
+  const timeHeader = timeIdx >= 0 ? header[timeIdx] : '';
 
   const records: RunRecord[] = [];
 
@@ -525,18 +594,63 @@ export function parseGarminCsv(csvText: string, userId: string): RunRecord[] {
     }
     tokens.push(currentToken.trim());
 
-    const title = titleIdx >= 0 && tokens[titleIdx] ? tokens[titleIdx] : `Garmin Run ${i}`;
-    const rawDate = dateIdx >= 0 ? tokens[dateIdx] : new Date().toISOString();
-    const actId = idIdx >= 0 ? tokens[idIdx] : undefined;
+    // Skip non-running activities if a workout/activity type column is present
+    if (typeIdx >= 0 && tokens[typeIdx]) {
+      const actType = tokens[typeIdx].toLowerCase();
+      if (
+        actType &&
+        !actType.includes('run') &&
+        !actType.includes('jog') &&
+        !actType.includes('track') &&
+        !actType.includes('treadmill')
+      ) {
+        continue;
+      }
+    }
+
+    const fallbackPrefix = isAppleCsv ? 'Apple Watch Run' : 'Garmin Run';
+    const rawTypeLabel = typeIdx >= 0 && tokens[typeIdx] ? tokens[typeIdx].replace(/^HKWorkoutActivityType/, '') : '';
+    const title =
+      titleIdx >= 0 && tokens[titleIdx]
+        ? tokens[titleIdx]
+        : rawTypeLabel
+        ? `${isAppleCsv ? 'Apple Watch ' : ''}${rawTypeLabel}`
+        : `${fallbackPrefix} ${i}`;
+    const rawDate = dateIdx >= 0 && tokens[dateIdx] ? tokens[dateIdx] : new Date().toISOString();
+    const actId = idIdx >= 0 && tokens[idIdx] ? tokens[idIdx] : undefined;
 
     let distKm = 0;
     if (distIdx >= 0 && tokens[distIdx]) {
-      const val = parseFloat(tokens[distIdx].replace(/[^0-9.]/g, ''));
-      if (!isNaN(val)) distKm = val;
+      const rawCell = tokens[distIdx].toLowerCase();
+      const val = parseFloat(rawCell.replace(/[^0-9.]/g, ''));
+      if (!isNaN(val)) {
+        if (rawCell.includes('mi') || distHeader.includes('(mi') || distHeader.includes('mile')) {
+          distKm = val * MILES_TO_KM;
+        } else if (distHeader.includes('(m)') || distHeader.includes('meter')) {
+          distKm = val / 1000;
+        } else {
+          distKm = val;
+        }
+      }
     }
+
     let durationSec = 0;
     if (timeIdx >= 0 && tokens[timeIdx]) {
-      durationSec = parseDuration(tokens[timeIdx]);
+      const rawTime = tokens[timeIdx].trim();
+      if (rawTime.includes(':')) {
+        durationSec = parseDuration(rawTime);
+      } else {
+        const numericVal = parseFloat(rawTime.replace(/[^0-9.]/g, ''));
+        if (!isNaN(numericVal) && numericVal > 0) {
+          if (timeHeader.includes('min') || rawTime.toLowerCase().includes('min')) {
+            durationSec = Math.round(numericVal * 60);
+          } else if (timeHeader.includes('hr') || timeHeader.includes('hour')) {
+            durationSec = Math.round(numericVal * 3600);
+          } else {
+            durationSec = Math.round(numericVal);
+          }
+        }
+      }
     }
 
     if (distKm <= 0 || durationSec <= 0) continue;
@@ -550,10 +664,13 @@ export function parseGarminCsv(csvText: string, userId: string): RunRecord[] {
     const cadence = cadIdx >= 0 && tokens[cadIdx] ? parseInt(tokens[cadIdx].replace(/\D/g, ''), 10) : undefined;
     const elevation = elevIdx >= 0 && tokens[elevIdx] ? parseFloat(tokens[elevIdx].replace(/[^0-9.]/g, '')) : undefined;
 
+    const source: RunRecord['source'] = isAppleCsv ? 'apple_watch_csv' : 'garmin_csv';
+    const idPrefix = isAppleCsv ? 'apple_csv' : 'garmin_csv';
+
     records.push({
-      id: actId ? `garmin_${actId}` : `garmin_csv_${Date.now()}_${i}`,
+      id: actId ? `${isAppleCsv ? 'apple' : 'garmin'}_${actId.replace(/[^a-zA-Z0-9_\-\.:]/g, '_')}` : `${idPrefix}_${Date.now()}_${i}`,
       userId,
-      date: new Date(rawDate).toISOString().split('T')[0] || rawDate,
+      date: parseAppleDateToYmd(rawDate),
       title,
       distanceKm: Number(distKm.toFixed(2)),
       durationSeconds: Math.round(durationSec),
@@ -564,13 +681,317 @@ export function parseGarminCsv(csvText: string, userId: string): RunRecord[] {
       maxHeartRate: maxHr && maxHr > 60 && maxHr < 250 ? maxHr : undefined,
       avgCadence: cadence && cadence > 100 && cadence < 250 ? cadence : undefined,
       elevationGainMeters: elevation && elevation >= 0 ? Math.round(elevation) : undefined,
-      source: 'garmin_csv',
+      source,
       garminActivityId: actId,
       createdAt: new Date().toISOString(),
     });
   }
 
   return records;
+}
+
+export const parseWatchCsv = parseGarminCsv;
+
+export function parseAppleHealthXml(xmlText: string, userId: string): RunRecord[] {
+  if (!xmlText || !xmlText.includes('<Workout')) return [];
+
+  const records: RunRecord[] = [];
+  const workoutRegex = /<Workout\b([^>]*?)(?:\/>|>([\s\S]*?)<\/Workout>)/g;
+  let match: RegExpExecArray | null;
+  let idx = 0;
+
+  while ((match = workoutRegex.exec(xmlText)) !== null) {
+    const attrs = match[1] || '';
+    const innerBody = match[2] || '';
+
+    const activityType = extractXmlAttr(attrs, 'workoutActivityType') || '';
+    const isRunning =
+      activityType === 'HKWorkoutActivityTypeRunning' ||
+      /\brunning\b/i.test(activityType);
+
+    if (!isRunning) continue;
+
+    const sourceName = extractXmlAttr(attrs, 'sourceName') || 'Apple Watch';
+    const startDateRaw = extractXmlAttr(attrs, 'startDate') || extractXmlAttr(attrs, 'creationDate');
+    const endDateRaw = extractXmlAttr(attrs, 'endDate');
+    const runDate = parseAppleDateToYmd(startDateRaw);
+
+    // Duration parsing
+    let durationSec = 0;
+    const rawDuration = extractXmlAttr(attrs, 'duration');
+    const durationUnit = (extractXmlAttr(attrs, 'durationUnit') || 'min').toLowerCase();
+    if (rawDuration) {
+      const val = parseFloat(rawDuration);
+      if (!isNaN(val) && val > 0) {
+        if (durationUnit.startsWith('s')) durationSec = Math.round(val);
+        else if (durationUnit.startsWith('h')) durationSec = Math.round(val * 3600);
+        else durationSec = Math.round(val * 60);
+      }
+    }
+    if (durationSec <= 0 && startDateRaw && endDateRaw) {
+      const startMs = parseAppleTimestampMs(startDateRaw);
+      const endMs = parseAppleTimestampMs(endDateRaw);
+      if (startMs && endMs && endMs > startMs) {
+        durationSec = Math.round((endMs - startMs) / 1000);
+      }
+    }
+
+    // Distance parsing (attribute first, then WorkoutStatistics fallback)
+    let distKm = 0;
+    const rawDist = extractXmlAttr(attrs, 'totalDistance');
+    const distUnit = (extractXmlAttr(attrs, 'totalDistanceUnit') || 'km').toLowerCase();
+    if (rawDist) {
+      const val = parseFloat(rawDist);
+      if (!isNaN(val) && val > 0) {
+        if (distUnit === 'mi' || distUnit.includes('mile')) distKm = val * MILES_TO_KM;
+        else if (distUnit === 'm') distKm = val / 1000;
+        else distKm = val;
+      }
+    }
+
+    // Parse inner <WorkoutStatistics> and <MetadataEntry>
+    let avgHeartRate: number | undefined;
+    let maxHeartRate: number | undefined;
+    let avgCadence: number | undefined;
+    let elevationGainMeters: number | undefined;
+    let isIndoor = false;
+
+    if (innerBody) {
+      const statsRegex = /<WorkoutStatistics\b([^>]*?)\/?>/g;
+      let statMatch: RegExpExecArray | null;
+      while ((statMatch = statsRegex.exec(innerBody)) !== null) {
+        const sAttrs = statMatch[1] || '';
+        const statType = extractXmlAttr(sAttrs, 'type') || '';
+
+        if (statType === 'HKQuantityTypeIdentifierDistanceWalkingRunning' && distKm <= 0) {
+          const sumVal = parseFloat(extractXmlAttr(sAttrs, 'sum') || '0');
+          const sUnit = (extractXmlAttr(sAttrs, 'unit') || 'km').toLowerCase();
+          if (!isNaN(sumVal) && sumVal > 0) {
+            if (sUnit === 'mi') distKm = sumVal * MILES_TO_KM;
+            else if (sUnit === 'm') distKm = sumVal / 1000;
+            else distKm = sumVal;
+          }
+        } else if (statType === 'HKQuantityTypeIdentifierHeartRate') {
+          const avg = parseFloat(extractXmlAttr(sAttrs, 'average') || '0');
+          const max = parseFloat(extractXmlAttr(sAttrs, 'maximum') || '0');
+          if (!isNaN(avg) && avg > 40 && avg < 240) avgHeartRate = Math.round(avg);
+          if (!isNaN(max) && max > 50 && max < 250) maxHeartRate = Math.round(max);
+        } else if (statType === 'HKQuantityTypeIdentifierStepCount' && durationSec > 0) {
+          const steps = parseFloat(extractXmlAttr(sAttrs, 'sum') || '0');
+          if (!isNaN(steps) && steps > 0) {
+            const spm = Math.round((steps / durationSec) * 60);
+            if (spm >= 120 && spm <= 240) avgCadence = spm;
+          }
+        }
+      }
+
+      const metaRegex = /<MetadataEntry\b([^>]*?)\/?>/g;
+      let metaMatch: RegExpExecArray | null;
+      while ((metaMatch = metaRegex.exec(innerBody)) !== null) {
+        const mAttrs = metaMatch[1] || '';
+        const key = extractXmlAttr(mAttrs, 'key') || '';
+        const val = extractXmlAttr(mAttrs, 'value') || '';
+        if (key === 'HKElevationAscended') {
+          elevationGainMeters = parseElevationStringToMeters(val);
+        } else if (key === 'HKIndoorWorkout' && (val === '1' || val.toLowerCase() === 'true')) {
+          isIndoor = true;
+        }
+      }
+    }
+
+    if (distKm <= 0 || durationSec <= 0) continue;
+
+    const avgPace = calculatePaceSecPerKm(distKm, durationSec);
+    const best6k = calculate6kEquivalent(distKm, durationSec);
+
+    const roundedDistLabel = distKm >= 5.8 && distKm <= 6.2 ? '6K' : `${distKm.toFixed(1)}K`;
+    const title = isIndoor
+      ? `Apple Watch Indoor Run (${roundedDistLabel})`
+      : `Apple Watch Run (${roundedDistLabel})`;
+    const runType = inferRunType(title, distKm);
+
+    const startKey = (startDateRaw || `${runDate}_${idx}`)
+      .replace(/[^a-zA-Z0-9_\-\.:]/g, '_')
+      .slice(0, 60);
+
+    records.push({
+      id: `apple_xml_${startKey}_${idx}`,
+      userId,
+      date: runDate,
+      title,
+      distanceKm: Number(distKm.toFixed(2)),
+      durationSeconds: durationSec,
+      averagePaceSecPerKm: Math.round(avgPace),
+      best6kTimeSeconds: best6k,
+      runType,
+      avgHeartRate,
+      maxHeartRate,
+      avgCadence,
+      elevationGainMeters,
+      source: 'apple_health_xml',
+      notes: sourceName && sourceName !== 'Apple Watch' ? `Synced from ${sourceName}` : undefined,
+      createdAt: new Date().toISOString(),
+    });
+
+    idx++;
+  }
+
+  return records.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+export function parseAppleWatchJson(jsonText: string, userId: string): RunRecord[] {
+  try {
+    const raw = JSON.parse(jsonText);
+    // Support Health Auto Export `{ data: { workouts: [...] } }`, Shortcuts `{ workouts: [...] }`, or array `[...]`
+    const candidateItems: any[] = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.data?.workouts)
+      ? raw.data.workouts
+      : Array.isArray(raw?.workouts)
+      ? raw.workouts
+      : [raw];
+
+    const isExplicitApplePayload = Boolean(
+      raw?.data?.workouts ||
+        raw?.workouts ||
+        candidateItems.some(
+          (item) =>
+            item &&
+            (typeof item.name === 'string' ||
+              item.source === 'apple_watch' ||
+              String(item.workoutActivityType || '').includes('HKWorkout') ||
+              String(item.sourceName || '').toLowerCase().includes('apple'))
+        )
+    );
+
+    const parsed: RunRecord[] = [];
+
+    candidateItems.forEach((item: any, idx: number) => {
+      if (!item || typeof item !== 'object') return;
+
+      const activityName = String(item.name || item.workoutActivityType || item.activityType || item.type || '');
+      if (
+        activityName &&
+        !isExplicitApplePayload &&
+        !item.distanceKm &&
+        !item.distance &&
+        !item.totalDistance
+      ) {
+        return;
+      }
+
+      if (
+        activityName &&
+        !/run|jog|track|treadmill|trail|race|tempo|interval/i.test(activityName) &&
+        (item.name || item.workoutActivityType)
+      ) {
+        // Non-running workout in multi-sport Apple Health export
+        return;
+      }
+
+      // Distance resolution (supports number, or Health Auto Export `{ qty, units }`)
+      let distKm = 0;
+      const distObj = item.distance && typeof item.distance === 'object' ? item.distance : item.totalDistance;
+      if (distObj && typeof distObj === 'object' && typeof distObj.qty === 'number') {
+        const u = String(distObj.units || distObj.unit || 'km').toLowerCase();
+        distKm = u === 'mi' || u.includes('mile') ? distObj.qty * MILES_TO_KM : u === 'm' ? distObj.qty / 1000 : distObj.qty;
+      } else if (typeof item.distanceKm === 'number') {
+        distKm = item.distanceKm;
+      } else if (typeof item.distance === 'number') {
+        const u = String(item.distanceUnit || item.totalDistanceUnit || '').toLowerCase();
+        if (u === 'mi' || u.includes('mile')) distKm = item.distance * MILES_TO_KM;
+        else if (u === 'km') distKm = item.distance;
+        else if (u === 'm' || item.distance > 150) distKm = item.distance / 1000;
+        else distKm = item.distance;
+      } else if (typeof item.totalDistance === 'number') {
+        const u = String(item.totalDistanceUnit || 'km').toLowerCase();
+        distKm = u === 'mi' ? item.totalDistance * MILES_TO_KM : u === 'm' ? item.totalDistance / 1000 : item.totalDistance;
+      }
+
+      // Duration resolution
+      let durationSeconds = 0;
+      if (typeof item.durationSeconds === 'number') {
+        durationSeconds = item.durationSeconds;
+      } else if (typeof item.duration === 'number') {
+        const dUnit = String(item.durationUnit || '').toLowerCase();
+        if (dUnit.startsWith('min')) durationSeconds = Math.round(item.duration * 60);
+        else durationSeconds = Math.round(item.duration);
+      } else if (item.start && item.end) {
+        const s = new Date(item.start).getTime();
+        const e = new Date(item.end).getTime();
+        if (!isNaN(s) && !isNaN(e) && e > s) durationSeconds = Math.round((e - s) / 1000);
+      }
+
+      if (distKm <= 0 || durationSeconds <= 0) return;
+
+      const avgPace = item.averagePaceSecPerKm
+        ? Number(item.averagePaceSecPerKm)
+        : calculatePaceSecPerKm(distKm, durationSeconds);
+      const best6k = calculate6kEquivalent(distKm, durationSeconds);
+
+      const rawDate = item.date || item.start || item.startDate || item.createdAt;
+      const runDate = parseAppleDateToYmd(typeof rawDate === 'string' ? rawDate : undefined);
+
+      // Heart rate extraction (Health Auto Export `heartRate` or arrays or direct fields)
+      let avgHr = Number(item.avgHeartRate || item.averageHeartRate || item.heartRate?.avg?.qty || item.heartRate?.avg || 0) || undefined;
+      let maxHr = Number(item.maxHeartRate || item.maximumHeartRate || item.heartRate?.max?.qty || item.heartRate?.max || 0) || undefined;
+
+      if (!avgHr && Array.isArray(item.heartRateData) && item.heartRateData.length > 0) {
+        const hrVals = item.heartRateData
+          .map((h: any) => Number(h.Avg ?? h.qty ?? h.value ?? 0))
+          .filter((v: number) => v > 40 && v < 240);
+        if (hrVals.length > 0) {
+          avgHr = Math.round(hrVals.reduce((a: number, b: number) => a + b, 0) / hrVals.length);
+          maxHr = maxHr || Math.round(Math.max(...hrVals));
+        }
+      }
+
+      // Elevation extraction
+      let elevMeters: number | undefined;
+      if (item.elevationUp?.qty !== undefined) {
+        const u = String(item.elevationUp.units || 'm').toLowerCase();
+        elevMeters = Math.round(u === 'cm' ? item.elevationUp.qty / 100 : item.elevationUp.qty);
+      } else if (item.elevationGainMeters !== undefined || item.elevationGain !== undefined) {
+        elevMeters = Math.round(Number(item.elevationGainMeters ?? item.elevationGain));
+      }
+
+      const cadence = Number(item.avgCadence || item.cadence || 0) || undefined;
+      const isApple =
+        isExplicitApplePayload ||
+        item.source === 'apple_watch' ||
+        String(item.sourceName || '').toLowerCase().includes('apple');
+
+      const title =
+        item.title ||
+        (activityName && !activityName.startsWith('HKWorkout') ? activityName : null) ||
+        (isApple ? `Apple Watch Run (${distKm.toFixed(1)}K)` : 'Garmin Run');
+
+      parsed.push({
+        id: item.id
+          ? String(item.id).replace(/[^a-zA-Z0-9_\-\.:]/g, '_')
+          : `${isApple ? 'apple_json' : 'garmin_json'}_${Date.now()}_${idx}`,
+        userId,
+        date: runDate,
+        title,
+        distanceKm: Number(distKm.toFixed(2)),
+        durationSeconds: Math.round(durationSeconds),
+        averagePaceSecPerKm: Math.round(avgPace),
+        best6kTimeSeconds: best6k,
+        runType: item.runType || inferRunType(title, distKm),
+        avgHeartRate: avgHr && avgHr > 40 ? Math.round(avgHr) : undefined,
+        maxHeartRate: maxHr && maxHr > 50 ? Math.round(maxHr) : undefined,
+        avgCadence: cadence && cadence > 100 ? Math.round(cadence) : undefined,
+        elevationGainMeters: elevMeters && elevMeters > 0 ? elevMeters : undefined,
+        source: isApple ? 'apple_watch' : 'garmin',
+        garminActivityId: item.garminActivityId || item.activityId,
+        createdAt: new Date().toISOString(),
+      });
+    });
+
+    return parsed.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  } catch {
+    return [];
+  }
 }
 
 export function parseTcx(tcxText: string, userId: string, fileName?: string): RunRecord | null {
@@ -580,6 +1001,11 @@ export function parseTcx(tcxText: string, userId: string, fileName?: string): Ru
 
     const activity = doc.querySelector('Activity');
     if (!activity) return null;
+
+    const creatorText = activity.querySelector('Creator Name')?.textContent || '';
+    const isAppleWatch =
+      /apple|healthfit|workoutdoors|watchletic|health/i.test(creatorText) ||
+      /apple|healthfit|workoutdoors/i.test(fileName || '');
 
     const idElem = activity.querySelector('Id');
     const dateStr = idElem ? idElem.textContent || '' : new Date().toISOString();
@@ -632,15 +1058,20 @@ export function parseTcx(tcxText: string, userId: string, fileName?: string): Ru
 
     const avgPace = calculatePaceSecPerKm(distKm, totalSeconds);
     const best6k = calculate6kEquivalent(distKm, totalSeconds);
-    const defaultTitle = fileName ? fileName.replace(/\.[^/.]+$/, '') : `Garmin XC Run`;
+    const defaultTitle = fileName
+      ? fileName.replace(/\.[^/.]+$/, '')
+      : isAppleWatch
+      ? 'Apple Watch XC Run'
+      : 'Garmin XC Run';
     const runType = inferRunType(defaultTitle, distKm);
 
     const cleanActId = actId ? actId.replace(/[^a-zA-Z0-9_\-\.:]/g, '_') : null;
+    const prefix = isAppleWatch ? 'apple_tcx' : 'garmin_tcx';
 
     return {
-      id: cleanActId ? `garmin_tcx_${cleanActId}` : `garmin_tcx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: cleanActId ? `${prefix}_${cleanActId}` : `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       userId,
-      date: new Date(dateStr).toISOString().split('T')[0] || dateStr,
+      date: parseAppleDateToYmd(dateStr),
       title: defaultTitle,
       distanceKm: Number(distKm.toFixed(2)),
       durationSeconds: Math.round(totalSeconds),
@@ -650,7 +1081,7 @@ export function parseTcx(tcxText: string, userId: string, fileName?: string): Ru
       avgHeartRate: hrCount > 0 ? Math.round(hrSum / hrCount) : undefined,
       maxHeartRate: maxHr > 0 ? maxHr : undefined,
       avgCadence: cadCount > 0 ? Math.round(cadSum / cadCount) : undefined,
-      source: 'garmin_tcx',
+      source: isAppleWatch ? 'apple_watch_tcx' : 'garmin_tcx',
       garminActivityId: actId,
       createdAt: new Date().toISOString(),
     };
@@ -667,8 +1098,20 @@ export function parseGpx(gpxText: string, userId: string, fileName?: string): Ru
     const trkpts = Array.from(doc.querySelectorAll('trkpt'));
     if (trkpts.length < 2) return null;
 
+    const creatorAttr = doc.documentElement?.getAttribute('creator') || '';
+    const isAppleWatch =
+      /apple|healthfit|workoutdoors|watchletic|health/i.test(creatorAttr) ||
+      /route_|apple|healthfit|workoutdoors/i.test(fileName || '');
+
     const nameElem = doc.querySelector('metadata > name') || doc.querySelector('trk > name');
-    const title = nameElem && nameElem.textContent ? nameElem.textContent : (fileName ? fileName.replace(/\.[^/.]+$/, '') : 'Garmin GPX Run');
+    const title =
+      nameElem && nameElem.textContent
+        ? nameElem.textContent
+        : fileName
+        ? fileName.replace(/\.[^/.]+$/, '')
+        : isAppleWatch
+        ? 'Apple Watch GPX Run'
+        : 'Garmin GPX Run';
 
     let totalDistMeters = 0;
     let startTime: number | null = null;
@@ -716,7 +1159,7 @@ export function parseGpx(gpxText: string, userId: string, fileName?: string): Ru
         const ele = parseFloat(eleElem.textContent);
         if (!isNaN(ele)) {
           if (lastElev !== null && ele > lastElev) {
-            elevGain += (ele - lastElev);
+            elevGain += ele - lastElev;
           }
           lastElev = ele;
         }
@@ -730,10 +1173,10 @@ export function parseGpx(gpxText: string, userId: string, fileName?: string): Ru
 
     const avgPace = calculatePaceSecPerKm(distKm, durationSec);
     const best6k = calculate6kEquivalent(distKm, durationSec);
-    const runDate = startTime ? new Date(startTime).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+    const runDate = startTime ? formatLocalDateString(new Date(startTime)) : formatLocalDateString(new Date());
 
     return {
-      id: `garmin_gpx_${Date.now()}`,
+      id: `${isAppleWatch ? 'apple_gpx' : 'garmin_gpx'}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       userId,
       date: runDate,
       title,
@@ -743,7 +1186,7 @@ export function parseGpx(gpxText: string, userId: string, fileName?: string): Ru
       best6kTimeSeconds: best6k,
       runType: inferRunType(title, distKm),
       elevationGainMeters: elevGain > 0 ? Math.round(elevGain) : undefined,
-      source: 'garmin_gpx',
+      source: isAppleWatch ? 'apple_watch_gpx' : 'garmin_gpx',
       createdAt: new Date().toISOString(),
     };
   } catch {
@@ -1303,6 +1746,44 @@ export interface GoalMilestone {
   notes: string;
 }
 
+export interface ProjectionHistoryPoint {
+  runId: string;
+  date: string;
+  title: string;
+  runType: RunType;
+  distanceKm: number;
+  actualDurationSeconds: number;
+  equivalentTimeSeconds: number;
+  equivalentPaceSecPerKm: number;
+  isQualityBenchmark: boolean;
+  weeksFromBaseline: number;
+}
+
+export interface ProjectionCurvePoint {
+  weekOffset: number;
+  dateLabel: string;
+  expectedSec: number;
+  acceleratedSec: number;
+  conservativeSec: number;
+}
+
+export interface ImprovementSummary {
+  hasHistory: boolean;
+  spanWeeks: number;
+  baselineSeconds: number;
+  baselineDate: string;
+  baselineTitle: string;
+  currentBenchmarkSeconds: number;
+  currentBenchmarkDate: string;
+  totalDroppedSeconds: number; // positive = got faster
+  paceDroppedSecPerKm: number;
+  improvementPercent: number;
+  empiricalWeeklyRateSec: number | null;
+  trendStatus: 'accelerating' | 'improving' | 'steady' | 'plateau' | 'insufficient';
+  benchmarkCount: number;
+  seriesLabel: string;
+}
+
 export interface GoalProjectionResult {
   hasTarget: boolean;
   hasData: boolean;
@@ -1317,11 +1798,103 @@ export interface GoalProjectionResult {
   confidence: 'High' | 'Moderate' | 'Initial Estimate';
   basisDescription: string;
   milestones: GoalMilestone[];
+  historyPoints: ProjectionHistoryPoint[];
+  allRunsHistoryPoints: ProjectionHistoryPoint[];
+  projectedCurve: ProjectionCurvePoint[];
+  improvementSummary: ImprovementSummary;
+  recentRunsPerWeek: number;
   scenarios: {
     accelerated: { weeks: number; date: string; weeklyRateSec: number };
     expected: { weeks: number; date: string; weeklyRateSec: number };
     conservative: { weeks: number; date: string; weeklyRateSec: number };
   };
+}
+
+function getRunEquivalentForProjection(run: RunRecord, targetDist: number): {
+  equivalentSec: number;
+  isQualityBenchmark: boolean;
+  isContinuousEligible: boolean;
+  weight: number;
+} {
+  const distKm = run.distanceKm || 0;
+  const durSec = run.durationSeconds || 0;
+
+  if (distKm <= 0 || durSec <= 0) {
+    const fallbackEq = run.targetEquivalentSeconds || run.best6kTimeSeconds || 0;
+    return {
+      equivalentSec: fallbackEq,
+      isQualityBenchmark: false,
+      isContinuousEligible: false,
+      weight: 0.6,
+    };
+  }
+
+  // Calibrated intervals: use active interval work pace + fatigue factor so rest breaks don't distort fitness
+  if (
+    (run.runType === 'Intervals' || run.runType === 'Interval Training') &&
+    run.activeIntervalPaceSecPerKm &&
+    run.activeIntervalPaceSecPerKm > 0
+  ) {
+    const workDist = run.repCount && run.repDistanceMeters
+      ? (run.repCount * run.repDistanceMeters) / 1000
+      : Math.max(1.5, distKm * 0.8);
+    const continuousAdjustedDur = Math.round(workDist * run.activeIntervalPaceSecPerKm * 1.045);
+    return {
+      equivalentSec: calculateTargetDistanceEquivalent(workDist, continuousAdjustedDur, targetDist),
+      isQualityBenchmark: false,
+      isContinuousEligible: false,
+      weight: 0.75,
+    };
+  }
+
+  const eq = calculateTargetDistanceEquivalent(distKm, durSec, targetDist);
+  const isRaceOrTT =
+    run.runType === 'Race' ||
+    run.runType === '6K Time Trial' ||
+    run.runType === 'Time Trial';
+  const isTempoOrHill = run.runType === 'Tempo' || run.runType === 'Hill Run';
+  const isQualityBenchmark = distKm >= 2.5 && (isRaceOrTT || isTempoOrHill);
+  const isContinuousEligible =
+    distKm >= 2.5 &&
+    !isIntervalRun(run.runType) &&
+    run.runType !== 'Recovery' &&
+    run.runType !== 'Easy';
+
+  const weight = isRaceOrTT ? 1.65 : isTempoOrHill ? 1.25 : isContinuousEligible ? 0.9 : 0.65;
+
+  return {
+    equivalentSec: eq,
+    isQualityBenchmark,
+    isContinuousEligible,
+    weight,
+  };
+}
+
+function simulateDiminishingReturnsProjection(
+  startSec: number,
+  targetSec: number,
+  initialWeeklyRateSec: number,
+  maxWeeks: number = 104
+): { weeks: number; curveSeconds: number[] } {
+  if (startSec <= targetSec) {
+    return { weeks: 0, curveSeconds: [startSec] };
+  }
+  const safeRate = Math.max(2, initialWeeklyRateSec);
+  const curveSeconds: number[] = [startSec];
+  let cur = startSec;
+  let weeks = 0;
+
+  while (cur > targetSec && weeks < maxWeeks) {
+    weeks += 1;
+    const progressRatio = Math.min(1, Math.max(0, (startSec - cur) / Math.max(1, startSec - targetSec)));
+    // Gentle diminishing returns: gains taper ~16% as runner nears peak target fitness
+    const taperMultiplier = 1 - 0.16 * progressRatio;
+    const step = Math.max(1.5, safeRate * taperMultiplier);
+    cur = Math.max(targetSec, cur - step);
+    curveSeconds.push(Math.round(cur));
+  }
+
+  return { weeks: Math.max(1, weeks), curveSeconds };
 }
 
 export function calculateGoalProjection(
@@ -1334,19 +1907,206 @@ export function calculateGoalProjection(
 ): GoalProjectionResult {
   const targetDist = targetDistanceKm || 6.0;
 
+  // Prepare chronological history points regardless of whether a target is set
+  const rawDatedRuns = [...runs]
+    .map((r) => {
+      const parsedDate = parseDateSafe(r.date);
+      const evalInfo = getRunEquivalentForProjection(r, targetDist);
+      return {
+        run: r,
+        timestamp: parsedDate.getTime(),
+        ...evalInfo,
+      };
+    })
+    .filter((item) => item.equivalentSec > 0 && !isNaN(item.timestamp))
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  const firstAllTs = rawDatedRuns.length > 0 ? rawDatedRuns[0].timestamp : Date.now();
+  const allRunsHistoryPoints: ProjectionHistoryPoint[] = rawDatedRuns.map((item) => ({
+    runId: item.run.id,
+    date: item.run.date,
+    title: item.run.title,
+    runType: item.run.runType,
+    distanceKm: item.run.distanceKm,
+    actualDurationSeconds: item.run.durationSeconds,
+    equivalentTimeSeconds: item.equivalentSec,
+    equivalentPaceSecPerKm: item.equivalentSec / targetDist,
+    isQualityBenchmark: item.isQualityBenchmark,
+    weeksFromBaseline: Math.round(((item.timestamp - firstAllTs) / (7 * 86400_000)) * 10) / 10,
+  }));
+
+  // Select clean benchmark series so slow recovery jogs never distort the runner's progression trend
+  const qualityCandidates = rawDatedRuns.filter((r) => r.isQualityBenchmark);
+  const continuousCandidates = rawDatedRuns.filter((r) => r.isContinuousEligible);
+  const nonRecoveryCandidates = rawDatedRuns.filter(
+    (r) => r.run.runType !== 'Recovery' && r.run.distanceKm >= 1.0
+  );
+
+  const qualitySpanDays =
+    qualityCandidates.length >= 2
+      ? (qualityCandidates[qualityCandidates.length - 1].timestamp - qualityCandidates[0].timestamp) / 86400_000
+      : 0;
+  const continuousSpanDays =
+    continuousCandidates.length >= 2
+      ? (continuousCandidates[continuousCandidates.length - 1].timestamp - continuousCandidates[0].timestamp) / 86400_000
+      : 0;
+
+  let selectedSeries = rawDatedRuns;
+  let seriesLabel = 'All Distance-Adjusted Runs';
+
+  if (qualityCandidates.length >= 2 && qualitySpanDays >= 3) {
+    selectedSeries = qualityCandidates;
+    seriesLabel = 'Quality Benchmarks (Races, Time Trials & Tempo)';
+  } else if (continuousCandidates.length >= 2 && continuousSpanDays >= 3) {
+    selectedSeries = continuousCandidates;
+    seriesLabel = 'Continuous Effort Runs (>= 2.5 km)';
+  } else if (nonRecoveryCandidates.length >= 2) {
+    selectedSeries = nonRecoveryCandidates;
+    seriesLabel = 'Training Runs';
+  }
+
+  const firstSeriesTs = selectedSeries.length > 0 ? selectedSeries[0].timestamp : firstAllTs;
+  const historyPoints: ProjectionHistoryPoint[] = selectedSeries.map((item) => ({
+    runId: item.run.id,
+    date: item.run.date,
+    title: item.run.title,
+    runType: item.run.runType,
+    distanceKm: item.run.distanceKm,
+    actualDurationSeconds: item.run.durationSeconds,
+    equivalentTimeSeconds: item.equivalentSec,
+    equivalentPaceSecPerKm: item.equivalentSec / targetDist,
+    isQualityBenchmark: item.isQualityBenchmark,
+    weeksFromBaseline: Math.round(((item.timestamp - firstSeriesTs) / (7 * 86400_000)) * 10) / 10,
+  }));
+
+  // Weighted linear regression across selectedSeries
+  let empiricalRate: number | null = null;
+  let spanWeeks = 0;
+
+  if (selectedSeries.length >= 2) {
+    const firstTs = selectedSeries[0].timestamp;
+    const lastTs = selectedSeries[selectedSeries.length - 1].timestamp;
+    const spanDays = (lastTs - firstTs) / 86400_000;
+    spanWeeks = Math.round((spanDays / 7) * 10) / 10;
+
+    if (spanDays >= 5) {
+      let sumW = 0;
+      let sumWX = 0;
+      let sumWY = 0;
+      let sumWXX = 0;
+      let sumWXY = 0;
+
+      selectedSeries.forEach((pt, idx) => {
+        const x = (pt.timestamp - firstTs) / (7 * 86400_000);
+        const y = pt.equivalentSec;
+        const recencyWeight = 0.75 + 0.55 * (idx / Math.max(1, selectedSeries.length - 1));
+        const w = pt.weight * recencyWeight;
+        sumW += w;
+        sumWX += w * x;
+        sumWY += w * y;
+        sumWXX += w * x * x;
+        sumWXY += w * x * y;
+      });
+
+      const meanX = sumWX / sumW;
+      const meanY = sumWY / sumW;
+      const denom = sumWXX - sumW * meanX * meanX;
+      if (denom > 0.01) {
+        const slopeSecPerWeek = (sumWXY - sumW * meanX * meanY) / denom;
+        // Negative slope means equivalent race time dropped -> positive improvement rate
+        empiricalRate = Math.round(-slopeSecPerWeek * 10) / 10;
+      }
+    }
+  }
+
+  // Recent 28-day weekly frequency relative to reference date
+  const now = new Date();
+  const latestRunTs = rawDatedRuns.length > 0 ? rawDatedRuns[rawDatedRuns.length - 1].timestamp : now.getTime();
+  const freqAnchorTs = Math.max(now.getTime(), latestRunTs);
+  const runsLast28Days = rawDatedRuns.filter(
+    (item) => freqAnchorTs - item.timestamp <= 28 * 86400_000
+  ).length;
+  const recentRunsPerWeek = Math.round((runsLast28Days / 4) * 10) / 10;
+
+  const bestSelection = selectBestTargetEquivalent(runs, targetDist);
+  const effectiveCurrentSec =
+    currentBestSeconds && currentBestSeconds > 0
+      ? currentBestSeconds
+      : bestSelection.bestSeconds || null;
+
+  // Summarize actual improvement achieved over recorded history
+  const baselinePoint = historyPoints[0];
+  const latestPoint = historyPoints[historyPoints.length - 1];
+  const hasImprovementHistory = Boolean(
+    baselinePoint &&
+      latestPoint &&
+      historyPoints.length >= 2 &&
+      spanWeeks >= 0.5
+  );
+  const currentRefSec =
+    effectiveCurrentSec || (latestPoint ? latestPoint.equivalentTimeSeconds : 0);
+  const totalDroppedSeconds =
+    hasImprovementHistory && baselinePoint && currentRefSec > 0
+      ? Math.round(baselinePoint.equivalentTimeSeconds - currentRefSec)
+      : 0;
+  const paceDroppedSecPerKm =
+    hasImprovementHistory && targetDist > 0
+      ? Math.round((totalDroppedSeconds / targetDist) * 10) / 10
+      : 0;
+  const improvementPercent =
+    hasImprovementHistory && baselinePoint && baselinePoint.equivalentTimeSeconds > 0
+      ? Math.round((totalDroppedSeconds / baselinePoint.equivalentTimeSeconds) * 1000) / 10
+      : 0;
+
+  let trendStatus: ImprovementSummary['trendStatus'] = 'insufficient';
+  if (hasImprovementHistory) {
+    if (empiricalRate !== null && empiricalRate >= 12) {
+      trendStatus = 'accelerating';
+    } else if ((empiricalRate !== null && empiricalRate > 2) || totalDroppedSeconds >= 10) {
+      trendStatus = 'improving';
+    } else if (empiricalRate !== null && empiricalRate >= -3) {
+      trendStatus = 'steady';
+    } else {
+      trendStatus = 'plateau';
+    }
+  }
+
+  const improvementSummary: ImprovementSummary = {
+    hasHistory: hasImprovementHistory,
+    spanWeeks,
+    baselineSeconds: baselinePoint ? baselinePoint.equivalentTimeSeconds : currentRefSec,
+    baselineDate: baselinePoint ? baselinePoint.date : '',
+    baselineTitle: baselinePoint ? baselinePoint.title : '',
+    currentBenchmarkSeconds: currentRefSec,
+    currentBenchmarkDate: bestSelection.basisRun?.date || (latestPoint ? latestPoint.date : ''),
+    totalDroppedSeconds,
+    paceDroppedSecPerKm,
+    improvementPercent,
+    empiricalWeeklyRateSec: empiricalRate,
+    trendStatus,
+    benchmarkCount: historyPoints.length,
+    seriesLabel,
+  };
+
   if (!targetTimeSeconds || targetTimeSeconds <= 0) {
     return {
       hasTarget: false,
       hasData: Boolean(runs.length > 0),
       isAchieved: false,
       targetDistanceKm: targetDist,
+      currentBestSeconds: effectiveCurrentSec || undefined,
       gapSeconds: 0,
       estimatedWeeks: 0,
       projectedCompletionDate: '',
       weeklyImprovementSeconds: 0,
       confidence: 'Initial Estimate',
-      basisDescription: 'Set a goal time to calculate projected completion date and weekly progression milestones.',
+      basisDescription: 'Set a goal time to calculate your projected completion date and weekly progression curve.',
       milestones: [],
+      historyPoints,
+      allRunsHistoryPoints,
+      projectedCurve: [],
+      improvementSummary,
+      recentRunsPerWeek,
       scenarios: {
         accelerated: { weeks: 0, date: '', weeklyRateSec: 0 },
         expected: { weeks: 0, date: '', weeklyRateSec: 0 },
@@ -1360,12 +2120,6 @@ export function calculateGoalProjection(
     targetTimeSeconds < 600
       ? Math.round(targetTimeSeconds * targetDist)
       : targetTimeSeconds;
-
-  const bestSelection = selectBestTargetEquivalent(runs, targetDist);
-  const effectiveCurrentSec =
-    currentBestSeconds && currentBestSeconds > 0
-      ? currentBestSeconds
-      : bestSelection.bestSeconds || null;
 
   if (!effectiveCurrentSec) {
     return {
@@ -1381,6 +2135,11 @@ export function calculateGoalProjection(
       confidence: 'Initial Estimate',
       basisDescription: 'Log or sync your first workout to establish baseline performance and compute projection.',
       milestones: [],
+      historyPoints,
+      allRunsHistoryPoints,
+      projectedCurve: [],
+      improvementSummary,
+      recentRunsPerWeek,
       scenarios: {
         accelerated: { weeks: 0, date: '', weeklyRateSec: 0 },
         expected: { weeks: 0, date: '', weeklyRateSec: 0 },
@@ -1405,7 +2164,7 @@ export function calculateGoalProjection(
       projectedCompletionDate: 'Goal Achieved',
       weeklyImprovementSeconds: 0,
       confidence: 'High',
-      basisDescription: `You have already surpassed your ${targetDist}K target by ${formatDuration(Math.abs(gapSeconds))}. Maintain conditioning with regular aerobic tempo workouts!`,
+      basisDescription: `You have surpassed your ${targetDist}K target by ${formatDuration(Math.abs(gapSeconds))}. Maintain conditioning with regular aerobic tempo workouts!`,
       milestones: [
         {
           weekNumber: 0,
@@ -1415,6 +2174,19 @@ export function calculateGoalProjection(
           notes: 'Current PR / Benchmark (Goal Surpassed)',
         },
       ],
+      historyPoints,
+      allRunsHistoryPoints,
+      projectedCurve: [
+        {
+          weekOffset: 0,
+          dateLabel: 'Now',
+          expectedSec: effectiveCurrentSec,
+          acceleratedSec: effectiveCurrentSec,
+          conservativeSec: effectiveCurrentSec,
+        },
+      ],
+      improvementSummary,
+      recentRunsPerWeek,
       scenarios: {
         accelerated: { weeks: 0, date: 'Achieved', weeklyRateSec: 0 },
         expected: { weeks: 0, date: 'Achieved', weeklyRateSec: 0 },
@@ -1423,92 +2195,136 @@ export function calculateGoalProjection(
     };
   }
 
-  // Calculate improvement rate:
-  const runsWithEquivalent = [...runs]
-    .map((r) => ({
-      date: new Date(r.date).getTime(),
-      timeSec:
-        (r.distanceKm > 0 && r.durationSeconds > 0
-          ? calculateTargetDistanceEquivalent(r.distanceKm, r.durationSeconds, targetDist)
-          : r.targetEquivalentSeconds || r.best6kTimeSeconds) || 0,
-    }))
-    .filter((r) => r.timeSec > 0 && !isNaN(r.date))
-    .sort((a, b) => a.date - b.date);
+  // Compute pace-aware physiological baseline rate (faster runners gain fewer raw sec/wk than beginners)
+  const currentPaceSecPerKm = effectiveCurrentSec / targetDist;
+  const paceFitnessMult = Math.min(1.35, Math.max(0.5, 0.55 + (currentPaceSecPerKm - 190) / 170));
+  const effectiveFreq = runsLast28Days >= 2 ? 0.65 * recentRunsPerWeek + 0.35 * weeklyRunGoal : weeklyRunGoal;
+  const freqMult = Math.min(1.25, Math.max(0.72, effectiveFreq / 3));
+  const streakMult = Math.min(1.15, 1 + currentWeeklyStreak * 0.03);
 
-  let weeklyImprovement = 14; // Default steady cross country adaptation: ~14s/week on 6k
+  const physiologicalRateSec = Math.max(
+    4,
+    effectiveCurrentSec * 0.012 * paceFitnessMult * freqMult * streakMult
+  );
+
+  let weeklyImprovement = Math.round(physiologicalRateSec);
   let confidence: 'High' | 'Moderate' | 'Initial Estimate' = 'Initial Estimate';
-  let basisDescription = 'Based on steady cross country training adaptation (3 weekly workouts).';
+  let basisDescription = `Calibrated to your current ${formatPace(currentPaceSecPerKm, 'km')} fitness and ${weeklyRunGoal}x/week plan.`;
 
-  if (runsWithEquivalent.length >= 3) {
-    const firstPoint = runsWithEquivalent[0];
-    const latestPoint = runsWithEquivalent[runsWithEquivalent.length - 1];
-    const daysDiff = (latestPoint.date - firstPoint.date) / (1000 * 3600 * 24);
+  if (selectedSeries.length >= 2 && spanWeeks >= 0.7 && empiricalRate !== null) {
+    const empiricalWeight = Math.min(
+      0.72,
+      0.32 + (selectedSeries.length - 2) * 0.08 + Math.min(0.2, spanWeeks * 0.03)
+    );
 
-    if (daysDiff >= 10) {
-      const weeksDiff = daysDiff / 7;
-      const totalImprovement = firstPoint.timeSec - latestPoint.timeSec;
-      const empiricalRate = totalImprovement / weeksDiff;
+    if (empiricalRate > 0.5) {
+      const minRealistic = Math.max(3, physiologicalRateSec * 0.45);
+      const maxRealistic = Math.min(42, physiologicalRateSec * 2.1);
+      const boundedEmpirical = Math.min(maxRealistic, Math.max(minRealistic, empiricalRate));
 
-      if (empiricalRate > 2 && empiricalRate < 35) {
-        weeklyImprovement = Math.round(empiricalRate);
-        confidence = runsWithEquivalent.length >= 6 ? 'High' : 'Moderate';
-        basisDescription = `Calculated from your empirical improvement rate of ~${weeklyImprovement}s/week across logged workouts.`;
-      } else {
-        const streakFactor = Math.min(1.3, 1 + currentWeeklyStreak * 0.05);
-        weeklyImprovement = Math.round(14 * streakFactor);
-        confidence = 'Moderate';
-        basisDescription = `Calibrated from your ${currentWeeklyStreak}-week adherence streak and 3-run weekly consistency.`;
-      }
+      weeklyImprovement = Math.max(
+        4,
+        Math.round(physiologicalRateSec * (1 - empiricalWeight) + boundedEmpirical * empiricalWeight)
+      );
+      confidence = selectedSeries.length >= 4 && spanWeeks >= 2 ? 'High' : 'Moderate';
+      basisDescription = `Weighted regression across ${selectedSeries.length} ${seriesLabel.toLowerCase()} over ${spanWeeks} wks (${empiricalRate.toFixed(1)}s/wk earned slope) blended with diminishing-returns adaptation.`;
+    } else {
+      weeklyImprovement = Math.max(4, Math.round(physiologicalRateSec * 0.8));
+      confidence = selectedSeries.length >= 4 ? 'Moderate' : 'Initial Estimate';
+      basisDescription = `Recent benchmarks held steady — model projects a conservative ${weeklyImprovement}s/wk build as consistent training resumes.`;
     }
   } else if (currentWeeklyStreak > 0) {
-    weeklyImprovement = Math.min(20, Math.round(12 + currentWeeklyStreak * 1.5));
     confidence = 'Moderate';
-    basisDescription = `Projected from your ${currentWeeklyStreak}-week training streak and target workout volume.`;
+    basisDescription = `Calibrated from your ${currentWeeklyStreak}-week training streak (~${weeklyImprovement}s/wk expected at current pace).`;
   }
 
-  // Scenarios
-  const acceleratedRate = Math.max(8, Math.round(weeklyImprovement * 1.35));
-  const expectedRate = Math.max(5, weeklyImprovement);
+  // Scenarios with diminishing-returns non-linear curves
+  const acceleratedRate = Math.max(6, Math.round(weeklyImprovement * 1.32));
+  const expectedRate = Math.max(4, weeklyImprovement);
   const conservativeRate = Math.max(3, Math.round(weeklyImprovement * 0.65));
 
-  const expectedWeeks = Math.max(1, Math.ceil(gapSeconds / expectedRate));
-  const acceleratedWeeks = Math.max(1, Math.ceil(gapSeconds / acceleratedRate));
-  const conservativeWeeks = Math.max(1, Math.ceil(gapSeconds / conservativeRate));
+  const expectedSim = simulateDiminishingReturnsProjection(effectiveCurrentSec, targetTotalSec, expectedRate);
+  const acceleratedSim = simulateDiminishingReturnsProjection(effectiveCurrentSec, targetTotalSec, acceleratedRate);
+  const conservativeSim = simulateDiminishingReturnsProjection(effectiveCurrentSec, targetTotalSec, conservativeRate);
 
-  const now = new Date();
+  const expectedWeeks = expectedSim.weeks;
+  const acceleratedWeeks = acceleratedSim.weeks;
+  const conservativeWeeks = conservativeSim.weeks;
+
   const formatDateOffset = (weeks: number): string => {
     const d = new Date(now.getTime() + weeks * 7 * 24 * 3600 * 1000);
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
+  const formatShortDateOffset = (weeks: number): string => {
+    if (weeks === 0) return 'Now';
+    const d = new Date(now.getTime() + weeks * 7 * 24 * 3600 * 1000);
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  };
+
   const projectedCompletionDate = formatDateOffset(expectedWeeks);
 
-  // Milestone checkpoints: Now, 1/3, 2/3, and Final Goal
-  const milestones: GoalMilestone[] = [];
+  // Build synchronized future curve points out to conservativeWeeks (capped neatly)
+  const maxCurveWeek = Math.min(52, Math.max(expectedWeeks, acceleratedWeeks, Math.min(conservativeWeeks, expectedWeeks + 4)));
+  const projectedCurve: ProjectionCurvePoint[] = [];
+  const stepWeeks = maxCurveWeek <= 14 ? 1 : maxCurveWeek <= 28 ? 2 : 3;
 
-  // Week 0: Baseline
-  milestones.push({
-    weekNumber: 0,
-    projectedDate: 'Current Baseline',
-    projectedTimeSeconds: effectiveCurrentSec,
-    projectedPaceSecPerKm: effectiveCurrentSec / targetDist,
-    notes: 'Starting performance benchmark',
-  });
+  for (let w = 0; w <= maxCurveWeek; w += stepWeeks) {
+    const expVal = expectedSim.curveSeconds[Math.min(w, expectedSim.curveSeconds.length - 1)] ?? targetTotalSec;
+    const accVal = acceleratedSim.curveSeconds[Math.min(w, acceleratedSim.curveSeconds.length - 1)] ?? targetTotalSec;
+    const conVal = conservativeSim.curveSeconds[Math.min(w, conservativeSim.curveSeconds.length - 1)] ?? targetTotalSec;
+    projectedCurve.push({
+      weekOffset: w,
+      dateLabel: formatShortDateOffset(w),
+      expectedSec: expVal,
+      acceleratedSec: accVal,
+      conservativeSec: conVal,
+    });
+  }
+  if (projectedCurve[projectedCurve.length - 1]?.weekOffset !== expectedWeeks && expectedWeeks <= 52) {
+    projectedCurve.push({
+      weekOffset: expectedWeeks,
+      dateLabel: formatShortDateOffset(expectedWeeks),
+      expectedSec: targetTotalSec,
+      acceleratedSec: targetTotalSec,
+      conservativeSec: conservativeSim.curveSeconds[Math.min(expectedWeeks, conservativeSim.curveSeconds.length - 1)] ?? targetTotalSec,
+    });
+    projectedCurve.sort((a, b) => a.weekOffset - b.weekOffset);
+  }
+
+  // Milestone checkpoints: Now, 1/3, 2/3, and Final Goal directly from non-linear curve
+  const milestones: GoalMilestone[] = [
+    {
+      weekNumber: 0,
+      projectedDate: 'Current Benchmark',
+      projectedTimeSeconds: effectiveCurrentSec,
+      projectedPaceSecPerKm: effectiveCurrentSec / targetDist,
+      notes: bestSelection.basisRun
+        ? `Based on ${bestSelection.basisRun.title}`
+        : 'Starting performance benchmark',
+    },
+  ];
 
   if (expectedWeeks > 2) {
     const mid1 = Math.max(1, Math.round(expectedWeeks * 0.33));
-    const timeMid1 = Math.max(targetTotalSec, Math.round(effectiveCurrentSec - mid1 * expectedRate));
+    const timeMid1 = Math.max(
+      targetTotalSec,
+      expectedSim.curveSeconds[Math.min(mid1, expectedSim.curveSeconds.length - 1)] || effectiveCurrentSec
+    );
     milestones.push({
       weekNumber: mid1,
       projectedDate: formatDateOffset(mid1),
       projectedTimeSeconds: timeMid1,
       projectedPaceSecPerKm: timeMid1 / targetDist,
-      notes: 'Threshold capacity & aerobic expansion',
+      notes: 'Threshold capacity & aerobic adaptation',
     });
 
     const mid2 = Math.max(mid1 + 1, Math.round(expectedWeeks * 0.66));
     if (mid2 < expectedWeeks) {
-      const timeMid2 = Math.max(targetTotalSec, Math.round(effectiveCurrentSec - mid2 * expectedRate));
+      const timeMid2 = Math.max(
+        targetTotalSec,
+        expectedSim.curveSeconds[Math.min(mid2, expectedSim.curveSeconds.length - 1)] || effectiveCurrentSec
+      );
       milestones.push({
         weekNumber: mid2,
         projectedDate: formatDateOffset(mid2),
@@ -1519,7 +2335,6 @@ export function calculateGoalProjection(
     }
   }
 
-  // Final Target Milestone
   milestones.push({
     weekNumber: expectedWeeks,
     projectedDate: projectedCompletionDate,
@@ -1542,6 +2357,11 @@ export function calculateGoalProjection(
     confidence,
     basisDescription,
     milestones,
+    historyPoints,
+    allRunsHistoryPoints,
+    projectedCurve,
+    improvementSummary,
+    recentRunsPerWeek,
     scenarios: {
       accelerated: {
         weeks: acceleratedWeeks,
@@ -2124,5 +2944,517 @@ export function calculateMonthlyConsistency(
     runs: monthRuns,
   };
 }
+
+export type CardioLoadPhase =
+  | 'Calibrating'
+  | 'Detraining'
+  | 'Maintaining'
+  | 'Improving'
+  | 'Overtraining';
+
+export interface CardioLoadDayPoint {
+  date: string; // YYYY-MM-DD
+  shortLabel: string; // e.g., "Nov 12"
+  dailyLoad: number;
+  acuteLoad: number;
+  chronicLoad: number;
+  acwrRatio: number;
+  targetMin: number;
+  targetMax: number;
+  overtrainingThreshold: number;
+  improvingThreshold: number;
+  detrainingThreshold: number;
+  phase: CardioLoadPhase;
+  runsCount: number;
+  runTitles: string[];
+}
+
+export interface CardioLoadAnalysis {
+  hasRuns: boolean;
+  currentPhase: CardioLoadPhase;
+  todayLoad: number;
+  acuteLoad: number;
+  chronicLoad: number;
+  acwrRatio: number;
+  targetRangeMin: number;
+  targetRangeMax: number;
+  calibrationDaysLogged: number;
+  calibrationDaysRequired: number;
+  totalWindowRuns: number;
+  guidanceText: string;
+  phaseCounts: Record<CardioLoadPhase, number>;
+  points: CardioLoadDayPoint[];
+}
+
+/**
+ * Computes single-session Cardio Load aligned with duration, distance, heart rate, and run intensity.
+ */
+export function calculateRunCardioLoad(
+  run: RunRecord,
+  maxHeartRate: number = 190
+): number {
+  const durationMin = (run.durationSeconds || 0) / 60;
+  const distanceKm = run.distanceKm || 0;
+  if (durationMin <= 0 && distanceKm <= 0) return 0;
+
+  let typeMultiplier = 1.0;
+  switch (run.runType) {
+    case 'Race':
+      typeMultiplier = 1.55;
+      break;
+    case '6K Time Trial':
+    case 'Time Trial':
+      typeMultiplier = 1.50;
+      break;
+    case 'Interval Training':
+    case 'Intervals':
+      typeMultiplier = 1.40;
+      break;
+    case 'Hill Repeats':
+      typeMultiplier = 1.38;
+      break;
+    case 'Tempo':
+      typeMultiplier = 1.25;
+      break;
+    case 'Long Run':
+      typeMultiplier = 1.20;
+      break;
+    case 'Hill Run':
+      typeMultiplier = 1.18;
+      break;
+    case 'Recovery':
+      typeMultiplier = 0.75;
+      break;
+    case 'Easy':
+    case 'Aerobic':
+    default:
+      typeMultiplier = 0.90;
+      break;
+  }
+
+  let hrFactor = 1.0;
+  if (run.avgHeartRate && run.avgHeartRate > 50) {
+    const hrRatio = run.avgHeartRate / Math.max(120, maxHeartRate);
+    if (hrRatio >= 0.90) hrFactor = 1.35;
+    else if (hrRatio >= 0.82) hrFactor = 1.20;
+    else if (hrRatio >= 0.72) hrFactor = 1.05;
+    else hrFactor = 0.85;
+  }
+
+  let paceFactor = 1.0;
+  if (run.averagePaceSecPerKm && run.averagePaceSecPerKm > 0) {
+    if (run.averagePaceSecPerKm < 240) paceFactor = 1.15;
+    else if (run.averagePaceSecPerKm < 270) paceFactor = 1.08;
+  }
+
+  const rawLoad = (durationMin * 0.85 + distanceKm * 2.6) * (typeMultiplier * hrFactor * paceFactor);
+  return Math.max(8, Math.round(rawLoad));
+}
+
+/**
+ * Computes Fitbit-style rolling Cardio Load across a time window (14/28/42 days),
+ * mapping Acute vs. Chronic Training Load into Calibrating, Detraining, Maintaining,
+ * Improving, and Overtraining phases.
+ */
+export function calculateCardioLoadAnalysis(
+  runs: RunRecord[] = [],
+  windowDays: number = 28,
+  referenceDate: Date = new Date(),
+  maxHeartRate: number = 190
+): CardioLoadAnalysis {
+  const CALIBRATION_DAYS_REQUIRED = 7;
+  const CALIBRATION_MIN_RUNS = 3;
+  const effectiveWindowDays = Math.max(7, Math.min(60, windowDays));
+
+  const endDate = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate(), 12, 0, 0);
+  const endYmd = formatLocalDateString(endDate);
+
+  const emptyPhaseCounts: Record<CardioLoadPhase, number> = {
+    Calibrating: 0,
+    Detraining: 0,
+    Maintaining: 0,
+    Improving: 0,
+    Overtraining: 0,
+  };
+
+  if (!runs || runs.length === 0) {
+    const emptyPoints: CardioLoadDayPoint[] = [];
+    for (let i = effectiveWindowDays - 1; i >= 0; i--) {
+      const d = new Date(endDate);
+      d.setDate(d.getDate() - i);
+      emptyPoints.push({
+        date: formatLocalDateString(d),
+        shortLabel: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        dailyLoad: 0,
+        acuteLoad: 0,
+        chronicLoad: 0,
+        acwrRatio: 1,
+        targetMin: 0,
+        targetMax: 0,
+        overtrainingThreshold: 0,
+        improvingThreshold: 0,
+        detrainingThreshold: 0,
+        phase: 'Calibrating',
+        runsCount: 0,
+        runTitles: [],
+      });
+      emptyPhaseCounts.Calibrating++;
+    }
+
+    return {
+      hasRuns: false,
+      currentPhase: 'Calibrating',
+      todayLoad: 0,
+      acuteLoad: 0,
+      chronicLoad: 0,
+      acwrRatio: 1,
+      targetRangeMin: 0,
+      targetRangeMax: 0,
+      calibrationDaysLogged: 0,
+      calibrationDaysRequired: CALIBRATION_DAYS_REQUIRED,
+      totalWindowRuns: 0,
+      guidanceText: 'Log at least 3 runs across 7+ days to finish calibrating your personal Cardio Load baseline.',
+      phaseCounts: emptyPhaseCounts,
+      points: emptyPoints,
+    };
+  }
+
+  // Group runs by YYYY-MM-DD up to endDate
+  const runsByDay = new Map<string, { load: number; titles: string[]; count: number }>();
+  let earliestRunDate: Date | null = null;
+
+  for (const r of runs) {
+    const parsed = parseDateSafe(r.date);
+    const dayDate = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 12, 0, 0);
+    if (dayDate.getTime() > endDate.getTime()) continue;
+
+    const ymd = formatLocalDateString(dayDate);
+    if (!earliestRunDate || dayDate.getTime() < earliestRunDate.getTime()) {
+      earliestRunDate = dayDate;
+    }
+
+    const load = calculateRunCardioLoad(r, maxHeartRate);
+    const existing = runsByDay.get(ymd) || { load: 0, titles: [], count: 0 };
+    existing.load += load;
+    existing.count += 1;
+    if (r.title) existing.titles.push(r.title);
+    runsByDay.set(ymd, existing);
+  }
+
+  if (!earliestRunDate) {
+    return calculateCardioLoadAnalysis([], windowDays, referenceDate, maxHeartRate);
+  }
+
+  // Simulate daily EWMA starting from earliest run (up to 60 days prior to endDate for warm baseline)
+  const maxLookbackDate = new Date(endDate);
+  maxLookbackDate.setDate(maxLookbackDate.getDate() - (effectiveWindowDays + 35));
+  const simStart = earliestRunDate.getTime() < maxLookbackDate.getTime() ? maxLookbackDate : earliestRunDate;
+
+  const windowStartDate = new Date(endDate);
+  windowStartDate.setDate(windowStartDate.getDate() - (effectiveWindowDays - 1));
+  const windowStartMs = windowStartDate.getTime();
+
+  const alphaAcute = 2 / (7 + 1); // 0.25 (7-day acute load)
+  const alphaChronic = 2 / (28 + 1); // ~0.069 (28-day chronic baseline)
+
+  let ewmaAcute = 0;
+  let ewmaChronic = 0;
+  let cumulativeRuns = 0;
+  let initialized = false;
+
+  const points: CardioLoadDayPoint[] = [];
+  const phaseCounts: Record<CardioLoadPhase, number> = { ...emptyPhaseCounts };
+  let totalWindowRuns = 0;
+
+  // Also ensure the full window [windowStartDate .. endDate] has points even if earliestRunDate is inside the window
+  const iterStart = simStart.getTime() < windowStartMs ? simStart : windowStartDate;
+  const iterDays = Math.max(
+    1,
+    Math.round((endDate.getTime() - iterStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+  );
+
+  for (let idx = 0; idx < iterDays; idx++) {
+    const d = new Date(iterStart);
+    d.setDate(d.getDate() + idx);
+    const ymd = formatLocalDateString(d);
+    const dayEntry = runsByDay.get(ymd);
+    const dailyLoad = dayEntry ? dayEntry.load : 0;
+
+    if (dayEntry) {
+      cumulativeRuns += dayEntry.count;
+    }
+
+    const daysSinceFirstRun = Math.floor((d.getTime() - earliestRunDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+    if (daysSinceFirstRun <= 0) {
+      // Day precedes athlete's first logged workout
+      if (d.getTime() >= windowStartMs) {
+        points.push({
+          date: ymd,
+          shortLabel: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          dailyLoad: 0,
+          acuteLoad: 0,
+          chronicLoad: 0,
+          acwrRatio: 1,
+          targetMin: 0,
+          targetMax: 0,
+          overtrainingThreshold: 0,
+          improvingThreshold: 0,
+          detrainingThreshold: 0,
+          phase: 'Calibrating',
+          runsCount: 0,
+          runTitles: [],
+        });
+        phaseCounts.Calibrating++;
+      }
+      continue;
+    }
+
+    if (!initialized) {
+      // Seed baseline smoothly on first run day so day-1 does not trigger false Overtraining
+      ewmaAcute = dailyLoad;
+      ewmaChronic = Math.max(20, dailyLoad * 0.9);
+      initialized = true;
+    } else {
+      ewmaAcute = dailyLoad * alphaAcute + ewmaAcute * (1 - alphaAcute);
+      ewmaChronic = dailyLoad * alphaChronic + ewmaChronic * (1 - alphaChronic);
+    }
+
+    const effectiveChronic = Math.max(12, ewmaChronic);
+    const acwrRatio = Number((ewmaAcute / effectiveChronic).toFixed(2));
+    const isCalibrating = daysSinceFirstRun < CALIBRATION_DAYS_REQUIRED || cumulativeRuns < CALIBRATION_MIN_RUNS;
+
+    let phase: CardioLoadPhase;
+    if (isCalibrating) {
+      phase = 'Calibrating';
+    } else if (acwrRatio < 0.78) {
+      phase = 'Detraining';
+    } else if (acwrRatio <= 1.05) {
+      phase = 'Maintaining';
+    } else if (acwrRatio <= 1.32) {
+      phase = 'Improving';
+    } else {
+      phase = 'Overtraining';
+    }
+
+    const detrainingThreshold = Math.round(effectiveChronic * 0.78);
+    const improvingThreshold = Math.round(effectiveChronic * 1.05);
+    const overtrainingThreshold = Math.round(effectiveChronic * 1.32);
+
+    if (d.getTime() >= windowStartMs) {
+      if (dayEntry) totalWindowRuns += dayEntry.count;
+      phaseCounts[phase]++;
+      points.push({
+        date: ymd,
+        shortLabel: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        dailyLoad: Math.round(dailyLoad),
+        acuteLoad: Math.round(ewmaAcute),
+        chronicLoad: Math.round(effectiveChronic),
+        acwrRatio,
+        targetMin: detrainingThreshold,
+        targetMax: overtrainingThreshold,
+        overtrainingThreshold,
+        improvingThreshold,
+        detrainingThreshold,
+        phase,
+        runsCount: dayEntry ? dayEntry.count : 0,
+        runTitles: dayEntry ? dayEntry.titles : [],
+      });
+    }
+  }
+
+  const latestPoint = points[points.length - 1] || {
+    date: endYmd,
+    dailyLoad: 0,
+    acuteLoad: 0,
+    chronicLoad: 0,
+    acwrRatio: 1,
+    targetMin: 0,
+    targetMax: 0,
+    phase: 'Calibrating' as CardioLoadPhase,
+  };
+
+  const spanDaysTotal = Math.max(
+    1,
+    Math.floor((endDate.getTime() - earliestRunDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+  );
+  const calibrationDaysLogged = Math.min(CALIBRATION_DAYS_REQUIRED, spanDaysTotal);
+
+  let guidanceText = '';
+  switch (latestPoint.phase) {
+    case 'Calibrating':
+      guidanceText = `Learning your personal cardiovascular baseline (${calibrationDaysLogged}/${CALIBRATION_DAYS_REQUIRED} days, ${runs.length}/${CALIBRATION_MIN_RUNS} runs). Keep logging steady sessions.`;
+      break;
+    case 'Detraining':
+      guidanceText = 'Recent training load has dipped below 78% of your 28-day fitness baseline. Add a steady aerobic or tempo session to avoid fitness loss.';
+      break;
+    case 'Maintaining':
+      guidanceText = 'Your acute load matches your 4-week fitness baseline (0.78x–1.05x). Ideal zone for holding current race fitness steady.';
+      break;
+    case 'Improving':
+      guidanceText = 'Optimal progressive overload (1.05x–1.32x baseline). Building aerobic capacity and race speed safely without excessive strain.';
+      break;
+    case 'Overtraining':
+      guidanceText = 'Acute spike exceeds 1.32x your chronic baseline. Schedule a recovery day or light shakeout to absorb training and avoid overreaching.';
+      break;
+  }
+
+  return {
+    hasRuns: true,
+    currentPhase: latestPoint.phase,
+    todayLoad: latestPoint.acuteLoad,
+    acuteLoad: latestPoint.acuteLoad,
+    chronicLoad: latestPoint.chronicLoad,
+    acwrRatio: latestPoint.acwrRatio,
+    targetRangeMin: latestPoint.targetMin,
+    targetRangeMax: latestPoint.targetMax,
+    calibrationDaysLogged,
+    calibrationDaysRequired: CALIBRATION_DAYS_REQUIRED,
+    totalWindowRuns,
+    guidanceText,
+    phaseCounts,
+    points,
+  };
+}
+
+export interface YraaPlacementEstimate {
+  division: YraaDivisionData;
+  sourceTimeSeconds: number;
+  sourceDistanceKm: number;
+  equivalentDivisionTimeSeconds: number;
+  wasDistanceConverted: boolean;
+  estimatedPlace: number;
+  finishersCount: number;
+  percentileTop: number; // e.g., 18 means Top 18%
+  tierLabel: string;
+  nextMilestoneHint: string;
+  checkpoints: {
+    firstPlaceSec: number;
+    top5Sec: number;
+    top10Sec: number;
+    top25Sec: number;
+    medianSec: number;
+    lastPlaceSec: number;
+  };
+}
+
+export function formatOrdinalPlace(place: number): string {
+  const n = Math.max(1, Math.round(place));
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1:
+      return `${n}st`;
+    case 2:
+      return `${n}nd`;
+    case 3:
+      return `${n}rd`;
+    default:
+      return `${n}th`;
+  }
+}
+
+export function inferDefaultYraaDivision(targetDistanceKm: number = 6.0): YraaDivisionId {
+  if (targetDistanceKm <= 4.3) return 'novice_men';
+  if (targetDistanceKm <= 5.4) return 'junior_men';
+  return 'senior_men';
+}
+
+export function estimateYraaPlacement(
+  timeSeconds: number,
+  sourceDistanceKm: number,
+  divisionId: YraaDivisionId
+): YraaPlacementEstimate | null {
+  const division = YRAA_DIVISIONS[divisionId];
+  if (!division || !timeSeconds || timeSeconds <= 0 || !sourceDistanceKm || sourceDistanceKm <= 0) {
+    return null;
+  }
+
+  const wasDistanceConverted = Math.abs(sourceDistanceKm - division.distanceKm) >= 0.08;
+  const equivalentDivisionTimeSeconds = wasDistanceConverted
+    ? calculateTargetDistanceEquivalent(sourceDistanceKm, timeSeconds, division.distanceKm)
+    : Math.round(timeSeconds);
+
+  const times = division.timesSec;
+  const count = times.length;
+  let fasterCount = 0;
+  for (let i = 0; i < count; i++) {
+    if (times[i] < equivalentDivisionTimeSeconds) {
+      fasterCount += 1;
+    } else {
+      break;
+    }
+  }
+
+  const estimatedPlace = Math.min(count + 1, fasterCount + 1);
+  const percentileTop = Math.min(100, Math.max(1, Math.round((estimatedPlace / count) * 100)));
+
+  let tierLabel = 'Finisher Pack';
+  if (estimatedPlace === 1) {
+    tierLabel = 'Champion Pace (1st)';
+  } else if (estimatedPlace <= 3) {
+    tierLabel = 'Podium Contender (Top 3)';
+  } else if (estimatedPlace <= 10) {
+    tierLabel = 'Top 10 Finish';
+  } else if (estimatedPlace <= 25 && count >= 40) {
+    tierLabel = 'Top 25 Finish';
+  } else if (percentileTop <= 25) {
+    tierLabel = 'Top Quarter';
+  } else if (percentileTop <= 50) {
+    tierLabel = 'Top Half';
+  } else if (percentileTop <= 75) {
+    tierLabel = 'Mid-Pack';
+  }
+
+  const firstPlaceSec = times[0];
+  const top5Sec = times[Math.min(4, count - 1)];
+  const top10Sec = times[Math.min(9, count - 1)];
+  const top25Sec = times[Math.min(24, count - 1)];
+  const medianSec = times[Math.floor((count - 1) / 2)];
+  const lastPlaceSec = times[count - 1];
+
+  let nextMilestoneHint = '';
+  if (estimatedPlace === 1) {
+    const leadSec = Math.max(0, firstPlaceSec - equivalentDivisionTimeSeconds);
+    nextMilestoneHint = leadSec > 0
+      ? `${formatDuration(leadSec)} faster than the meet winner (${formatDuration(firstPlaceSec)})`
+      : `Matches winning championship pace (${formatDuration(firstPlaceSec)})`;
+  } else if (estimatedPlace <= 5) {
+    nextMilestoneHint = `${formatDuration(equivalentDivisionTimeSeconds - firstPlaceSec)} off 1st place (${formatDuration(firstPlaceSec)})`;
+  } else if (estimatedPlace <= 10) {
+    nextMilestoneHint = `${formatDuration(equivalentDivisionTimeSeconds - top5Sec)} away from Top 5`;
+  } else if (estimatedPlace <= 25 && count >= 40) {
+    nextMilestoneHint = `${formatDuration(equivalentDivisionTimeSeconds - top10Sec)} away from Top 10`;
+  } else if (equivalentDivisionTimeSeconds > medianSec) {
+    nextMilestoneHint = `${formatDuration(equivalentDivisionTimeSeconds - medianSec)} away from Top 50% (Median)`;
+  } else if (count >= 40) {
+    nextMilestoneHint = `${formatDuration(equivalentDivisionTimeSeconds - top25Sec)} away from Top 25`;
+  } else {
+    nextMilestoneHint = `${formatDuration(equivalentDivisionTimeSeconds - firstPlaceSec)} behind 1st place`;
+  }
+
+  return {
+    division,
+    sourceTimeSeconds: Math.round(timeSeconds),
+    sourceDistanceKm,
+    equivalentDivisionTimeSeconds,
+    wasDistanceConverted,
+    estimatedPlace,
+    finishersCount: count,
+    percentileTop,
+    tierLabel,
+    nextMilestoneHint,
+    checkpoints: {
+      firstPlaceSec,
+      top5Sec,
+      top10Sec,
+      top25Sec,
+      medianSec,
+      lastPlaceSec,
+    },
+  };
+}
+
+
 
 

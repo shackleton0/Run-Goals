@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, FileText, Plus, Target, CheckCircle2, AlertCircle, ArrowUpCircle } from 'lucide-react';
+import { UploadCloud, FileText, Plus, Target, CheckCircle2, AlertCircle, ArrowUpCircle, FlaskConical } from 'lucide-react';
 import { RunRecord } from '../types/running';
-import { parseGarminCsv, parseTcx, parseGpx } from '../utils/runningCalculations';
+import { parseWatchFiles } from '../utils/watchFileParser';
 
 interface EmptyGarminStateProps {
   unit: 'km' | 'miles';
@@ -10,6 +10,7 @@ interface EmptyGarminStateProps {
   onOpenGarminSyncWithRuns?: (runs: RunRecord[]) => void;
   onOpenAddRun: () => void;
   onOpenSettings: () => void;
+  onLoadPlaceholderData?: () => void;
 }
 
 export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
@@ -19,6 +20,7 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
   onOpenGarminSyncWithRuns,
   onOpenAddRun,
   onOpenSettings,
+  onLoadPlaceholderData,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -30,67 +32,13 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
     setIsProcessing(true);
     setErrorMessage(null);
 
-    const accumulatedRuns: RunRecord[] = [];
-
     try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const text = await file.text();
-        const ext = file.name.split('.').pop()?.toLowerCase();
-
-        let parsed: RunRecord[] = [];
-
-        if (ext === 'csv') {
-          parsed = parseGarminCsv(text, 'local_user');
-        } else if (ext === 'tcx') {
-          const run = parseTcx(text, 'local_user', file.name);
-          if (run) parsed = [run];
-        } else if (ext === 'gpx') {
-          const run = parseGpx(text, 'local_user', file.name);
-          if (run) parsed = [run];
-        } else {
-          // Detect format by contents
-          if (text.includes('<TrainingCenterDatabase') || text.includes('<Activity')) {
-            const run = parseTcx(text, 'local_user', file.name);
-            if (run) parsed = [run];
-          } else if (text.includes('<gpx')) {
-            const run = parseGpx(text, 'local_user', file.name);
-            if (run) parsed = [run];
-          } else if (text.includes('Activity Type') || text.includes('Distance')) {
-            parsed = parseGarminCsv(text, 'local_user');
-          } else {
-            // Check for JSON array
-            try {
-              const rawJson = JSON.parse(text);
-              const items = Array.isArray(rawJson) ? rawJson : [rawJson];
-              const jsonRuns = items.filter((item: any) => item && (item.distanceKm || item.distance));
-              if (jsonRuns.length > 0) {
-                parsed = jsonRuns.map((j: any, idx: number) => ({
-                  id: j.id || `json_run_${Date.now()}_${idx}`,
-                  userId: 'local_user',
-                  date: j.date || new Date().toISOString().split('T')[0],
-                  title: j.title || 'Garmin Run',
-                  distanceKm: Number(j.distanceKm || (j.distance ? j.distance / 1000 : 5)),
-                  durationSeconds: Number(j.durationSeconds || j.duration || 1200),
-                  averagePaceSecPerKm: Number(j.averagePaceSecPerKm || 240),
-                  runType: j.runType || 'Aerobic',
-                  source: 'garmin',
-                  garminActivityId: j.garminActivityId || j.activityId,
-                }));
-              }
-            } catch {
-              // Not JSON
-            }
-          }
-        }
-
-        if (parsed.length > 0) {
-          accumulatedRuns.push(...parsed);
-        }
-      }
+      const accumulatedRuns = await parseWatchFiles(files, 'local_user');
 
       if (accumulatedRuns.length === 0) {
-        setErrorMessage('No valid running activities were recognized in the uploaded file(s). Supported: Garmin .TCX, .GPX, .CSV, and Garmin JSON.');
+        setErrorMessage(
+          'No valid running activities were recognized. Supported: Apple Health export.zip / export.xml, Apple Watch CSV/JSON, Garmin .TCX, .GPX, and .CSV.'
+        );
       } else {
         if (onOpenGarminSyncWithRuns) {
           onOpenGarminSyncWithRuns(accumulatedRuns);
@@ -100,8 +48,8 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
       }
     } catch (err: unknown) {
       console.error('File parsing error:', err);
-      const msg = err instanceof Error ? err.message : 'Error reading Garmin file';
-      setErrorMessage(`Failed to process Garmin data: ${msg}`);
+      const msg = err instanceof Error ? err.message : 'Error reading watch file';
+      setErrorMessage(`Failed to process watch data: ${msg}`);
     } finally {
       setIsProcessing(false);
     }
@@ -134,10 +82,10 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
             <UploadCloud className="w-7 h-7" />
           </div>
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-neutral-900 dark:text-white">
-            Awaiting Garmin Run Data
+            Awaiting Watch &amp; Run Data
           </h2>
           <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
-            All 6K progression curves, weekly consistency tracking, aerobic base analysis, and interval split breakdowns populate strictly from your authentic Garmin data.
+            All 6K progression curves, Cardio Load phases, Body Battery recovery, and interval splits populate directly from your Garmin Connect or Apple Watch exports.
           </p>
         </div>
 
@@ -157,7 +105,7 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".fit,.tcx,.gpx,.csv,.json"
+            accept=".zip,.xml,.fit,.tcx,.gpx,.csv,.json"
             className="hidden"
             onChange={(e) => {
               if (e.target.files) handleFiles(e.target.files);
@@ -171,10 +119,10 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
 
             <div>
               <span className="text-sm font-semibold text-neutral-900 dark:text-white">
-                {isProcessing ? 'Processing Garmin file...' : 'Drop Garmin activity file here'}
+                {isProcessing ? 'Processing watch file...' : 'Drop Apple Watch or Garmin file here'}
               </span>
               <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                Supports Garmin <strong className="font-semibold text-neutral-700 dark:text-neutral-300">.TCX</strong>, <strong className="font-semibold text-neutral-700 dark:text-neutral-300">.GPX</strong>, <strong className="font-semibold text-neutral-700 dark:text-neutral-300">.CSV</strong>, and Garmin JSON exports
+                Supports Apple Health <strong className="font-semibold text-neutral-700 dark:text-neutral-300">export.zip / export.xml</strong>, Garmin <strong className="font-semibold text-neutral-700 dark:text-neutral-300">.CSV</strong>, <strong className="font-semibold text-neutral-700 dark:text-neutral-300">.TCX</strong>, <strong className="font-semibold text-neutral-700 dark:text-neutral-300">.GPX</strong> &amp; JSON
               </p>
             </div>
 
@@ -184,7 +132,7 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
                 disabled={isProcessing}
                 className="px-4 py-2 rounded-full bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 text-white dark:text-black text-xs font-semibold shadow-xs transition-colors cursor-pointer"
               >
-                Browse Garmin Files
+                Browse Watch Files
               </button>
             </div>
           </div>
@@ -199,17 +147,17 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
         )}
 
         {/* Alternative Actions */}
-        <div className="mt-8 pt-6 border-t border-neutral-200 dark:border-neutral-800/80 grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
+        <div className={`mt-8 pt-6 border-t border-neutral-200 dark:border-neutral-800/80 grid grid-cols-1 ${onLoadPlaceholderData ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'} gap-3 text-left`}>
           <button
             onClick={onOpenGarminSync}
             className="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 hover:bg-neutral-100 dark:hover:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-800 text-left transition-colors cursor-pointer group"
           >
             <div className="flex items-center space-x-2 text-xs font-semibold text-neutral-900 dark:text-white mb-1">
               <FileText className="w-4 h-4 text-[#0a84ff]" />
-              <span>Select Garmin Activities</span>
+              <span>Sync Watch Activities</span>
             </div>
             <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              Upload your workout file and pick which runs to import
+              Upload Apple Watch or Garmin files with export instructions
             </p>
           </button>
 
@@ -238,12 +186,27 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
               Define your cross country 6K race goal and split target
             </p>
           </button>
+
+          {onLoadPlaceholderData && (
+            <button
+              onClick={onLoadPlaceholderData}
+              className="p-3.5 rounded-xl bg-violet-50/70 dark:bg-violet-950/25 hover:bg-violet-100/80 dark:hover:bg-violet-950/40 border border-violet-200/80 dark:border-violet-800/60 text-left transition-colors cursor-pointer group"
+            >
+              <div className="flex items-center space-x-2 text-xs font-semibold text-neutral-900 dark:text-white mb-1">
+                <FlaskConical className="w-4 h-4 text-violet-500" />
+                <span>Load Placeholder Data</span>
+              </div>
+              <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                Preview charts, Body Battery, and projections with sample runs
+              </p>
+            </button>
+          )}
         </div>
 
         {/* Clean status */}
         <div className="mt-6 flex items-center justify-center space-x-2 text-[11px] text-neutral-400 dark:text-neutral-500">
           <CheckCircle2 className="w-3.5 h-3.5 text-[#30d158]" />
-          <span>Authentic Garmin data · Watch telemetry & heart rate analysis</span>
+          <span>Garmin &amp; Apple Watch telemetry · Heart rate &amp; cadence analysis</span>
         </div>
       </div>
     </div>

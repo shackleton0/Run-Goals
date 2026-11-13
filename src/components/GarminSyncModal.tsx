@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { RunRecord, RunType } from '../types/running';
+import { parseWatchFiles } from '../utils/watchFileParser';
 import {
-  parseGarminCsv,
-  parseTcx,
-  parseGpx,
   formatDuration,
   formatPace,
 } from '../utils/runningCalculations';
@@ -23,6 +21,7 @@ import {
   ChevronRight,
   Zap,
   Mountain,
+  Smartphone,
 } from 'lucide-react';
 import { IntervalCalibrationModal } from './IntervalCalibrationModal';
 
@@ -60,7 +59,7 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
   const [dragOver, setDragOver] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'upload' | 'selection' | 'instructions'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'selection' | 'apple_help' | 'garmin_help'>('upload');
 
   // Parsed activities from uploaded file(s)
   const [parsedActivities, setParsedActivities] = useState<RunRecord[]>([]);
@@ -68,8 +67,6 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   // Search query in selection screen
   const [searchFilter, setSearchFilter] = useState('');
-  const [fileName, setFileName] = useState<string>('');
-  // Run being calibrated for intervals & rest
   const [calibratingRun, setCalibratingRun] = useState<RunRecord | null>(null);
 
   const handleUpdateParsedRun = (runId: string, updatedFields: Partial<RunRecord>) => {
@@ -88,76 +85,28 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleFileProcess = async (file: File) => {
+  const handleFilesProcess = async (files: FileList | File[]) => {
+    if (!files || files.length === 0) return;
     setErrorMsg(null);
-    setImportStatus(`Parsing ${file.name}...`);
-    setFileName(file.name);
+    const label = files.length === 1 ? files[0].name : `${files.length} watch files`;
+    setImportStatus(`Parsing ${label}...`);
 
     try {
-      const text = await file.text();
-      const ext = file.name.split('.').pop()?.toLowerCase();
-
-      let parsedRuns: RunRecord[] = [];
-
-      if (ext === 'csv') {
-        parsedRuns = parseGarminCsv(text, userId);
-      } else if (ext === 'tcx') {
-        const run = parseTcx(text, userId, file.name);
-        if (run) parsedRuns = [run];
-      } else if (ext === 'gpx') {
-        const run = parseGpx(text, userId, file.name);
-        if (run) parsedRuns = [run];
-      } else {
-        if (text.includes('<TrainingCenterDatabase') || text.includes('<Activity')) {
-          const run = parseTcx(text, userId, file.name);
-          if (run) parsedRuns = [run];
-        } else if (text.includes('<gpx')) {
-          const run = parseGpx(text, userId, file.name);
-          if (run) parsedRuns = [run];
-        } else if (text.includes('Activity Type') || text.includes('Distance')) {
-          parsedRuns = parseGarminCsv(text, userId);
-        } else {
-          // Check for JSON
-          try {
-            const rawJson = JSON.parse(text);
-            const items = Array.isArray(rawJson) ? rawJson : [rawJson];
-            const jsonRuns = items.filter((item: any) => item && (item.distanceKm || item.distance));
-            if (jsonRuns.length > 0) {
-              parsedRuns = jsonRuns.map((j: any, idx: number) => ({
-                id: j.id || `garmin_json_${Date.now()}_${idx}`,
-                userId,
-                date: j.date || new Date().toISOString().split('T')[0],
-                title: j.title || 'Garmin Run',
-                distanceKm: Number(j.distanceKm || (j.distance ? j.distance / 1000 : 5)),
-                durationSeconds: Number(j.durationSeconds || j.duration || 1200),
-                averagePaceSecPerKm: Number(j.averagePaceSecPerKm || 240),
-                runType: j.runType || 'Aerobic',
-                avgHeartRate: j.avgHeartRate || j.averageHeartRate,
-                maxHeartRate: j.maxHeartRate || j.maximumHeartRate,
-                avgCadence: j.avgCadence || j.cadence,
-                elevationGainMeters: j.elevationGainMeters || j.elevationGain,
-                source: 'garmin',
-                garminActivityId: j.garminActivityId || j.activityId,
-              }));
-            }
-          } catch {
-            // Not JSON
-          }
-        }
-      }
+      const parsedRuns = await parseWatchFiles(files, userId);
 
       if (!parsedRuns || parsedRuns.length === 0) {
-        throw new Error('No valid running activities found in this file. Please verify it is an exported Garmin activity file (.csv, .tcx, .gpx).');
+        throw new Error(
+          'No valid running activities found. Supported: Apple Health export.zip / export.xml, Apple Watch CSV/JSON, Garmin .CSV, .TCX, and .GPX.'
+        );
       }
 
       // Transition to selection view
       setParsedActivities(parsedRuns);
-      // Select all by default so user can deselect what they don't want
       setSelectedIds(new Set(parsedRuns.map((r) => r.id)));
       setImportStatus(null);
       setActiveTab('selection');
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Failed to parse file.');
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to parse watch file.');
       setImportStatus(null);
     }
   };
@@ -166,13 +115,13 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
     e.preventDefault();
     setDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFileProcess(e.dataTransfer.files[0]);
+      handleFilesProcess(e.dataTransfer.files);
     }
   };
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      handleFileProcess(e.target.files[0]);
+      handleFilesProcess(e.target.files);
     }
   };
 
@@ -249,12 +198,12 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-bold text-neutral-900 dark:text-white tracking-tight">
-                {activeTab === 'selection' ? 'Select Garmin Activities to Upload' : 'Garmin Data Sync'}
+                {activeTab === 'selection' ? 'Select Watch Activities to Upload' : 'Sync Garmin & Apple Watch Data'}
               </h2>
               <p className="text-xs text-neutral-500 dark:text-neutral-400">
                 {activeTab === 'selection'
                   ? `Choose which workouts to import (${selectedIds.size} of ${parsedActivities.length} selected)`
-                  : 'Upload your Garmin Connect workout files to track 6K progress'}
+                  : 'Upload Apple Health (export.zip / export.xml), Apple Watch, or Garmin Connect workouts'}
               </p>
             </div>
           </div>
@@ -278,17 +227,27 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
                   : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
               }`}
             >
-              Upload Garmin File
+              Upload Watch File
             </button>
             <button
-              onClick={() => setActiveTab('instructions')}
+              onClick={() => setActiveTab('apple_help')}
               className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
-                activeTab === 'instructions'
+                activeTab === 'apple_help'
                   ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-xs'
                   : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
               }`}
             >
-              Export Help
+              Apple Watch Guide
+            </button>
+            <button
+              onClick={() => setActiveTab('garmin_help')}
+              className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
+                activeTab === 'garmin_help'
+                  ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-xs'
+                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
+            >
+              Garmin Guide
             </button>
           </div>
         )}
@@ -313,20 +272,21 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
               <input
                 id="garmin-file-input"
                 type="file"
-                accept=".csv,.tcx,.gpx,.json,.fit"
+                multiple
+                accept=".zip,.xml,.csv,.tcx,.gpx,.json,.fit"
                 className="hidden"
                 onChange={handleFileInput}
               />
               <UploadCloud className="w-10 h-10 text-[#0a84ff] mx-auto mb-2" />
               <p className="text-sm font-semibold text-neutral-900 dark:text-white mb-1">
-                Drop your Garmin Connect file here, or click to browse
+                Drop your Apple Watch or Garmin export file here, or click to browse
               </p>
               <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">
-                Supports Garmin .CSV (Activities Export), .TCX, and .GPX files
+                Supports Apple Health <strong>export.zip / export.xml</strong>, Apple Watch CSV/JSON, Garmin <strong>.CSV</strong>, <strong>.TCX</strong> &amp; <strong>.GPX</strong>
               </p>
-              <span className="inline-block px-3 py-1 rounded-full text-[11px] font-medium bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
-                You can select and preview individual activities before uploading
-              </span>
+              <p className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
+                Preview, label hill workouts, strip interval rest, and select activities before importing
+              </p>
             </div>
 
             {importStatus && (
@@ -518,6 +478,10 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
 
                           <div className="text-[11px] text-neutral-500 dark:text-neutral-400 flex flex-wrap items-center gap-2">
                             <span>{run.date}</span>
+                            <span>·</span>
+                            <span className={run.source.startsWith('apple') ? 'text-rose-500 font-semibold' : 'text-[#0a84ff] font-semibold'}>
+                              {run.source.startsWith('apple') ? 'Apple Watch' : 'Garmin'}
+                            </span>
                             {run.elevationGainMeters !== undefined && run.elevationGainMeters > 0 && (
                               <>
                                 <span>·</span>
@@ -638,8 +602,40 @@ export const GarminSyncModal: React.FC<GarminSyncModalProps> = ({
           </div>
         )}
 
-        {/* Tab 3: Instructions */}
-        {activeTab === 'instructions' && (
+        {/* Tab 3: Apple Watch Instructions */}
+        {activeTab === 'apple_help' && (
+          <div className="space-y-3 text-xs text-neutral-700 dark:text-neutral-300 max-h-80 overflow-y-auto pr-1 py-2">
+            <div className="font-semibold text-neutral-900 dark:text-white flex items-center space-x-1.5">
+              <Smartphone className="w-4 h-4 text-rose-500" />
+              <span>How to Export from Apple Watch / Apple Health:</span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-neutral-50 dark:bg-black/40 border border-neutral-200 dark:border-neutral-800 space-y-1.5">
+              <span className="font-semibold text-neutral-900 dark:text-white block">
+                Option A: Official Apple Health Export (export.zip / export.xml)
+              </span>
+              <ol className="list-decimal list-inside space-y-1 text-neutral-600 dark:text-neutral-400 pl-1">
+                <li>Open the <strong>Health</strong> app on your iPhone and tap your profile picture in the top right.</li>
+                <li>Scroll down and tap <strong>Export All Health Data</strong>, then save or AirDrop <strong>export.zip</strong>.</li>
+                <li>Drop <strong>export.zip</strong> (or the extracted <strong>export.xml</strong>) right here — all Apple Watch running workouts, heart rate, cadence, and elevation will load automatically!</li>
+              </ol>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-neutral-50 dark:bg-black/40 border border-neutral-200 dark:border-neutral-800 space-y-1.5">
+              <span className="font-semibold text-neutral-900 dark:text-white block">
+                Option B: HealthFit, WorkOutDoors, or Health Auto Export
+              </span>
+              <ol className="list-decimal list-inside space-y-1 text-neutral-600 dark:text-neutral-400 pl-1">
+                <li>In <strong>HealthFit</strong> or <strong>WorkOutDoors</strong>, export any Apple Watch run as <strong>.GPX</strong> or <strong>.TCX</strong>.</li>
+                <li>Or in <strong>Health Auto Export</strong>, export workouts as <strong>.CSV</strong> or <strong>.JSON</strong>.</li>
+                <li>Drop one or multiple files into the Upload tab to preview and import.</li>
+              </ol>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 4: Garmin Instructions */}
+        {activeTab === 'garmin_help' && (
           <div className="space-y-3 text-xs text-neutral-700 dark:text-neutral-300 max-h-72 overflow-y-auto pr-1 py-2">
             <div className="font-semibold text-neutral-900 dark:text-white flex items-center space-x-1.5">
               <HelpCircle className="w-4 h-4 text-[#0a84ff]" />

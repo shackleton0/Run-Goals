@@ -19,6 +19,10 @@
         "weeklyDistanceGoalKm": { "type": "number" },
         "unitPreference": { "type": "string", "enum": ["km", "miles"] },
         "athleteLevel": { "type": "string", "enum": ["Beginner", "High School XC", "Collegiate / Advanced", "Masters"] },
+        "yraaDivision": {
+          "type": "string",
+          "enum": ["novice_women", "novice_men", "para_men", "junior_women", "junior_men", "senior_women", "senior_men"]
+        },
         "maxHeartRate": { "type": "number" },
         "defaultIntervalPaceSecPerKm": { "type": "number" },
         "defaultRepDistanceMeters": { "type": "number" },

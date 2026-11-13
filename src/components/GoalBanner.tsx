@@ -79,7 +79,7 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
 
   const distTitle =
     profile.targetGoalName ||
-    (targetDistKm === 6 ? 'Cross Country 6K Race Target' : `${targetDistKm}K Competition Goal`);
+    (targetDistKm === 6 ? '6K Race Target' : `${targetDistKm}K Competition Goal`);
   const distCardLabel = targetDistKm === 6 ? 'Target 6K' : `Target ${targetDistKm}K`;
   const projectedCardLabel =
     targetDistKm === 6 ? 'Fastest Projected 6K Time' : `Fastest Projected ${targetDistKm}K Time`;

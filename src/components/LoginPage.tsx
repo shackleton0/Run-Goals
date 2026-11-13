@@ -23,6 +23,7 @@ interface LoginPageProps {
   onSignIn: () => Promise<void>;
   onInstantCloudSignIn?: () => Promise<void>;
   onContinueAsGuest: () => void;
+  onContinueWithPlaceholder?: () => void;
   authError: string | null;
   onClearAuthError: () => void;
   theme: 'dark' | 'light';
@@ -33,6 +34,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   onSignIn,
   onInstantCloudSignIn,
   onContinueAsGuest,
+  onContinueWithPlaceholder,
   authError,
   onClearAuthError,
   theme,
@@ -88,10 +90,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               </div>
               <div className="flex items-center space-x-2">
                 <span className="font-extrabold text-base tracking-tight text-neutral-900 dark:text-white uppercase">
-                  RunGoals
-                </span>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-sm bg-[#0593C6]/10 text-[#0593C6] dark:text-[#38bdf8] uppercase tracking-wider">
-                  XC 6K
+                  RUNGOALS
                 </span>
               </div>
             </div>
@@ -334,6 +333,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 <span>Continue in Guest / Evaluation Mode</span>
                 <ArrowRight className="w-3 h-3 text-neutral-400 group-hover:translate-x-0.5 transition-transform" />
               </button>
+
+              {onContinueWithPlaceholder && (
+                <button
+                  onClick={onContinueWithPlaceholder}
+                  className="w-full py-2 px-4 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/25 text-violet-700 dark:text-violet-300 font-semibold text-xs flex items-center justify-center space-x-2 transition-all cursor-pointer"
+                >
+                  <FlaskConical className="w-3.5 h-3.5 text-violet-500" />
+                  <span>Preview with Placeholder Data</span>
+                </button>
+              )}
 
               <p className="text-[11px] text-neutral-400 dark:text-neutral-500 text-center pt-1">
                 Guest mode persists data locally in browser storage. You can authenticate later to sync to cloud.

@@ -1,3 +1,5 @@
+import { YraaDivisionId } from '../data/yraaBenchmarks';
+
 export type RunType =
   | 'Aerobic'
   | 'Interval Training'
@@ -40,7 +42,17 @@ export interface RunRecord {
   elevationGainMeters?: number;
   hillReps?: number;
   hillGradePercent?: number;
-  source: 'garmin' | 'garmin_tcx' | 'garmin_gpx' | 'garmin_csv' | 'manual';
+  source:
+    | 'garmin'
+    | 'garmin_tcx'
+    | 'garmin_gpx'
+    | 'garmin_csv'
+    | 'apple_watch'
+    | 'apple_health_xml'
+    | 'apple_watch_csv'
+    | 'apple_watch_gpx'
+    | 'apple_watch_tcx'
+    | 'manual';
   notes?: string;
   garminActivityId?: string;
   slotId?: 'interval' | 'tempo' | 'long_run';
@@ -69,6 +81,7 @@ export interface UserProfile {
   weeklyDistanceGoalKm?: number; // Optional weekly mileage/distance goal (e.g. 25 km / 15 mi)
   unitPreference: 'km' | 'miles';
   athleteLevel?: 'Beginner' | 'High School XC' | 'Collegiate / Advanced' | 'Masters';
+  yraaDivision?: YraaDivisionId;
   maxHeartRate?: number;
   defaultIntervalPaceSecPerKm?: number;
   defaultRepDistanceMeters?: number;

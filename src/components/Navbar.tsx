@@ -14,6 +14,8 @@ import {
   ChevronDown,
   Flame,
   Share2,
+  FlaskConical,
+  Trash2,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -23,6 +25,7 @@ interface NavbarProps {
   best6kSec?: number;
   theme: 'dark' | 'light';
   isGuest?: boolean;
+  hasPlaceholderData?: boolean;
   onExitGuestMode?: () => void;
   onToggleTheme: () => void;
   onOpenGarminSync: () => void;
@@ -30,6 +33,8 @@ interface NavbarProps {
   onOpenAddRun: () => void;
   onOpenSettings: () => void;
   onOpenShare?: () => void;
+  onLoadPlaceholderData?: () => void;
+  onClearPlaceholderData?: () => void;
   onSignIn: () => void;
   onSignOut: () => void;
 }
@@ -41,6 +46,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   best6kSec,
   theme,
   isGuest,
+  hasPlaceholderData = false,
   onExitGuestMode,
   onToggleTheme,
   onOpenGarminSync,
@@ -48,6 +54,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAddRun,
   onOpenSettings,
   onOpenShare,
+  onLoadPlaceholderData,
+  onClearPlaceholderData,
   onSignIn,
   onSignOut,
 }) => {
@@ -73,16 +81,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="w-9 h-9 rounded-xl bg-[#0593C6] text-[#FCFFFF] flex items-center justify-center font-bold shadow-xs">
               <Activity className="w-5 h-5 stroke-[2.5]" />
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="font-extrabold text-base sm:text-lg tracking-tight text-slate-900 dark:text-white uppercase font-sans">
-                  RunGoals
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
-                Distance Performance Telemetry
-              </p>
-            </div>
+            <span className="font-extrabold text-base sm:text-lg tracking-tight text-slate-900 dark:text-white uppercase font-sans whitespace-nowrap">
+              RUNGOALS
+            </span>
           </div>
 
           {/* Right Action Controls */}
@@ -211,7 +212,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-neutral-900 dark:text-white">Sync Data</div>
-                        <div className="text-[10px] text-neutral-500 truncate">Upload FIT/CSV watch & training files</div>
+                        <div className="text-[10px] text-neutral-500 truncate">Upload Apple Watch or Garmin files</div>
                       </div>
                     </button>
 
@@ -226,10 +227,51 @@ export const Navbar: React.FC<NavbarProps> = ({
                         <Settings className="w-3.5 h-3.5" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-neutral-900 dark:text-white">Athlete Profile Settings</div>
-                        <div className="text-[10px] text-neutral-500 truncate">Pace targets, goals, distance units</div>
+                        <div className="font-semibold text-neutral-900 dark:text-white">Settings</div>
+                        <div className="text-[10px] text-neutral-500 truncate">Goals, units, profile & appearance</div>
                       </div>
                     </button>
+
+                    {/* Placeholder Sample Data Toggle */}
+                    {hasPlaceholderData && onClearPlaceholderData ? (
+                      <button
+                        onClick={() => {
+                          setIsDropdownOpen(false);
+                          onClearPlaceholderData();
+                        }}
+                        className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors text-left cursor-pointer"
+                      >
+                        <div className="w-6 h-6 rounded-md bg-rose-500/15 text-rose-500 flex items-center justify-center">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold flex items-center justify-between">
+                            <span>Clear Placeholder Data</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500/15 text-rose-500">Active</span>
+                          </div>
+                          <div className="text-[10px] text-neutral-500 truncate">Remove sample preview workouts</div>
+                        </div>
+                      </button>
+                    ) : onLoadPlaceholderData ? (
+                      <button
+                        onClick={() => {
+                          setIsDropdownOpen(false);
+                          onLoadPlaceholderData();
+                        }}
+                        className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors text-left cursor-pointer group"
+                      >
+                        <div className="w-6 h-6 rounded-md bg-violet-500/15 text-violet-500 flex items-center justify-center group-hover:bg-violet-500 group-hover:text-white transition-colors">
+                          <FlaskConical className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-neutral-900 dark:text-white flex items-center justify-between">
+                            <span>Load Placeholder Data</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-500">Demo</span>
+                          </div>
+                          <div className="text-[10px] text-neutral-500 truncate">Preview dashboard with sample runs</div>
+                        </div>
+                      </button>
+                    ) : null}
                   </div>
 
                   {/* Preferences: Theme Toggle */}
