@@ -33,6 +33,7 @@ import {
   parseWatchCsv,
   estimateYraaPlacement,
   formatOrdinalPlace,
+  calculateMultiDistancePredictions,
 } from './runningCalculations';
 import {
   INITIAL_SAMPLE_RUNS,
@@ -775,6 +776,71 @@ test('estimateYraaPlacement ranks current and goal times accurately across YRAA 
   assert.ok(juniorConv.equivalentDivisionTimeSeconds < 1210 && juniorConv.equivalentDivisionTimeSeconds > 1150);
   assert.ok(juniorConv.estimatedPlace >= 10 && juniorConv.estimatedPlace <= 20);
 });
+
+test('calculateMultiDistancePredictions estimates 5K, 8K, 10K, and Half Marathon from PR and training volume', () => {
+  const sampleRuns: RunRecord[] = [
+    {
+      id: 'p1',
+      userId: 'u1',
+      date: '2026-10-20',
+      title: '6K Time Trial',
+      distanceKm: 6.0,
+      durationSeconds: 1440, // 24:00 (4:00/km)
+      averagePaceSecPerKm: 240,
+      runType: '6K Time Trial',
+      source: 'manual',
+    },
+    {
+      id: 'p2',
+      userId: 'u1',
+      date: '2026-10-25',
+      title: 'Long Aerobic',
+      distanceKm: 12.0,
+      durationSeconds: 3600,
+      averagePaceSecPerKm: 300,
+      runType: 'Long Run',
+      source: 'manual',
+    },
+    {
+      id: 'p3',
+      userId: 'u1',
+      date: '2026-11-01',
+      title: 'Easy Base',
+      distanceKm: 8.0,
+      durationSeconds: 2400,
+      averagePaceSecPerKm: 300,
+      runType: 'Easy',
+      source: 'manual',
+    },
+  ];
+
+  // Compare low-volume (15 km/wk) vs high-volume (55 km/wk) simulation on the same 24:00 6K PR
+  const lowVol = calculateMultiDistancePredictions(sampleRuns, 6.0, 1440, 1320, 15);
+  const highVol = calculateMultiDistancePredictions(sampleRuns, 6.0, 1440, 1320, 55);
+
+  assert.equal(lowVol.hasData, true);
+  assert.equal(lowVol.predictions.length, 6);
+
+  const low5k = lowVol.predictions.find((p) => p.id === '5k')!;
+  const low6k = lowVol.predictions.find((p) => p.id === '6k')!;
+  const low8k = lowVol.predictions.find((p) => p.id === '8k')!;
+  const low10k = lowVol.predictions.find((p) => p.id === '10k')!;
+  const high8k = highVol.predictions.find((p) => p.id === '8k')!;
+  const high10k = highVol.predictions.find((p) => p.id === '10k')!;
+
+  assert.equal(low6k.predictedSeconds, 1440);
+  assert.equal(low6k.isGoalDistance, true);
+  assert.ok(low5k.predictedSeconds > 1150 && low5k.predictedSeconds < 1230); // ~19:46
+  assert.ok(low8k.predictedSeconds > 1920 && low8k.predictedSeconds < 2100);
+  assert.ok(low10k.predictedSeconds > 2400 && low10k.predictedSeconds < 2700);
+  assert.ok(low6k.goalEquivalentSeconds === 1320);
+
+  // Higher weekly volume should meaningfully improve predicted 8K & 10K endurance times
+  assert.ok(high8k.predictedSeconds < low8k.predictedSeconds);
+  assert.ok(high10k.predictedSeconds < low10k.predictedSeconds);
+  assert.ok(highVol.enduranceExponent < lowVol.enduranceExponent);
+});
+
 
 
 

@@ -44,6 +44,7 @@ import { GoalSettingsModal } from './components/GoalSettingsModal';
 import { ShareProgressModal } from './components/ShareProgressModal';
 import { EmptyGarminState } from './components/EmptyGarminState';
 import { WatchTelemetrySection } from './components/WatchTelemetrySection';
+import { LiquidGlassReveal } from './components/LiquidGlassReveal';
 import { LoginPage } from './components/LoginPage';
 import {
   Cloud,
@@ -586,7 +587,16 @@ export default function App() {
 
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
-      <div className="min-h-screen bg-[#ECF3F8] dark:bg-[#070E16] text-slate-900 dark:text-white flex flex-col font-sans transition-colors selection:bg-[#0EA5E9] selection:text-white">
+      <div className="relative min-h-screen bg-[#ECF3F8] dark:bg-[#070E16] text-slate-900 dark:text-white flex flex-col font-sans transition-colors selection:bg-[#0EA5E9] selection:text-white">
+        {/* Subtle Ambient Backdrop for Liquid Glass Refraction */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 overflow-hidden z-0"
+        >
+          <div className="absolute -bottom-32 -left-24 w-[480px] h-[480px] rounded-full bg-[#0593C6]/12 dark:bg-[#0593C6]/14 blur-3xl" />
+          <div className="absolute bottom-24 right-0 w-[440px] h-[440px] rounded-full bg-violet-500/8 dark:bg-violet-500/12 blur-3xl" />
+          <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[560px] h-[340px] rounded-full bg-emerald-500/6 dark:bg-sky-500/8 blur-3xl" />
+        </div>
         {/* Top Navigation */}
         <Navbar
           user={user}
@@ -717,7 +727,7 @@ export default function App() {
         )}
 
         {/* Main Dashboard */}
-        <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-5">
+        <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-5">
           {/* Dynamic Motivational Greeting with User's Name */}
           <MotivationalGreeting
             profile={profile}
@@ -796,65 +806,75 @@ export default function App() {
               />
 
               {/* 3. WEEKLY TRAINING (Weekly Training Schedule: Interval, 6K Threshold Tempo, Aerobic Long Run) */}
-              <WeeklyAdherenceCard
-                weeklyStats={weeklyStats}
-                adherence={adherence}
-                runs={runs}
-                onOpenAddRun={handleOpenAddRunWithPrefill}
-                onOpenGarminSync={handleOpenGarminSync}
-                onSaveRun={handleSaveRun}
-                unit={profile.unitPreference}
-                weeklyDistanceGoalKm={profile.weeklyDistanceGoalKm}
-                weeklyRunGoal={profile.weeklyRunGoal || 3}
-                onUpdateWeeklyDistanceGoal={(newKm) =>
-                  handleSaveProfile({ ...profile, weeklyDistanceGoalKm: newKm })
-                }
-                onOpenSettings={() => setIsSettingsOpen(true)}
-              />
+              <LiquidGlassReveal>
+                <WeeklyAdherenceCard
+                  weeklyStats={weeklyStats}
+                  adherence={adherence}
+                  runs={runs}
+                  onOpenAddRun={handleOpenAddRunWithPrefill}
+                  onOpenGarminSync={handleOpenGarminSync}
+                  onSaveRun={handleSaveRun}
+                  unit={profile.unitPreference}
+                  weeklyDistanceGoalKm={profile.weeklyDistanceGoalKm}
+                  weeklyRunGoal={profile.weeklyRunGoal || 3}
+                  onUpdateWeeklyDistanceGoal={(newKm) =>
+                    handleSaveProfile({ ...profile, weeklyDistanceGoalKm: newKm })
+                  }
+                  onOpenSettings={() => setIsSettingsOpen(true)}
+                />
+              </LiquidGlassReveal>
 
               {/* 4. BODY BATTERY (Garmin-style Physiological Energy Reserve & Recovery) */}
-              <BodyBatteryCard
-                runs={runs}
-                maxHeartRate={profile.maxHeartRate}
-              />
+              <LiquidGlassReveal>
+                <BodyBatteryCard
+                  runs={runs}
+                  maxHeartRate={profile.maxHeartRate}
+                />
+              </LiquidGlassReveal>
 
               {/* 5. CARDIO LOAD (Fitbit-style Acute vs. Chronic Load & Training Phases) */}
-              <CardioLoadCard
-                runs={runs}
-                maxHeartRate={profile.maxHeartRate}
-              />
+              <LiquidGlassReveal>
+                <CardioLoadCard
+                  runs={runs}
+                  maxHeartRate={profile.maxHeartRate}
+                />
+              </LiquidGlassReveal>
 
               {/* 6. PERFORMANCE ANALYTICS (30-day category breakdown, progression curves, aerobic base, intervals) */}
-              <ProgressVisualizer
-                runs={runs}
-                weeklyStats={weeklyStats}
-                target6kSec={profile.target6kTimeSeconds}
-                targetDistanceKm={profile.targetDistanceKm}
-                targetGoalName={profile.targetGoalName}
-                unit={profile.unitPreference}
-                maxHeartRate={profile.maxHeartRate}
-                onOpenGarminSync={handleOpenGarminSync}
-                onOpenAddRun={() => handleOpenAddRunWithPrefill()}
-              />
+              <LiquidGlassReveal>
+                <ProgressVisualizer
+                  runs={runs}
+                  weeklyStats={weeklyStats}
+                  target6kSec={profile.target6kTimeSeconds}
+                  targetDistanceKm={profile.targetDistanceKm}
+                  targetGoalName={profile.targetGoalName}
+                  unit={profile.unitPreference}
+                  maxHeartRate={profile.maxHeartRate}
+                  onOpenGarminSync={handleOpenGarminSync}
+                  onOpenAddRun={() => handleOpenAddRunWithPrefill()}
+                />
+              </LiquidGlassReveal>
 
-              {/* 5. FITNESS TRACKER DATA & UNIFIED ACTIVITY LOGS (Fastest Pace, Peak HR, HR Training Zones, Workout Combining, Categories & Deletion) */}
-              <WatchTelemetrySection
-                runs={runs}
-                unit={profile.unitPreference}
-                targetDistanceKm={profile.targetDistanceKm}
-                target6kSec={profile.target6kTimeSeconds}
-                best6kSec={best6kSec}
-                customMaxHr={profile.maxHeartRate}
-                onUpdateMaxHr={(val) => handleSaveProfile({ ...profile, maxHeartRate: val })}
-                onDeleteRun={handleDeleteRun}
-                onUpdateRunCategory={handleUpdateRunCategory}
-                onUpdateRun={handleUpdateRun}
-                onCombineRuns={handleCombineRuns}
-                onOpenGarminSync={handleOpenGarminSync}
-                onOpenAddRun={() => handleOpenAddRunWithPrefill()}
-                savedDefaultInterval={savedDefaultInterval}
-                onSaveDefaultInterval={handleSaveDefaultInterval}
-              />
+              {/* 7. FITNESS TRACKER DATA & UNIFIED ACTIVITY LOGS (Fastest Pace, Peak HR, HR Training Zones, Workout Combining, Categories & Deletion) */}
+              <LiquidGlassReveal>
+                <WatchTelemetrySection
+                  runs={runs}
+                  unit={profile.unitPreference}
+                  targetDistanceKm={profile.targetDistanceKm}
+                  target6kSec={profile.target6kTimeSeconds}
+                  best6kSec={best6kSec}
+                  customMaxHr={profile.maxHeartRate}
+                  onUpdateMaxHr={(val) => handleSaveProfile({ ...profile, maxHeartRate: val })}
+                  onDeleteRun={handleDeleteRun}
+                  onUpdateRunCategory={handleUpdateRunCategory}
+                  onUpdateRun={handleUpdateRun}
+                  onCombineRuns={handleCombineRuns}
+                  onOpenGarminSync={handleOpenGarminSync}
+                  onOpenAddRun={() => handleOpenAddRunWithPrefill()}
+                  savedDefaultInterval={savedDefaultInterval}
+                  onSaveDefaultInterval={handleSaveDefaultInterval}
+                />
+              </LiquidGlassReveal>
             </div>
           )}
         </main>

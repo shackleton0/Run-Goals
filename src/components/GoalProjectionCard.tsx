@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { RunRecord, UserProfile, AdherenceSummary } from '../types/running';
+import { LiquidGlassReveal } from './LiquidGlassReveal';
 import {
   YRAA_DIVISIONS,
   YRAA_DIVISION_LIST,
@@ -8,11 +9,13 @@ import {
 } from '../data/yraaBenchmarks';
 import {
   calculateGoalProjection,
+  calculateMultiDistancePredictions,
   estimateYraaPlacement,
   formatOrdinalPlace,
   inferDefaultYraaDivision,
   formatDuration,
   formatPace,
+  KM_TO_MILES,
 } from '../utils/runningCalculations';
 import {
   Target,
@@ -27,6 +30,8 @@ import {
   ExternalLink,
   ArrowRight,
   Award,
+  Gauge,
+  RotateCcw,
 } from 'lucide-react';
 
 interface GoalProjectionCardProps {
@@ -57,7 +62,10 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
   onOpenSettings,
   onSaveProfile,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isProgressionExpanded, setIsProgressionExpanded] = useState(false);
+  const [isScenariosExpanded, setIsScenariosExpanded] = useState(false);
+  const [isYraaExpanded, setIsYraaExpanded] = useState(false);
+  const [isPredictorExpanded, setIsPredictorExpanded] = useState(false);
   const [selectedScenario, setSelectedScenario] = useState<
     'expected' | 'accelerated' | 'conservative'
   >('expected');
@@ -67,6 +75,7 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
   const [hoveredRankIndex, setHoveredRankIndex] = useState<number | null>(null);
   const [showAllPlaces, setShowAllPlaces] = useState(false);
   const [placeViewFilter, setPlaceViewFilter] = useState<'all' | 'around_today' | 'around_goal'>('all');
+  const [simulatedWeeklyKm, setSimulatedWeeklyKm] = useState<number | null>(null);
 
   const targetDistKm = profile.targetDistanceKm || 6.0;
   const targetSec = profile.target6kTimeSeconds;
@@ -84,6 +93,18 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
         adherence.currentStreakWeeks || 0
       ),
     [runs, targetDistKm, targetSec, currentBest, profile.weeklyRunGoal, adherence.currentStreakWeeks]
+  );
+
+  const multiDistancePrediction = useMemo(
+    () =>
+      calculateMultiDistancePredictions(
+        runs,
+        targetDistKm,
+        projection.currentBestSeconds || currentBest,
+        projection.targetTimeSeconds,
+        simulatedWeeklyKm
+      ),
+    [runs, targetDistKm, projection.currentBestSeconds, currentBest, projection.targetTimeSeconds, simulatedWeeklyKm]
   );
 
   const selectedDivisionId: YraaDivisionId =
@@ -126,8 +147,8 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
       ? currentYraaPlacement.estimatedPlace - goalYraaPlacement.estimatedPlace
       : null;
 
-  // Compact header summary string
-  const headerSummaryText = (() => {
+  // Per-card header summaries
+  const progressionSummaryText = (() => {
     const parts: string[] = [];
     if (!projection.hasTarget) {
       parts.push('Target Not Set');
@@ -136,15 +157,39 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
     } else if (projection.hasData) {
       parts.push(`~${activeScenarioData.weeks} Wks (${projection.confidence})`);
     }
-    if (currentYraaPlacement) {
-      const placeStr = goalYraaPlacement
-        ? `${formatOrdinalPlace(currentYraaPlacement.estimatedPlace)} → ${formatOrdinalPlace(
-            goalYraaPlacement.estimatedPlace
-          )}`
-        : formatOrdinalPlace(currentYraaPlacement.estimatedPlace);
-      parts.push(`YRAA ${selectedDivision.shortLabel}: ${placeStr}`);
+    if (imp.hasHistory && imp.totalDroppedSeconds > 0) {
+      parts.push(`-${formatDuration(imp.totalDroppedSeconds)} gained`);
     }
     return parts.join(' · ');
+  })();
+
+  const scenariosSummaryText =
+    projection.hasTarget && projection.hasData && !projection.isAchieved
+      ? `Steady ~${projection.scenarios.expected.weeks} wks · Accelerated ~${projection.scenarios.accelerated.weeks} wks`
+      : '';
+
+  const yraaSummaryText = currentYraaPlacement
+    ? `${selectedDivision.shortLabel}: ${
+        goalYraaPlacement
+          ? `${formatOrdinalPlace(currentYraaPlacement.estimatedPlace)} → ${formatOrdinalPlace(
+              goalYraaPlacement.estimatedPlace
+            )} of ${selectedDivision.finishersCount}`
+          : `${formatOrdinalPlace(currentYraaPlacement.estimatedPlace)} of ${selectedDivision.finishersCount}`
+      }`
+    : `${selectedDivision.label} (${selectedDivision.finishersCount} finishers)`;
+
+  const predictorSummaryText = (() => {
+    if (!multiDistancePrediction.hasData) return '5K, 8K, 10K & Half Marathon';
+    const p5 = multiDistancePrediction.predictions.find((p) => p.id === '5k');
+    const p8 = multiDistancePrediction.predictions.find((p) => p.id === '8k');
+    const p10 = multiDistancePrediction.predictions.find((p) => p.id === '10k');
+    return [
+      p5 ? `5K ${formatDuration(p5.predictedSeconds)}` : '',
+      p8 ? `8K ${formatDuration(p8.predictedSeconds)}` : '',
+      p10 ? `10K ${formatDuration(p10.predictedSeconds)}` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
   })();
 
   // SVG Trajectory Chart layout & coordinates (History -> Now -> Projected Goal)
@@ -269,83 +314,98 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
   }, [activeHistoryPoints, projection]);
 
   return (
-    <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#0F1C28] border border-slate-200/95 dark:border-slate-700/75 shadow-sm transition-colors">
-      {/* Accordion Header */}
-      <button
-        type="button"
-        onClick={() => setIsExpanded((prev) => !prev)}
-        className="w-full px-4 py-4 sm:px-5 sm:py-4.5 flex items-center justify-between text-left cursor-pointer group accordion-trigger select-none hover:bg-slate-50/90 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/70"
-        data-no-scale
-        aria-expanded={isExpanded}
-      >
-        <div className="flex items-center space-x-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-violet-500 flex items-center justify-center shrink-0 transition-transform duration-150 group-hover:scale-105">
-            {projection.hasTarget ? (
-              <TrendingDown className="w-4.5 h-4.5 stroke-[2.4]" />
-            ) : (
-              <Target className="w-4.5 h-4.5 stroke-[2.3]" />
-            )}
-          </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight transition-colors">
-                Goal Projection & YRAA Outlook
-              </h2>
-              {headerSummaryText && (
-                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums truncate">
-                  · {headerSummaryText}
-                </span>
+    <div className="space-y-5">
+      {/* CARD 1: GOAL PROGRESSION & FORECAST */}
+      <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#0F1C28] border border-slate-200/95 dark:border-slate-700/75 shadow-sm transition-colors">
+        <button
+          type="button"
+          onClick={() => setIsProgressionExpanded((prev) => !prev)}
+          className="w-full px-4 py-4 sm:px-5 sm:py-4.5 flex items-center justify-between text-left cursor-pointer group accordion-trigger select-none hover:bg-slate-50/90 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/70"
+          data-no-scale
+          aria-expanded={isProgressionExpanded}
+        >
+          <div className="flex items-center space-x-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-violet-500 flex items-center justify-center shrink-0 transition-transform duration-150 group-hover:scale-105">
+              {projection.hasTarget ? (
+                <TrendingDown className="w-4.5 h-4.5 stroke-[2.4]" />
+              ) : (
+                <Target className="w-4.5 h-4.5 stroke-[2.3]" />
               )}
             </div>
-          </div>
-        </div>
-
-        <div className="flex items-center space-x-2 shrink-0 ml-2">
-          <div
-            className={`p-2 rounded-lg border chevron-badge transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-              isExpanded
-                ? 'rotate-180 text-slate-900 dark:text-white bg-slate-200/80 dark:bg-slate-700 border-slate-300 dark:border-slate-600'
-                : 'bg-slate-100 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
-            }`}
-          >
-            <ChevronDown className="w-4 h-4" />
-          </div>
-        </div>
-      </button>
-
-      {/* Expandable Body */}
-      <div
-        className={`accordion-collapse-wrapper ${isExpanded ? 'is-expanded' : ''}`}
-        aria-hidden={!isExpanded}
-      >
-        <div className="accordion-collapse-inner">
-          <div className="px-4 pb-6 pt-4 sm:px-5 border-t border-slate-100 dark:border-slate-800 space-y-6">
-            {/* Top Bar: Description + Model Toggle */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <p className="text-xs text-slate-600 dark:text-slate-300">
-                Tracks your verified time progression over logged blocks, models diminishing-returns timeline to goal, and estimates YRAA XC placement.
-              </p>
-
-              <div className="flex items-center space-x-2 self-start sm:self-auto shrink-0">
-                {!projection.hasTarget && (
-                  <button
-                    type="button"
-                    onClick={onOpenSettings}
-                    className="px-3.5 py-1.5 rounded-lg bg-[#0593C6] hover:bg-[#047da8] text-white font-semibold text-xs transition-colors cursor-pointer"
-                  >
-                    Set Goal Time
-                  </button>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight transition-colors">
+                  Goal Progression & Forecast
+                </h2>
+                {progressionSummaryText && (
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums truncate">
+                    · {progressionSummaryText}
+                  </span>
                 )}
-                <button
-                  type="button"
-                  onClick={() => setShowMethodology(!showMethodology)}
-                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
-                >
-                  <Info className="w-3.5 h-3.5 text-violet-500" />
-                  <span>{showMethodology ? 'Hide Model' : 'Projection Science'}</span>
-                </button>
               </div>
             </div>
+          </div>
+
+          <div className="flex items-center space-x-2 shrink-0 ml-2">
+            <div
+              className={`p-2 rounded-lg border chevron-badge transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                isProgressionExpanded
+                  ? 'rotate-180 text-slate-900 dark:text-white bg-slate-200/80 dark:bg-slate-700 border-slate-300 dark:border-slate-600'
+                  : 'bg-slate-100 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              <ChevronDown className="w-4 h-4" />
+            </div>
+          </div>
+        </button>
+
+        <div
+          className={`accordion-collapse-wrapper ${isProgressionExpanded ? 'is-expanded' : ''}`}
+          aria-hidden={!isProgressionExpanded}
+        >
+          <div className="accordion-collapse-inner">
+            <div className="px-4 pb-6 pt-4 sm:px-5 border-t border-slate-100 dark:border-slate-800 space-y-5">
+              {/* Top Bar: Description + Model Toggle */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  Tracks your verified time progression over logged blocks and models a diminishing-returns timeline to your target.
+                </p>
+
+                <div className="flex items-center space-x-2 self-start sm:self-auto shrink-0">
+                  {!projection.hasTarget && (
+                    <button
+                      type="button"
+                      onClick={onOpenSettings}
+                      className="px-3.5 py-1.5 rounded-lg bg-[#0593C6] hover:bg-[#047da8] text-white font-semibold text-xs transition-colors cursor-pointer"
+                    >
+                      Set Goal Time
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowMethodology(!showMethodology)}
+                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
+                  >
+                    <Info className="w-3.5 h-3.5 text-violet-500" />
+                    <span>{showMethodology ? 'Hide Model' : 'Projection Science'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {showMethodology && (
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#0B1520] border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 space-y-2">
+                  <div className="font-semibold text-slate-900 dark:text-white">
+                    How Goal Progression & Forecasting Work
+                  </div>
+                  <p className="text-[11px] leading-relaxed">{projection.basisDescription}</p>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                    <strong className="text-slate-800 dark:text-slate-200">
+                      Quality-Filtered Weighted Regression:{' '}
+                    </strong>
+                    Easy recovery jogs are excluded when quality efforts (Races, Time Trials, Tempo runs) exist so slow base days never mask your speed gains. Recent workouts carry higher regression weight, blended with a pace-scaled diminishing-returns taper.
+                  </div>
+                </div>
+              )}
 
             {/* 1. PROVEN IMPROVEMENT SUMMARY & PROGRESSION TRAJECTORY */}
             {projection.hasData && (
@@ -668,7 +728,7 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
                           </g>
                         )}
 
-                        {/* Vertical "Now" divider */}
+                        {/* Vertical "Now" divider with Current marker */}
                         {chartData.hasHist && chartData.hasFuture && (
                           <g>
                             <line
@@ -685,12 +745,20 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
                               x={chartData.nowX}
                               y={chartData.H - 10}
                               textAnchor="middle"
-                              className="fill-slate-600 dark:fill-slate-300 text-[10px] font-bold"
+                              className="fill-[#0593C6] text-[10px] font-bold"
                             >
-                              Today
+                              You Today
                             </text>
                           </g>
                         )}
+                        <text
+                          x={chartData.padL + 6}
+                          y={chartData.padT + chartData.plotH - 6}
+                          textAnchor="start"
+                          className="fill-emerald-600/80 dark:fill-emerald-400/80 text-[9px] font-bold uppercase tracking-wider"
+                        >
+                          ↓ Faster Times
+                        </text>
 
                         {/* Shaded scenario band (Accelerated to Conservative) */}
                         {chartData.hasFuture && chartData.futureCoords.length >= 2 && (
@@ -892,10 +960,59 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
                 )}
               </div>
             )}
+            </div>
+          </div>
+        </div>
+      </div>
 
-            {/* 2. TRAINING SCENARIOS & MILESTONES (when goal set and in progress) */}
-            {projection.hasTarget && projection.hasData && !projection.isAchieved && (
-              <div className="space-y-4">
+      {/* CARD 2: TRAINING SCENARIOS & MILESTONES */}
+      {projection.hasTarget && projection.hasData && !projection.isAchieved && (
+        <LiquidGlassReveal>
+          <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#0F1C28] border border-slate-200/95 dark:border-slate-700/75 shadow-sm transition-colors">
+          <button
+            type="button"
+            onClick={() => setIsScenariosExpanded((prev) => !prev)}
+            className="w-full px-4 py-4 sm:px-5 sm:py-4.5 flex items-center justify-between text-left cursor-pointer group accordion-trigger select-none hover:bg-slate-50/90 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/70"
+            data-no-scale
+            aria-expanded={isScenariosExpanded}
+          >
+            <div className="flex items-center space-x-3 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-emerald-500 flex items-center justify-center shrink-0 transition-transform duration-150 group-hover:scale-105">
+                <Calendar className="w-4.5 h-4.5 stroke-[2.3]" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight transition-colors">
+                    Training Scenarios & Milestones
+                  </h2>
+                  {scenariosSummaryText && (
+                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums truncate">
+                      · {scenariosSummaryText}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2 shrink-0 ml-2">
+              <div
+                className={`p-2 rounded-lg border chevron-badge transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                  isScenariosExpanded
+                    ? 'rotate-180 text-slate-900 dark:text-white bg-slate-200/80 dark:bg-slate-700 border-slate-300 dark:border-slate-600'
+                    : 'bg-slate-100 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                <ChevronDown className="w-4 h-4" />
+              </div>
+            </div>
+          </button>
+
+          <div
+            className={`accordion-collapse-wrapper ${isScenariosExpanded ? 'is-expanded' : ''}`}
+            aria-hidden={!isScenariosExpanded}
+          >
+            <div className="accordion-collapse-inner">
+              <div className="px-4 pb-6 pt-4 sm:px-5 border-t border-slate-100 dark:border-slate-800 space-y-4">
                 {/* Scenario Selector */}
                 <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#0B1520] border border-slate-200/80 dark:border-slate-800">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
@@ -1075,10 +1192,59 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
                   </div>
                 )}
               </div>
-            )}
+            </div>
+          </div>
+          </div>
+        </LiquidGlassReveal>
+      )}
 
-            {/* 3. YRAA XC CHAMPIONSHIP PLACEMENT ESTIMATOR */}
-            <div className="pt-5 border-t border-slate-200/80 dark:border-slate-800 space-y-4">
+      {/* CARD 3: YRAA CHAMPIONSHIP PLACEMENT */}
+      <LiquidGlassReveal>
+        <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#0F1C28] border border-slate-200/95 dark:border-slate-700/75 shadow-sm transition-colors">
+        <button
+          type="button"
+          onClick={() => setIsYraaExpanded((prev) => !prev)}
+          className="w-full px-4 py-4 sm:px-5 sm:py-4.5 flex items-center justify-between text-left cursor-pointer group accordion-trigger select-none hover:bg-slate-50/90 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/70"
+          data-no-scale
+          aria-expanded={isYraaExpanded}
+        >
+          <div className="flex items-center space-x-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-amber-500 flex items-center justify-center shrink-0 transition-transform duration-150 group-hover:scale-105">
+              <Trophy className="w-4.5 h-4.5 stroke-[2.3]" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight transition-colors">
+                  YRAA Championship Placement
+                </h2>
+                {yraaSummaryText && (
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums truncate">
+                    · {yraaSummaryText}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 shrink-0 ml-2">
+            <div
+              className={`p-2 rounded-lg border chevron-badge transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                isYraaExpanded
+                  ? 'rotate-180 text-slate-900 dark:text-white bg-slate-200/80 dark:bg-slate-700 border-slate-300 dark:border-slate-600'
+                  : 'bg-slate-100 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              <ChevronDown className="w-4 h-4" />
+            </div>
+          </div>
+        </button>
+
+        <div
+          className={`accordion-collapse-wrapper ${isYraaExpanded ? 'is-expanded' : ''}`}
+          aria-hidden={!isYraaExpanded}
+        >
+          <div className="accordion-collapse-inner">
+            <div className="px-4 pb-6 pt-4 sm:px-5 border-t border-slate-100 dark:border-slate-800 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-start space-x-2.5">
                   <div className="w-8 h-8 rounded-lg bg-amber-500/12 border border-amber-500/25 text-amber-500 flex items-center justify-center shrink-0 mt-0.5">
@@ -1288,12 +1454,78 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
                           </span>
                         </div>
 
+                        {/* Fastest vs You Currently vs Goal Quick Reference Strip */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] tabular-nums">
+                          <div className="px-2.5 py-2 rounded-lg bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-2">
+                            <div>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 block">
+                                Fastest (1st Place)
+                              </span>
+                              <span className="font-extrabold text-slate-900 dark:text-white text-xs">
+                                {formatDuration(currentYraaPlacement.checkpoints.firstPlaceSec)}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400 text-right">
+                              {formatPace(
+                                currentYraaPlacement.checkpoints.firstPlaceSec /
+                                  selectedDivision.distanceKm,
+                                unit
+                              )}
+                            </span>
+                          </div>
+
+                          <div className="px-2.5 py-2 rounded-lg bg-[#0593C6]/12 border border-[#0593C6]/35 flex items-center justify-between gap-2">
+                            <div>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-[#0593C6] block">
+                                You Currently
+                              </span>
+                              <span className="font-extrabold text-slate-900 dark:text-white text-xs">
+                                {formatOrdinalPlace(todayPlace)} of {totalFinishers}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-semibold text-[#0593C6] text-right">
+                              {formatDuration(currentYraaPlacement.equivalentDivisionTimeSeconds)}
+                            </span>
+                          </div>
+
+                          {goalYraaPlacement && goalPlace !== undefined ? (
+                            <div className="col-span-2 sm:col-span-1 px-2.5 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-2">
+                              <div>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">
+                                  Your Goal Target
+                                </span>
+                                <span className="font-extrabold text-slate-900 dark:text-white text-xs">
+                                  {formatOrdinalPlace(goalPlace)} of {totalFinishers}
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 text-right">
+                                {formatDuration(goalYraaPlacement.equivalentDivisionTimeSeconds)}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="col-span-2 sm:col-span-1 px-2.5 py-2 rounded-lg bg-white dark:bg-[#0F1C28] border border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-2">
+                              <div>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                                  Slowest ({formatOrdinalPlace(totalFinishers)})
+                                </span>
+                                <span className="font-bold text-slate-700 dark:text-slate-300 text-xs">
+                                  {formatDuration(currentYraaPlacement.checkpoints.lastPlaceSec)}
+                                </span>
+                              </div>
+                              <span className="text-[10px] text-slate-400 text-right">
+                                Field end
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
                         {/* Interactive Inspect Strip for Every Place */}
                         <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0F1C28] border border-slate-200/80 dark:border-slate-800 text-[11px] tabular-nums">
                           {inspectedIdx !== null && inspectedSec !== null ? (
                             <div className="flex flex-wrap items-center justify-between w-full gap-2">
                               <span className="font-bold text-slate-900 dark:text-white">
                                 {formatOrdinalPlace(inspectedIdx + 1)} of {totalFinishers}
+                                {inspectedIdx === 0 ? ' (Fastest)' : ''}
                               </span>
                               <span className="text-slate-500 dark:text-slate-400">
                                 Top {Math.max(1, Math.round(((inspectedIdx + 1) / totalFinishers) * 100))}%
@@ -1306,11 +1538,10 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
                           ) : (
                             <div className="flex flex-wrap items-center justify-between w-full gap-2 text-slate-500 dark:text-slate-400">
                               <span>
-                                Hover or tap any bar below to inspect all {totalFinishers} individual places
+                                Hover or tap any bar below to inspect all {totalFinishers} places (left = fastest, right = slowest)
                               </span>
-                              <span className="font-semibold text-slate-700 dark:text-slate-200">
-                                You: {formatOrdinalPlace(todayPlace)} / {totalFinishers}
-                                {goalPlace ? ` → Goal: ${formatOrdinalPlace(goalPlace)}` : ''}
+                              <span className="font-semibold text-[#0593C6]">
+                                Faster than {finishersBehindToday} runners
                               </span>
                             </div>
                           )}
@@ -1318,111 +1549,300 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
 
                         {/* Every-Place SVG Field Spectrum (all N finishers from 1st to last) */}
                         <div className="w-full">
-                          <svg
-                            viewBox="0 0 600 68"
-                            className="w-full h-16 sm:h-20 select-none cursor-crosshair"
-                            role="img"
-                            aria-label={`Every place distribution from 1st to ${totalFinishers}th in ${selectedDivision.label}`}
-                            onMouseLeave={() => setHoveredRankIndex(null)}
-                          >
-                            {selectedDivision.timesSec.map((tSec, idx) => {
-                              const place = idx + 1;
-                              const minT = currentYraaPlacement.checkpoints.firstPlaceSec;
-                              const maxT = currentYraaPlacement.checkpoints.lastPlaceSec;
-                              const norm =
-                                maxT > minT ? (tSec - minT) / (maxT - minT) : 0.5;
-                              // Taller bars for faster runners on the left, tapering cleanly across every place
-                              const barHeight = Math.max(8, Math.round(52 - norm * 42));
-                              const x = (idx / Math.max(1, totalFinishers)) * 600;
-                              const w = Math.max(1.2, 600 / totalFinishers - 0.35);
-                              const y = 56 - barHeight;
+                          {(() => {
+                            const svgW = 620;
+                            const svgH = 128;
+                            const padX = 14;
+                            const plotW = svgW - padX * 2;
+                            const barBaseY = 104;
+                            const maxBarH = 48;
+                            const minBarH = 8;
 
-                              const isTodayPos = place === todayPlace;
-                              const isGoalPos = goalPlace !== undefined && place === goalPlace;
-                              const isBehindToday = place >= todayPlace;
-                              const isGainZone =
-                                goalPlace !== undefined && place >= goalPlace && place < todayPlace;
-                              const isHovered = inspectedIdx === idx;
+                            const posToX = (placeNum: number) =>
+                              padX +
+                              ((Math.min(Math.max(1, placeNum), totalFinishers) - 0.5) /
+                                Math.max(1, totalFinishers)) *
+                                plotW;
 
-                              let fill = isHovered
-                                ? '#F59E0B'
-                                : isGoalPos
-                                ? '#10B981'
-                                : isTodayPos
-                                ? '#0593C6'
-                                : isGainZone
-                                ? '#10B981'
-                                : isBehindToday
-                                ? '#0EA5E9'
-                                : '#94A3B8';
+                            const rawTodayX = posToX(todayPlace);
+                            const rawGoalX =
+                              goalPlace !== undefined ? posToX(goalPlace) : null;
 
-                              let opacity = isHovered || isTodayPos || isGoalPos
-                                ? 1
-                                : isGainZone
-                                ? 0.65
-                                : isBehindToday
-                                ? 0.55
-                                : 0.32;
+                            // Clamp badge center X so pills stay inside viewBox
+                            const clampBadgeX = (x: number, halfW: number) =>
+                              Math.max(padX + halfW, Math.min(svgW - padX - halfW, x));
 
-                              return (
-                                <g
-                                  key={place}
-                                  onMouseEnter={() => setHoveredRankIndex(idx)}
-                                  onClick={() => setHoveredRankIndex(idx)}
-                                >
-                                  <rect
-                                    x={x}
-                                    y={0}
-                                    width={Math.max(2.5, 600 / totalFinishers)}
-                                    height={64}
-                                    fill="transparent"
-                                  />
-                                  <rect
-                                    x={x}
-                                    y={y}
-                                    width={w}
-                                    height={barHeight}
-                                    rx={0.6}
-                                    fill={fill}
-                                    fillOpacity={opacity}
-                                  />
-                                </g>
-                              );
-                            })}
+                            const todayBadgeX = clampBadgeX(rawTodayX, 38);
+                            const goalBadgeX =
+                              rawGoalX !== null ? clampBadgeX(rawGoalX, 34) : null;
 
-                            {/* Goal vertical marker */}
-                            {goalPlace !== undefined && (
-                              <g>
+                            // Non-overlapping Y rows in the callout zone (y = 2..50 above bars)
+                            const firstLabelRight = padX + 80;
+                            const goalNearFirst =
+                              goalBadgeX !== null && goalBadgeX - 34 < firstLabelRight;
+                            const todayNearFirst = todayBadgeX - 38 < firstLabelRight;
+                            const todayNearGoal =
+                              goalBadgeX !== null && Math.abs(todayBadgeX - goalBadgeX) < 76;
+
+                            const goalRowY = goalNearFirst ? 21 : 3;
+                            const todayRowY =
+                              todayNearGoal && goalRowY === 21
+                                ? 38
+                                : todayNearGoal || todayNearFirst
+                                ? 21
+                                : 3;
+
+                            return (
+                              <svg
+                                viewBox={`0 0 ${svgW} ${svgH}`}
+                                className="w-full h-32 sm:h-36 select-none cursor-crosshair"
+                                role="img"
+                                aria-label={`Every place distribution from 1st fastest to ${totalFinishers}th in ${selectedDivision.label}`}
+                                onMouseLeave={() => setHoveredRankIndex(null)}
+                              >
+                                {/* Bars for all N places */}
+                                {selectedDivision.timesSec.map((tSec, idx) => {
+                                  const place = idx + 1;
+                                  const minT = currentYraaPlacement.checkpoints.firstPlaceSec;
+                                  const maxT = currentYraaPlacement.checkpoints.lastPlaceSec;
+                                  const norm =
+                                    maxT > minT ? (tSec - minT) / (maxT - minT) : 0.5;
+                                  const barHeight = Math.max(
+                                    minBarH,
+                                    Math.round(maxBarH - norm * (maxBarH - minBarH))
+                                  );
+                                  const x = padX + (idx / Math.max(1, totalFinishers)) * plotW;
+                                  const w = Math.max(1.2, plotW / totalFinishers - 0.35);
+                                  const y = barBaseY - barHeight;
+
+                                  const isFastest = place === 1;
+                                  const isTodayPos = place === todayPlace;
+                                  const isGoalPos =
+                                    goalPlace !== undefined && place === goalPlace;
+                                  const isBehindToday = place >= todayPlace;
+                                  const isGainZone =
+                                    goalPlace !== undefined &&
+                                    place >= goalPlace &&
+                                    place < todayPlace;
+                                  const isHovered = inspectedIdx === idx;
+
+                                  const fill = isHovered
+                                    ? '#F59E0B'
+                                    : isFastest
+                                    ? '#F59E0B'
+                                    : isGoalPos
+                                    ? '#10B981'
+                                    : isTodayPos
+                                    ? '#0593C6'
+                                    : isGainZone
+                                    ? '#10B981'
+                                    : isBehindToday
+                                    ? '#0EA5E9'
+                                    : '#94A3B8';
+
+                                  const opacity =
+                                    isHovered || isFastest || isTodayPos || isGoalPos
+                                      ? 1
+                                      : isGainZone
+                                      ? 0.65
+                                      : isBehindToday
+                                      ? 0.52
+                                      : 0.3;
+
+                                  return (
+                                    <g
+                                      key={place}
+                                      onMouseEnter={() => setHoveredRankIndex(idx)}
+                                      onClick={() => setHoveredRankIndex(idx)}
+                                    >
+                                      <rect
+                                        x={x}
+                                        y={38}
+                                        width={Math.max(2.5, plotW / totalFinishers)}
+                                        height={70}
+                                        fill="transparent"
+                                      />
+                                      <rect
+                                        x={x}
+                                        y={y}
+                                        width={w}
+                                        height={barHeight}
+                                        rx={0.6}
+                                        fill={fill}
+                                        fillOpacity={opacity}
+                                      />
+                                    </g>
+                                  );
+                                })}
+
+                                {/* Baseline */}
                                 <line
-                                  x1={((goalPlace - 0.5) / Math.max(1, totalFinishers)) * 600}
-                                  x2={((goalPlace - 0.5) / Math.max(1, totalFinishers)) * 600}
-                                  y1={2}
-                                  y2={62}
-                                  stroke="#10B981"
-                                  strokeWidth={2}
+                                  x1={padX}
+                                  x2={svgW - padX}
+                                  y1={barBaseY}
+                                  y2={barBaseY}
+                                  stroke="currentColor"
+                                  className="text-slate-300 dark:text-slate-700"
+                                  strokeWidth={1}
                                 />
-                              </g>
-                            )}
 
-                            {/* Today vertical marker */}
-                            <g>
-                              <line
-                                x1={((Math.min(todayPlace, totalFinishers) - 0.5) / Math.max(1, totalFinishers)) * 600}
-                                x2={((Math.min(todayPlace, totalFinishers) - 0.5) / Math.max(1, totalFinishers)) * 600}
-                                y1={2}
-                                y2={62}
-                                stroke="#0593C6"
-                                strokeWidth={2.2}
-                              />
-                            </g>
-                          </svg>
+                                {/* 1st Place (Fastest) highlight marker */}
+                                <g>
+                                  <line
+                                    x1={posToX(1)}
+                                    x2={posToX(1)}
+                                    y1={20}
+                                    y2={barBaseY}
+                                    stroke="#F59E0B"
+                                    strokeWidth={1.6}
+                                    strokeDasharray="2 2"
+                                  />
+                                  <circle
+                                    cx={posToX(1)}
+                                    cy={barBaseY - maxBarH}
+                                    r={3.2}
+                                    fill="#F59E0B"
+                                    stroke="#FFFFFF"
+                                    strokeWidth={1.2}
+                                  />
+                                  <rect
+                                    x={padX}
+                                    y={3}
+                                    width={76}
+                                    height={16}
+                                    rx={8}
+                                    fill="#F59E0B"
+                                  />
+                                  <text
+                                    x={padX + 38}
+                                    y={14}
+                                    textAnchor="middle"
+                                    fill="#FFFFFF"
+                                    fontSize={8.5}
+                                    fontWeight={800}
+                                  >
+                                    1st · FASTEST
+                                  </text>
+                                </g>
+
+                                {/* Goal vertical marker + callout pill */}
+                                {rawGoalX !== null && goalBadgeX !== null && goalPlace !== undefined && (
+                                  <g>
+                                    <line
+                                      x1={rawGoalX}
+                                      x2={rawGoalX}
+                                      y1={goalRowY + 16}
+                                      y2={barBaseY + 2}
+                                      stroke="#10B981"
+                                      strokeWidth={2}
+                                    />
+                                    <circle
+                                      cx={rawGoalX}
+                                      cy={barBaseY}
+                                      r={3.5}
+                                      fill="#10B981"
+                                      stroke="#FFFFFF"
+                                      strokeWidth={1.3}
+                                    />
+                                    <rect
+                                      x={goalBadgeX - 33}
+                                      y={goalRowY}
+                                      width={66}
+                                      height={16}
+                                      rx={8}
+                                      fill="#10B981"
+                                    />
+                                    <text
+                                      x={goalBadgeX}
+                                      y={goalRowY + 11}
+                                      textAnchor="middle"
+                                      fill="#FFFFFF"
+                                      fontSize={9}
+                                      fontWeight={700}
+                                    >
+                                      GOAL {formatOrdinalPlace(goalPlace)}
+                                    </text>
+                                  </g>
+                                )}
+
+                                {/* You Today vertical marker + prominent callout pill */}
+                                <g>
+                                  <line
+                                    x1={rawTodayX}
+                                    x2={rawTodayX}
+                                    y1={todayRowY + 17}
+                                    y2={barBaseY + 2}
+                                    stroke="#0593C6"
+                                    strokeWidth={2.4}
+                                  />
+                                  <circle
+                                    cx={rawTodayX}
+                                    cy={barBaseY}
+                                    r={4.2}
+                                    fill="#0593C6"
+                                    stroke="#FFFFFF"
+                                    strokeWidth={1.5}
+                                  />
+                                  <rect
+                                    x={todayBadgeX - 36}
+                                    y={todayRowY}
+                                    width={72}
+                                    height={17}
+                                    rx={8.5}
+                                    fill="#0593C6"
+                                  />
+                                  <text
+                                    x={todayBadgeX}
+                                    y={todayRowY + 11.5}
+                                    textAnchor="middle"
+                                    fill="#FFFFFF"
+                                    fontSize={9.5}
+                                    fontWeight={800}
+                                  >
+                                    YOU: {formatOrdinalPlace(todayPlace)}
+                                  </text>
+                                </g>
+
+                                {/* Axis Direction & Speed Labels */}
+                                <text
+                                  x={padX}
+                                  y={121}
+                                  textAnchor="start"
+                                  className="fill-amber-600 dark:fill-amber-400 text-[9.5px] font-bold tabular-nums"
+                                >
+                                  ← Fastest · 1st ({formatDuration(currentYraaPlacement.checkpoints.firstPlaceSec)})
+                                </text>
+                                <text
+                                  x={padX + plotW / 2}
+                                  y={121}
+                                  textAnchor="middle"
+                                  className="fill-slate-500 dark:fill-slate-400 text-[9px] font-semibold tabular-nums"
+                                >
+                                  Median {formatOrdinalPlace(Math.ceil(totalFinishers / 2))} (
+                                  {formatDuration(currentYraaPlacement.checkpoints.medianSec)})
+                                </text>
+                                <text
+                                  x={svgW - padX}
+                                  y={121}
+                                  textAnchor="end"
+                                  className="fill-slate-500 dark:fill-slate-400 text-[9.5px] font-semibold tabular-nums"
+                                >
+                                  {formatOrdinalPlace(totalFinishers)} ({formatDuration(currentYraaPlacement.checkpoints.lastPlaceSec)}) · Slowest →
+                                </text>
+                              </svg>
+                            );
+                          })()}
                         </div>
 
                         <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                             <span className="inline-flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                              Fastest: 1st ({formatDuration(currentYraaPlacement.checkpoints.firstPlaceSec)})
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 font-semibold text-slate-700 dark:text-slate-200">
                               <span className="w-2.5 h-2.5 rounded-full bg-[#0593C6]" />
-                              Today: {formatOrdinalPlace(todayPlace)} ({finishersBehindToday} behind you)
+                              You Currently: {formatOrdinalPlace(todayPlace)} ({finishersBehindToday} behind you)
                             </span>
                             {goalPlace !== undefined && (
                               <span className="inline-flex items-center gap-1.5">
@@ -1632,33 +2052,251 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
                 </div>
               )}
             </div>
-
-            {/* Methodology Drawer */}
-            {showMethodology && (
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#0B1520] border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 space-y-2">
-                <div className="font-semibold text-slate-900 dark:text-white">
-                  How Projection & YRAA Placement Work
-                </div>
-                <p className="text-[11px] leading-relaxed">{projection.basisDescription}</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                  <div>
-                    <strong className="text-slate-800 dark:text-slate-200 block">
-                      Quality-Filtered Weighted Regression:
-                    </strong>
-                    Easy recovery jogs are excluded when quality efforts (Races, Time Trials, Tempo runs) exist so slow base days never mask your speed gains. Recent workouts carry higher regression weight, blended with a pace-scaled diminishing-returns taper.
-                  </div>
-                  <div>
-                    <strong className="text-slate-800 dark:text-slate-200 block">
-                      YRAA Division Equivalence:
-                    </strong>
-                    Your benchmark and goal times are converted to the official race distance ({selectedDivision.distanceKm}K) for {selectedDivision.shortLabel} and ranked against the {selectedDivision.finishersCount} official finisher times from TrackDatabase meet {selectedDivision.meetCode}.
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
-      </div>
+        </div>
+      </LiquidGlassReveal>
+
+      {/* CARD 4: PREDICTOR TOOL (5K, 8K, 10K & MULTI-DISTANCE) */}
+      <LiquidGlassReveal>
+        <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#0F1C28] border border-slate-200/95 dark:border-slate-700/75 shadow-sm transition-colors">
+        <button
+          type="button"
+          onClick={() => setIsPredictorExpanded((prev) => !prev)}
+          className="w-full px-4 py-4 sm:px-5 sm:py-4.5 flex items-center justify-between text-left cursor-pointer group accordion-trigger select-none hover:bg-slate-50/90 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/70"
+          data-no-scale
+          aria-expanded={isPredictorExpanded}
+        >
+          <div className="flex items-center space-x-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-[#0593C6] flex items-center justify-center shrink-0 transition-transform duration-150 group-hover:scale-105">
+              <Gauge className="w-4.5 h-4.5 stroke-[2.3]" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight transition-colors">
+                  Predictor Tool
+                </h2>
+                {predictorSummaryText && (
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums truncate">
+                    · {predictorSummaryText}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 shrink-0 ml-2">
+            <div
+              className={`p-2 rounded-lg border chevron-badge transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                isPredictorExpanded
+                  ? 'rotate-180 text-slate-900 dark:text-white bg-slate-200/80 dark:bg-slate-700 border-slate-300 dark:border-slate-600'
+                  : 'bg-slate-100 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              <ChevronDown className="w-4 h-4" />
+            </div>
+          </div>
+        </button>
+
+        <div
+          className={`accordion-collapse-wrapper ${isPredictorExpanded ? 'is-expanded' : ''}`}
+          aria-hidden={!isPredictorExpanded}
+        >
+          <div className="accordion-collapse-inner">
+            <div className="px-4 pb-6 pt-4 sm:px-5 border-t border-slate-100 dark:border-slate-800 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  Estimates equivalent race times for 5K, 8K, 10K, and more using your PR fitness and weekly training volume.
+                </p>
+
+                {multiDistancePrediction.hasData && (
+                  <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-[#0B1520] border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-lg tabular-nums self-start sm:self-auto shrink-0">
+                    Endurance Curve: k = {multiDistancePrediction.enduranceExponent.toFixed(3)}
+                  </div>
+                )}
+              </div>
+
+              {multiDistancePrediction.hasData ? (
+                <div className="space-y-3.5">
+                  {/* Anchor PR & Volume Control Bar */}
+                  <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#0B1520] border border-slate-200/80 dark:border-slate-800 space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs tabular-nums">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          Anchor PR Baseline
+                        </span>
+                        <span className="font-bold text-slate-900 dark:text-white block truncate mt-0.5">
+                          {multiDistancePrediction.anchorLabel}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          Current Weekly Volume
+                        </span>
+                        <span className="font-bold text-slate-900 dark:text-white block mt-0.5">
+                          {unit === 'miles'
+                            ? `${(multiDistancePrediction.measuredWeeklyKm * KM_TO_MILES).toFixed(1)} mi/wk`
+                            : `${multiDistancePrediction.measuredWeeklyKm.toFixed(1)} km/wk`}{' '}
+                          <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                            ({multiDistancePrediction.measuredRunsPerWeek}/wk · long{' '}
+                            {unit === 'miles'
+                              ? `${(multiDistancePrediction.longestRecentRunKm * KM_TO_MILES).toFixed(1)} mi`
+                              : `${multiDistancePrediction.longestRecentRunKm.toFixed(1)} km`}
+                            )
+                          </span>
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          Volume Durability Tier
+                        </span>
+                        <span className="font-bold text-[#0593C6] block mt-0.5">
+                          {multiDistancePrediction.volumeTierLabel}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Interactive Training Volume Simulator */}
+                    <div className="pt-2.5 border-t border-slate-200/70 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center gap-3">
+                      <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0">
+                        <label
+                          htmlFor="predictor-volume-slider"
+                          className="text-[11px] font-semibold text-slate-700 dark:text-slate-200"
+                        >
+                          Simulate Volume:
+                        </label>
+                        <span className="text-xs font-extrabold text-[#0593C6] tabular-nums min-w-[68px]">
+                          {unit === 'miles'
+                            ? `${(multiDistancePrediction.effectiveWeeklyKm * KM_TO_MILES).toFixed(1)} mi/wk`
+                            : `${multiDistancePrediction.effectiveWeeklyKm.toFixed(1)} km/wk`}
+                        </span>
+                      </div>
+
+                      <input
+                        id="predictor-volume-slider"
+                        type="range"
+                        min={5}
+                        max={85}
+                        step={1}
+                        value={Math.min(85, Math.max(5, Math.round(multiDistancePrediction.effectiveWeeklyKm)))}
+                        onChange={(e) => setSimulatedWeeklyKm(Number(e.target.value))}
+                        className="w-full accent-[#0593C6] cursor-pointer"
+                      />
+
+                      {simulatedWeeklyKm !== null && (
+                        <button
+                          type="button"
+                          onClick={() => setSimulatedWeeklyKm(null)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white dark:bg-[#0F1C28] border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white shrink-0 cursor-pointer self-start sm:self-auto"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Reset</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {multiDistancePrediction.volumeAdjustmentSummary}
+                    </p>
+                  </div>
+
+                  {/* Standard Race Distance Prediction Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 tabular-nums">
+                    {multiDistancePrediction.predictions.map((item) => {
+                      const deltaSec = item.predictedSeconds - item.measuredPredictedSeconds;
+                      const isTargetRow = item.isGoalDistance;
+                      const isCoreExtra =
+                        item.id === '5k' || item.id === '8k' || item.id === '10k';
+
+                      const readinessColor =
+                        item.readiness === 'Race Ready'
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : item.readiness === 'Strong Base'
+                          ? 'text-[#0593C6]'
+                          : item.readiness === 'Building Base'
+                          ? 'text-violet-600 dark:text-violet-400'
+                          : 'text-slate-500 dark:text-slate-400';
+
+                      return (
+                        <div
+                          key={item.id}
+                          className={`p-3 rounded-xl border flex flex-col justify-between transition-colors ${
+                            isTargetRow
+                              ? 'bg-[#0593C6]/8 border-[#0593C6]/35'
+                              : isCoreExtra
+                              ? 'bg-slate-50 dark:bg-[#0B1520] border-slate-200 dark:border-slate-700/80'
+                              : 'bg-slate-50/70 dark:bg-[#0B1520]/80 border-slate-200/80 dark:border-slate-800'
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-center justify-between gap-1">
+                              <span
+                                className={`text-xs font-extrabold ${
+                                  isTargetRow
+                                    ? 'text-[#0593C6]'
+                                    : 'text-slate-900 dark:text-white'
+                                }`}
+                              >
+                                {item.label}
+                              </span>
+                              {isTargetRow && (
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-[#0593C6]">
+                                  Goal
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-1">
+                              {formatDuration(item.predictedSeconds)}
+                            </div>
+
+                            <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                              {formatPace(item.predictedPaceSecPerKm, unit)}
+                            </div>
+                          </div>
+
+                          <div className="mt-2.5 pt-2 border-t border-slate-200/70 dark:border-slate-800 space-y-0.5 text-[10px]">
+                            <div className={`font-bold ${readinessColor}`}>
+                              {item.readiness}
+                            </div>
+
+                            {simulatedWeeklyKm !== null && Math.abs(deltaSec) >= 1 ? (
+                              <div
+                                className={`font-semibold ${
+                                  deltaSec < 0
+                                    ? 'text-emerald-600 dark:text-emerald-400'
+                                    : 'text-slate-500 dark:text-slate-400'
+                                }`}
+                              >
+                                {deltaSec < 0
+                                  ? `${formatDuration(Math.abs(deltaSec))} faster`
+                                  : `+${formatDuration(deltaSec)} slower`}
+                              </div>
+                            ) : item.goalEquivalentSeconds ? (
+                              <div className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                                At Goal: {formatDuration(item.goalEquivalentSeconds)}
+                              </div>
+                            ) : (
+                              <div className="text-slate-400">
+                                Rec: {item.recommendedWeeklyKm} km/wk
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#0B1520] border border-slate-200/80 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300">
+                  Log or sync at least one run (or enter a current PR in Settings) to unlock volume-calibrated predictions for 3K, 5K, 6K, 8K, 10K, and Half Marathon.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        </div>
+      </LiquidGlassReveal>
     </div>
   );
 };

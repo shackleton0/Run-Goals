@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserProfile } from '../types/running';
-import { Activity, ChevronRight } from 'lucide-react';
+import { Activity, CheckCircle2, ChevronRight } from 'lucide-react';
 
 interface MotivationalGreetingProps {
   profile: UserProfile;
@@ -105,16 +105,49 @@ export const MotivationalGreeting: React.FC<MotivationalGreetingProps> = ({
           </div>
 
           {/* Microcycle Status Indicator */}
-          <div className="col-span-2 sm:col-span-1 p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/25 border border-amber-200/80 dark:border-amber-800/50 flex flex-col justify-center min-w-[126px]">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+          <div
+            className={`col-span-2 sm:col-span-1 p-3 rounded-xl border flex flex-col justify-center min-w-[126px] transition-colors ${
+              isGoalCompleted
+                ? 'bg-emerald-50/85 dark:bg-emerald-950/35 border-emerald-200/90 dark:border-emerald-700/60'
+                : weeklyRunsCount > 0
+                ? 'bg-sky-50/70 dark:bg-sky-950/30 border-sky-200/80 dark:border-sky-800/60'
+                : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200/80 dark:border-slate-700/70'
+            }`}
+          >
+            <span
+              className={`text-[10px] font-bold uppercase tracking-wider ${
+                isGoalCompleted
+                  ? 'text-emerald-700 dark:text-emerald-300'
+                  : weeklyRunsCount > 0
+                  ? 'text-sky-700 dark:text-sky-300'
+                  : 'text-slate-500 dark:text-slate-400'
+              }`}
+            >
               Session Status
             </span>
             <div className="flex items-center space-x-1.5 mt-1">
-              <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+              {isGoalCompleted && (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              )}
+              <span
+                className={`text-xs font-extrabold ${
+                  isGoalCompleted
+                    ? 'text-emerald-700 dark:text-emerald-300'
+                    : 'text-slate-900 dark:text-white'
+                }`}
+              >
                 {isGoalCompleted ? 'Quota Met' : weeklyRunsCount > 0 ? 'In Progress' : 'Pending First Run'}
               </span>
             </div>
-            <span className="text-[10px] text-slate-600 dark:text-slate-300 mt-0.5">
+            <span
+              className={`text-[10px] mt-0.5 font-medium ${
+                profile.target6kTimeSeconds
+                  ? isGoalCompleted
+                    ? 'text-emerald-700/85 dark:text-emerald-300/85'
+                    : 'text-slate-600 dark:text-slate-300'
+                  : 'text-slate-500 dark:text-slate-400'
+              }`}
+            >
               {profile.target6kTimeSeconds ? 'Target configured' : 'Awaiting 6K goal'}
             </span>
           </div>

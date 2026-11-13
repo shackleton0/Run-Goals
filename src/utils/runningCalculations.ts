@@ -3455,6 +3455,319 @@ export function estimateYraaPlacement(
   };
 }
 
+export interface DistancePredictionItem {
+  id: '3k' | '5k' | '6k' | '8k' | '10k' | 'half';
+  label: string;
+  distanceKm: number;
+  predictedSeconds: number;
+  predictedPaceSecPerKm: number;
+  measuredPredictedSeconds: number;
+  goalEquivalentSeconds: number | null;
+  exponentUsed: number;
+  recommendedWeeklyKm: number;
+  readiness: 'Race Ready' | 'Strong Base' | 'Building Base' | 'Needs Mileage';
+  isGoalDistance: boolean;
+}
+
+export interface MultiDistancePredictionResult {
+  hasData: boolean;
+  anchorLabel: string;
+  anchorDistanceKm: number;
+  anchorTimeSeconds: number;
+  measuredWeeklyKm: number;
+  effectiveWeeklyKm: number;
+  measuredRunsPerWeek: number;
+  longestRecentRunKm: number;
+  enduranceExponent: number;
+  volumeTierLabel: string;
+  volumeAdjustmentSummary: string;
+  predictions: DistancePredictionItem[];
+}
+
+function computeVolumeEnduranceExponent(weeklyKm: number): number {
+  const km = Math.max(0, weeklyKm);
+  if (km <= 15) {
+    return Number((1.105 - (km / 15) * 0.013).toFixed(4));
+  }
+  if (km <= 35) {
+    return Number((1.092 - ((km - 15) / 20) * 0.024).toFixed(4));
+  }
+  if (km <= 60) {
+    return Number((1.068 - ((km - 35) / 25) * 0.02).toFixed(4));
+  }
+  return Number(Math.max(1.04, 1.048 - ((km - 60) / 40) * 0.008).toFixed(4));
+}
+
+function predictTimeBetweenDistances(
+  sourceDistKm: number,
+  sourceSec: number,
+  targetDistKm: number,
+  weeklyKm: number,
+  longestRecentRunKm: number,
+  useLongestRunFactor: boolean
+): { predictedSec: number; exponentUsed: number } {
+  if (sourceDistKm <= 0 || sourceSec <= 0 || targetDistKm <= 0) {
+    return { predictedSec: 0, exponentUsed: 1.06 };
+  }
+  if (Math.abs(targetDistKm - sourceDistKm) < 0.05) {
+    return {
+      predictedSec: Math.round(sourceSec * (targetDistKm / sourceDistKm)),
+      exponentUsed: 1.0,
+    };
+  }
+
+  let exponent = 1.06;
+  if (targetDistKm > sourceDistKm) {
+    exponent = computeVolumeEnduranceExponent(weeklyKm);
+
+    if (useLongestRunFactor && longestRecentRunKm > 0) {
+      if (targetDistKm >= 15 && longestRecentRunKm < 12) {
+        exponent += 0.015;
+      } else if (targetDistKm >= 8 && longestRecentRunKm >= 10) {
+        exponent -= 0.003;
+      }
+    }
+
+    if (sourceDistKm < 3.5) {
+      const clampedDist = Math.max(0.4, sourceDistKm);
+      const shortDistFloor = 1.06 + ((3.5 - clampedDist) / 2.5) * 0.08;
+      exponent = Math.max(exponent, shortDistFloor);
+    }
+
+    exponent = Math.min(1.16, Math.max(1.038, exponent));
+  } else {
+    // Predicting shorter speed races (e.g., 3K/5K from 6K): keep standard Riegel speed curve
+    exponent = weeklyKm >= 45 ? 1.055 : 1.06;
+  }
+
+  const predictedSec = Math.round(sourceSec * Math.pow(targetDistKm / sourceDistKm, exponent));
+  return {
+    predictedSec,
+    exponentUsed: Number(exponent.toFixed(3)),
+  };
+}
+
+export function calculateMultiDistancePredictions(
+  runs: RunRecord[],
+  targetDistanceKm: number = 6.0,
+  currentPrSeconds?: number | null,
+  goalTimeSeconds?: number | null,
+  volumeOverrideKmPerWeek?: number | null
+): MultiDistancePredictionResult {
+  const safeTargetDist = targetDistanceKm > 0 ? targetDistanceKm : 6.0;
+  const bestSelection = selectBestTargetEquivalent(runs, safeTargetDist);
+
+  // Determine the cleanest PR anchor (prefer explicit PR or matching qualifying run)
+  let anchorDistanceKm = safeTargetDist;
+  let anchorTimeSeconds = 0;
+  let anchorLabel = '';
+
+  const basisRun = bestSelection.basisRun;
+  if (
+    basisRun &&
+    basisRun.distanceKm > 0 &&
+    basisRun.durationSeconds > 0 &&
+    (!currentPrSeconds ||
+      currentPrSeconds <= 0 ||
+      (bestSelection.bestSeconds !== undefined &&
+        Math.abs(bestSelection.bestSeconds - currentPrSeconds) <= 3) ||
+      (bestSelection.bestSeconds !== undefined && bestSelection.bestSeconds < currentPrSeconds))
+  ) {
+    anchorDistanceKm = basisRun.distanceKm;
+    anchorTimeSeconds = basisRun.durationSeconds;
+    anchorLabel = `${basisRun.title || 'Best Effort'} (${basisRun.distanceKm.toFixed(1)}K in ${formatDuration(
+      basisRun.durationSeconds
+    )})`;
+  } else if (currentPrSeconds && currentPrSeconds > 0) {
+    anchorDistanceKm = safeTargetDist;
+    anchorTimeSeconds = Math.round(currentPrSeconds);
+    anchorLabel = `${safeTargetDist.toFixed(1)}K PR (${formatDuration(anchorTimeSeconds)})`;
+  } else if (basisRun && basisRun.distanceKm > 0 && basisRun.durationSeconds > 0) {
+    anchorDistanceKm = basisRun.distanceKm;
+    anchorTimeSeconds = basisRun.durationSeconds;
+    anchorLabel = `${basisRun.title || 'Best Effort'} (${basisRun.distanceKm.toFixed(1)}K in ${formatDuration(
+      basisRun.durationSeconds
+    )})`;
+  }
+
+  // Compute recent 28-day training volume & longest run
+  const datedRuns = [...runs]
+    .map((r) => ({ run: r, ts: parseDateSafe(r.date).getTime() }))
+    .filter((x) => !isNaN(x.ts) && x.run.distanceKm > 0)
+    .sort((a, b) => a.ts - b.ts);
+
+  let measuredWeeklyKm = 0;
+  let measuredRunsPerWeek = 0;
+  let longestRecentRunKm = 0;
+
+  if (datedRuns.length > 0) {
+    const earliestTs = datedRuns[0].ts;
+    const latestTs = datedRuns[datedRuns.length - 1].ts;
+    const anchorTs = Math.max(Date.now(), latestTs);
+    const recent28d = datedRuns.filter((x) => anchorTs - x.ts <= 28 * 86400_000);
+    const recent35d = datedRuns.filter((x) => anchorTs - x.ts <= 35 * 86400_000);
+
+    const activePool = recent28d.length > 0 ? recent28d : datedRuns.slice(-6);
+    const totalKm = activePool.reduce((sum, x) => sum + (x.run.distanceKm || 0), 0);
+    const spanDays = Math.max(1, (anchorTs - earliestTs) / 86400_000);
+    const activeWindowWeeks =
+      recent28d.length > 0
+        ? spanDays >= 21
+          ? 4
+          : Math.max(1, Math.min(4, Math.ceil(spanDays / 7)))
+        : Math.max(1, Math.ceil((activePool[activePool.length - 1].ts - activePool[0].ts) / (7 * 86400_000)));
+
+    measuredWeeklyKm = Math.round((totalKm / activeWindowWeeks) * 10) / 10;
+    measuredRunsPerWeek = Math.round((activePool.length / activeWindowWeeks) * 10) / 10;
+
+    const longPool = recent35d.length > 0 ? recent35d : datedRuns;
+    longestRecentRunKm = Math.round(
+      Math.max(...longPool.map((x) => x.run.distanceKm || 0)) * 10
+    ) / 10;
+  }
+
+  const hasOverride =
+    volumeOverrideKmPerWeek !== null &&
+    volumeOverrideKmPerWeek !== undefined &&
+    !isNaN(volumeOverrideKmPerWeek);
+  const effectiveWeeklyKm = hasOverride
+    ? Math.max(0, Math.round(volumeOverrideKmPerWeek * 10) / 10)
+    : measuredWeeklyKm;
+
+  const enduranceExponent = computeVolumeEnduranceExponent(effectiveWeeklyKm);
+
+  let volumeTierLabel = 'Building Base (<20 km/wk)';
+  if (effectiveWeeklyKm >= 55) {
+    volumeTierLabel = 'High Aerobic Volume (55+ km/wk)';
+  } else if (effectiveWeeklyKm >= 38) {
+    volumeTierLabel = 'Strong XC/Road Volume (38–54 km/wk)';
+  } else if (effectiveWeeklyKm >= 20) {
+    volumeTierLabel = 'Moderate Volume (20–37 km/wk)';
+  }
+
+  let volumeAdjustmentSummary = '';
+  if (effectiveWeeklyKm >= 40) {
+    volumeAdjustmentSummary =
+      'High weekly mileage lowers your fatigue exponent, protecting pace over 8K, 10K, and Half Marathon distances.';
+  } else if (effectiveWeeklyKm >= 22) {
+    volumeAdjustmentSummary =
+      'Moderate weekly volume tracks standard Riegel scaling for 5K–6K with mild late-race drift at 10K+.';
+  } else {
+    volumeAdjustmentSummary =
+      'Lower recent weekly mileage increases aerobic fade on 8K–21.1K predictions—raising weekly volume will tighten longer race times.';
+  }
+
+  if (!anchorTimeSeconds || anchorTimeSeconds <= 0) {
+    return {
+      hasData: false,
+      anchorLabel: '',
+      anchorDistanceKm: safeTargetDist,
+      anchorTimeSeconds: 0,
+      measuredWeeklyKm,
+      effectiveWeeklyKm,
+      measuredRunsPerWeek,
+      longestRecentRunKm,
+      enduranceExponent,
+      volumeTierLabel,
+      volumeAdjustmentSummary,
+      predictions: [],
+    };
+  }
+
+  const normalizedGoalSec =
+    goalTimeSeconds && goalTimeSeconds > 0
+      ? goalTimeSeconds < 600
+        ? Math.round(goalTimeSeconds * safeTargetDist)
+        : Math.round(goalTimeSeconds)
+      : null;
+
+  const targetDistances: Array<{
+    id: DistancePredictionItem['id'];
+    label: string;
+    distanceKm: number;
+    recommendedWeeklyKm: number;
+  }> = [
+    { id: '3k', label: '3K', distanceKm: 3.0, recommendedWeeklyKm: 15 },
+    { id: '5k', label: '5K', distanceKm: 5.0, recommendedWeeklyKm: 22 },
+    { id: '6k', label: '6K', distanceKm: 6.0, recommendedWeeklyKm: 28 },
+    { id: '8k', label: '8K', distanceKm: 8.0, recommendedWeeklyKm: 36 },
+    { id: '10k', label: '10K', distanceKm: 10.0, recommendedWeeklyKm: 42 },
+    { id: 'half', label: 'Half (21.1K)', distanceKm: 21.1, recommendedWeeklyKm: 58 },
+  ];
+
+  const predictions: DistancePredictionItem[] = targetDistances.map((item) => {
+    const sim = predictTimeBetweenDistances(
+      anchorDistanceKm,
+      anchorTimeSeconds,
+      item.distanceKm,
+      effectiveWeeklyKm,
+      longestRecentRunKm,
+      !hasOverride
+    );
+
+    const measuredSim = predictTimeBetweenDistances(
+      anchorDistanceKm,
+      anchorTimeSeconds,
+      item.distanceKm,
+      measuredWeeklyKm,
+      longestRecentRunKm,
+      true
+    );
+
+    const goalSim =
+      normalizedGoalSec !== null
+        ? predictTimeBetweenDistances(
+            safeTargetDist,
+            normalizedGoalSec,
+            item.distanceKm,
+            effectiveWeeklyKm,
+            longestRecentRunKm,
+            !hasOverride
+          ).predictedSec
+        : null;
+
+    const volRatio = effectiveWeeklyKm / Math.max(1, item.recommendedWeeklyKm);
+    let readiness: DistancePredictionItem['readiness'] = 'Needs Mileage';
+    if (volRatio >= 1.05) {
+      readiness = 'Race Ready';
+    } else if (volRatio >= 0.78) {
+      readiness = 'Strong Base';
+    } else if (volRatio >= 0.5) {
+      readiness = 'Building Base';
+    }
+
+    return {
+      id: item.id,
+      label: item.label,
+      distanceKm: item.distanceKm,
+      predictedSeconds: sim.predictedSec,
+      predictedPaceSecPerKm: Math.round(sim.predictedSec / item.distanceKm),
+      measuredPredictedSeconds: measuredSim.predictedSec,
+      goalEquivalentSeconds: goalSim,
+      exponentUsed: sim.exponentUsed,
+      recommendedWeeklyKm: item.recommendedWeeklyKm,
+      readiness,
+      isGoalDistance: Math.abs(item.distanceKm - safeTargetDist) < 0.15,
+    };
+  });
+
+  return {
+    hasData: true,
+    anchorLabel,
+    anchorDistanceKm,
+    anchorTimeSeconds,
+    measuredWeeklyKm,
+    effectiveWeeklyKm,
+    measuredRunsPerWeek,
+    longestRecentRunKm,
+    enduranceExponent,
+    volumeTierLabel,
+    volumeAdjustmentSummary,
+    predictions,
+  };
+}
+
+
 
 
 
