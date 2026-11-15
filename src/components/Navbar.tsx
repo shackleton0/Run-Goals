@@ -17,6 +17,7 @@ import {
   FlaskConical,
   Trash2,
   Shield,
+  Cloud,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -24,6 +25,7 @@ interface NavbarProps {
   profile: UserProfile;
   adherence: AdherenceSummary;
   best6kSec?: number;
+  runsCount?: number;
   theme: 'dark' | 'light';
   isGuest?: boolean;
   isAdmin?: boolean;
@@ -47,6 +49,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   profile,
   adherence,
   best6kSec,
+  runsCount = 0,
   theme,
   isGuest,
   isAdmin = false,
@@ -84,12 +87,12 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header className="sticky top-0 z-40 bg-white dark:bg-[#09121B] border-b border-slate-200 dark:border-slate-800 shadow-xs transition-colors">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="flex items-center justify-between h-16 gap-4">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6">
+        <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
           {/* Brand Identity */}
-          <div className="flex items-center space-x-3 shrink-0">
-            <div className="w-9 h-9 rounded-xl bg-[#0593C6] text-[#FCFFFF] flex items-center justify-center font-bold shadow-xs">
-              <Activity className="w-5 h-5 stroke-[2.5]" />
+          <div className="flex items-center space-x-2.5 sm:space-x-3 shrink-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#0593C6] text-[#FCFFFF] flex items-center justify-center font-bold shadow-xs">
+              <Activity className="w-4.5 h-4.5 sm:w-5 sm:h-5 stroke-[2.5]" />
             </div>
             <span className="font-extrabold text-base sm:text-lg tracking-tight text-slate-900 dark:text-white uppercase font-sans whitespace-nowrap">
               RUNGOALS
@@ -97,9 +100,9 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Right Action Controls */}
-          <div className="flex items-center space-x-2.5 shrink-0">
-            {/* Beta Badge + Version Popover */}
-            <div className="relative" ref={betaRef}>
+          <div className="flex items-center space-x-2 sm:space-x-2.5 shrink-0">
+            {/* Beta Badge + Version Popover (Desktop header only; moved to dropdown on mobile) */}
+            <div className="relative hidden sm:block" ref={betaRef}>
               <button
                 type="button"
                 onClick={() => setIsBetaVersionOpen((prev) => !prev)}
@@ -136,24 +139,24 @@ export const Navbar: React.FC<NavbarProps> = ({
               )}
             </div>
 
-            {/* Admin Panel Action (exclusively visible for eskin.adam@gmail.com) */}
+            {/* Admin Panel Action (Desktop header only; moved to dropdown on mobile, exclusively for eskin.adam@gmail.com) */}
             {isAdmin && onOpenAdmin && (
               <button
                 type="button"
                 onClick={onOpenAdmin}
-                className="flex items-center space-x-1.5 px-3 py-2 min-h-[38px] rounded-xl text-xs font-bold bg-violet-500/15 hover:bg-violet-500/25 active:scale-[0.96] text-violet-700 dark:text-violet-300 border border-violet-500/35 transition-all cursor-pointer shadow-xs"
+                className="hidden sm:flex items-center space-x-1.5 px-3 py-2 min-h-[38px] rounded-xl text-xs font-bold bg-violet-500/15 hover:bg-violet-500/25 active:scale-[0.96] text-violet-700 dark:text-violet-300 border border-violet-500/35 transition-all cursor-pointer shadow-xs"
                 aria-label="Open Admin Console"
                 title="Admin Console (Passcode Protected)"
               >
                 <Shield className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Admin</span>
+                <span>Admin</span>
               </button>
             )}
 
             {/* Sync Data Action */}
             <button
               onClick={onOpenGarminSync}
-              className="flex items-center space-x-1.5 px-3.5 py-2 min-h-[40px] rounded-xl text-xs font-bold bg-[#0593C6] hover:bg-[#047ea8] active:scale-[0.96] text-white transition-all cursor-pointer shadow-sm"
+              className="flex items-center space-x-1.5 px-3 sm:px-3.5 py-2 min-h-[40px] rounded-xl text-xs font-bold bg-[#0593C6] hover:bg-[#047ea8] active:scale-[0.96] text-white transition-all cursor-pointer shadow-sm"
               aria-label="Sync Data"
             >
               <UploadCloud className="w-3.5 h-3.5" />
@@ -165,7 +168,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className={`flex items-center space-x-2 px-3.5 py-2 min-h-[40px] rounded-xl text-xs font-bold border transition-all cursor-pointer active:scale-[0.96] ${
+                className={`flex items-center space-x-1.5 sm:space-x-2 px-3 sm:px-3.5 py-2 min-h-[40px] rounded-xl text-xs font-bold border transition-all cursor-pointer active:scale-[0.96] ${
                   isDropdownOpen
                     ? 'bg-sky-50 dark:bg-sky-950/60 border-[#0EA5E9] text-slate-900 dark:text-white shadow-sm'
                     : 'bg-slate-50 hover:bg-slate-100 dark:bg-[#132232] dark:hover:bg-[#182B3E] text-slate-800 dark:text-slate-100 border-slate-300 dark:border-slate-700'
@@ -192,12 +195,44 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               {/* Dropdown Popover with snappy 150ms enter/exit transition */}
               <div
-                className={`absolute right-0 mt-2 w-64 rounded-xl bg-white dark:bg-[#0F1C28] border border-slate-200 dark:border-slate-700 shadow-2xl py-1.5 z-50 text-xs origin-top-right transition-all duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                className={`absolute right-0 mt-2 w-[min(19.5rem,calc(100vw-1.25rem))] sm:w-64 max-h-[calc(100vh-4.5rem)] overflow-y-auto rounded-xl bg-white dark:bg-[#0F1C28] border border-slate-200 dark:border-slate-700 shadow-2xl py-1.5 z-50 text-xs origin-top-right transition-all duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                   isDropdownOpen
                     ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto visible'
                     : 'opacity-0 scale-95 -translate-y-1.5 pointer-events-none invisible'
                 }`}
               >
+                {/* Mobile-only Cloud / Guest Session Status Banner inside Dropdown */}
+                <div className="sm:hidden px-3 py-2 mx-1.5 mb-1 rounded-lg bg-slate-50 dark:bg-[#09121B] border border-slate-200/80 dark:border-slate-800 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    {user ? (
+                      <span className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-[#0593C6] min-w-0">
+                        <Cloud className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">Cloud Synced</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center space-x-1.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        <FlaskConical className="w-3.5 h-3.5 shrink-0" />
+                        <span>{isGuest ? 'Guest Mode (Local)' : 'Local Session'}</span>
+                      </span>
+                    )}
+                    <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 tabular-nums shrink-0">
+                      {runsCount} {runsCount === 1 ? 'workout' : 'workouts'}
+                    </span>
+                  </div>
+                  {isGuest && !user && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsDropdownOpen(false);
+                        onSignIn();
+                      }}
+                      className="text-[11px] font-bold text-[#0593C6] hover:underline cursor-pointer"
+                    >
+                      Sign in with Google for cloud sync →
+                    </button>
+                  )}
+                </div>
+
                 {/* Tool Actions */}
                 <div className="px-1.5 py-1 space-y-0.5">
                   {/* Log Run in Dropdown Menu */}
@@ -336,6 +371,26 @@ export const Navbar: React.FC<NavbarProps> = ({
                     ) : null}
                   </div>
 
+                    {/* Mobile-only Admin Console Option (exclusively for eskin.adam@gmail.com) */}
+                    {isAdmin && onOpenAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsDropdownOpen(false);
+                          onOpenAdmin();
+                        }}
+                        className="sm:hidden w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-950/30 transition-colors text-left cursor-pointer"
+                      >
+                        <div className="w-6 h-6 rounded-md bg-violet-500/15 text-violet-600 dark:text-violet-300 flex items-center justify-center">
+                          <Shield className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold">Admin Console</div>
+                          <div className="text-[10px] text-neutral-500 truncate">Passcode protected user telemetry</div>
+                        </div>
+                      </button>
+                    )}
+
                   {/* Preferences: Theme Toggle */}
                   <div className="border-t border-neutral-200 dark:border-neutral-800 my-1 px-1.5 pt-1">
                     <button
@@ -402,6 +457,22 @@ export const Navbar: React.FC<NavbarProps> = ({
                         )}
                       </div>
                     )}
+                  </div>
+
+                  {/* Mobile-only Beta Info & Feedback */}
+                  <div className="sm:hidden border-t border-neutral-200 dark:border-neutral-800 mt-1 px-3 py-2 bg-orange-500/5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center space-x-1.5 font-extrabold text-[11px] uppercase tracking-wider text-orange-600 dark:text-orange-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                        <span>Beta v1.3</span>
+                      </span>
+                      <a
+                        href="mailto:lootah07070@gmail.com"
+                        className="text-[10px] font-semibold text-orange-600 dark:text-orange-400 hover:underline truncate"
+                      >
+                        Send Feedback
+                      </a>
+                    </div>
                   </div>
                 </div>
             </div>

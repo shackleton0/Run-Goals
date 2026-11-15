@@ -975,7 +975,7 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
                 <ChevronLeft className="w-4 h-4" />
               </button>
 
-              <div className="min-w-[150px] text-center">
+              <div className="min-w-0 flex-1 sm:flex-none sm:min-w-[150px] text-center">
                 <span className="text-sm font-bold text-neutral-900 dark:text-white">
                   {monthlyAnalysis.monthTitle}
                 </span>
@@ -1119,7 +1119,7 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
 
           {/* Week-by-Week Consistency Cards */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
               <h3 className="text-xs font-bold text-neutral-900 dark:text-white uppercase tracking-wider">
                 Week-by-Week Training Breakdown ({monthlyAnalysis.monthName})
               </h3>

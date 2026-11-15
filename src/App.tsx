@@ -42,7 +42,7 @@ import { GarminSyncModal } from './components/GarminSyncModal';
 import { DuplicateRunsModal } from './components/DuplicateRunsModal';
 import { AiExportModal } from './components/AiExportModal';
 import { AddRunModal } from './components/AddRunModal';
-import { GoalSettingsModal } from './components/GoalSettingsModal';
+import { GoalSettingsModal, SettingsSection } from './components/GoalSettingsModal';
 import { ShareProgressModal } from './components/ShareProgressModal';
 import { EmptyGarminState } from './components/EmptyGarminState';
 import { WatchTelemetrySection } from './components/WatchTelemetrySection';
@@ -167,6 +167,11 @@ export default function App() {
     setAddRunPrefill(null);
   };
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsInitialSection, setSettingsInitialSection] = useState<SettingsSection>('root');
+  const openSettings = (section: SettingsSection = 'root') => {
+    setSettingsInitialSection(section);
+    setIsSettingsOpen(true);
+  };
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [isAccountSetupOpen, setIsAccountSetupOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
@@ -506,9 +511,13 @@ export default function App() {
   };
 
   const handleSaveProfile = async (updatedProfile: UserProfile) => {
-    setProfile(updatedProfile);
+    const normalized: UserProfile = { ...updatedProfile };
+    if (!normalized.targetGoalDate || !normalized.targetGoalDate.trim()) {
+      delete normalized.targetGoalDate;
+    }
+    setProfile(normalized);
     if (user) {
-      await saveUserProfile(updatedProfile);
+      await saveUserProfile(normalized);
     }
   };
 
@@ -627,13 +636,14 @@ export default function App() {
 
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
-      <div className="relative min-h-screen bg-[#ECF3F8] dark:bg-[#070E16] text-slate-900 dark:text-white flex flex-col font-sans transition-colors selection:bg-[#0EA5E9] selection:text-white">
+      <div className="relative min-h-screen overflow-x-hidden bg-[#ECF3F8] dark:bg-[#070E16] text-slate-900 dark:text-white flex flex-col font-sans transition-colors selection:bg-[#0EA5E9] selection:text-white">
         {/* Top Navigation */}
         <Navbar
           user={user}
           profile={profile}
           adherence={adherence}
           best6kSec={best6kSec}
+          runsCount={runs.length}
           theme={theme}
           isGuest={isGuest}
           isAdmin={isAdmin}
@@ -643,7 +653,7 @@ export default function App() {
           onOpenGarminSync={handleOpenGarminSync}
           onOpenAiExport={() => setIsAiExportOpen(true)}
           onOpenAddRun={() => handleOpenAddRunWithPrefill()}
-          onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenSettings={() => openSettings('root')}
           onOpenShare={() => setIsShareOpen(true)}
           onOpenAdmin={() => setIsAdminOpen(true)}
           onLoadPlaceholderData={handleLoadPlaceholderData}
@@ -652,8 +662,8 @@ export default function App() {
           onSignOut={handleSignOut}
         />
 
-        {/* Cloud / Guest Status Banner */}
-        <div className="bg-white dark:bg-[#0D1823] border-b border-slate-200 dark:border-slate-800 px-4 py-2 text-xs text-slate-600 dark:text-slate-300">
+        {/* Cloud / Guest Status Banner (Desktop only; shown inside Menu dropdown on mobile) */}
+        <div className="hidden sm:block bg-white dark:bg-[#0D1823] border-b border-slate-200 dark:border-slate-800 px-4 py-2 text-xs text-slate-600 dark:text-slate-300">
           <div className="max-w-6xl mx-auto flex items-center justify-between">
             <div className="flex items-center space-x-2">
               {user ? (
@@ -697,9 +707,9 @@ export default function App() {
           </div>
         </div>
 
-        {/* Beta & Testing Warning Banner (Top of App) */}
+        {/* Beta & Testing Warning Banner (Desktop only; moved into Menu dropdown on mobile) */}
         {showBetaBanner && (
-          <div className="relative z-10 bg-amber-500/10 dark:bg-amber-500/10 border-b border-amber-500/25 px-4 py-2 text-xs text-amber-950 dark:text-amber-100">
+          <div className="hidden sm:block relative z-10 bg-amber-500/10 dark:bg-amber-500/10 border-b border-amber-500/25 px-4 py-2 text-xs text-amber-950 dark:text-amber-100">
             <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 min-w-0">
                 <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
@@ -792,14 +802,14 @@ export default function App() {
         )}
 
         {/* Main Dashboard */}
-        <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-5">
+        <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-5">
           {/* Dynamic Motivational Greeting with User's Name */}
           <MotivationalGreeting
             profile={profile}
             weeklyRunsCount={adherence.currentWeekRuns}
             weeklyGoal={adherence.weeklyGoal}
             streakWeeks={adherence.currentStreakWeeks}
-            onOpenSettings={() => setIsSettingsOpen(true)}
+            onOpenSettings={() => openSettings('profile')}
           />
 
           {/* Placeholder Preview Bar */}
@@ -822,7 +832,7 @@ export default function App() {
           )}
 
           {runs.length === 0 ? (
-            <div className="space-y-5">
+            <div className="space-y-4 sm:space-y-5">
               <WeeklyAdherenceCard
                 weeklyStats={weeklyStats}
                 adherence={adherence}
@@ -838,7 +848,7 @@ export default function App() {
                 onUpdateWeeklyDistanceGoal={(newKm) =>
                   handleSaveProfile({ ...profile, weeklyDistanceGoalKm: newKm })
                 }
-                onOpenSettings={() => setIsSettingsOpen(true)}
+                onOpenSettings={() => openSettings('weekly')}
               />
               <EmptyGarminState
                 unit={profile.unitPreference}
@@ -846,20 +856,21 @@ export default function App() {
                 onOpenGarminSync={handleOpenGarminSync}
                 onOpenGarminSyncWithRuns={handleOpenGarminSyncWithRuns}
                 onOpenAddRun={() => handleOpenAddRunWithPrefill()}
-                onOpenSettings={() => setIsSettingsOpen(true)}
+                onOpenSettings={() => openSettings('root')}
                 onOpenSetup={() => setIsAccountSetupOpen(true)}
                 onLoadPlaceholderData={handleLoadPlaceholderData}
               />
             </div>
           ) : (
-            <div className="space-y-5">
+            <div className="space-y-4 sm:space-y-5">
               {/* 1. TARGET BENCHMARK (Target Distance, Pace & Current Best) */}
               <GoalBanner
                 profile={profile}
                 adherence={adherence}
                 best6kSec={best6kSec}
                 isShortDistanceEstimate={bestTargetSelection.isShortDistanceEstimate}
-                onEditGoal={() => setIsSettingsOpen(true)}
+                onEditGoal={() => openSettings('race')}
+                onEditRaceDay={() => openSettings('race')}
                 onShare={() => setIsShareOpen(true)}
               />
 
@@ -869,7 +880,7 @@ export default function App() {
                 profile={profile}
                 adherence={adherence}
                 best6kSec={best6kSec}
-                onOpenSettings={() => setIsSettingsOpen(true)}
+                onOpenSettings={() => openSettings('race')}
                 onSaveProfile={handleSaveProfile}
               />
 
@@ -1006,6 +1017,7 @@ export default function App() {
           theme={theme}
           onToggleTheme={toggleTheme}
           onOpenSetupWizard={() => setIsAccountSetupOpen(true)}
+          initialSection={settingsInitialSection}
         />
 
         <ShareProgressModal

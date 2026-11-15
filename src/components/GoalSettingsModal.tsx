@@ -14,6 +14,7 @@ import {
   getSuggestedWeeklySchedule,
   inferDefaultYraaDivision,
   computeTargetGoalDate,
+  calculateRaceCountdown,
 } from '../utils/runningCalculations';
 import {
   X,
@@ -31,9 +32,10 @@ import {
   Minus,
   Plus,
   Sparkles,
+  Clock,
 } from 'lucide-react';
 
-type SettingsSection = 'root' | 'profile' | 'race' | 'weekly' | 'units';
+export type SettingsSection = 'root' | 'profile' | 'race' | 'weekly' | 'units';
 
 interface GoalSettingsModalProps {
   isOpen: boolean;
@@ -43,6 +45,7 @@ interface GoalSettingsModalProps {
   theme?: 'dark' | 'light';
   onToggleTheme?: () => void;
   onOpenSetupWizard?: () => void;
+  initialSection?: SettingsSection;
 }
 
 const DISTANCE_PRESETS = [
@@ -74,14 +77,17 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
   theme,
   onToggleTheme,
   onOpenSetupWizard,
+  initialSection = 'root',
 }) => {
-  const [activeSection, setActiveSection] = useState<SettingsSection>('root');
+  const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection);
   const [showSchedulePreview, setShowSchedulePreview] = useState(false);
 
   const [selectedPreset, setSelectedPreset] = useState<string>('6K');
   const [customDistanceStr, setCustomDistanceStr] = useState<string>('6');
   const [targetTimeStr, setTargetTimeStr] = useState<string>('');
   const [goalTimeframeWeeks, setGoalTimeframeWeeks] = useState<number>(12);
+  const [hasRaceDay, setHasRaceDay] = useState<boolean>(false);
+  const [raceDateStr, setRaceDateStr] = useState<string>('');
   const [weeklyRunGoal, setWeeklyRunGoal] = useState<number>(3);
   const [weeklyDistGoalStr, setWeeklyDistGoalStr] = useState<string>('');
   const [unitPreference, setUnitPreference] = useState<'km' | 'miles'>('km');
@@ -96,7 +102,7 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
   // Re-sync draft state cleanly each time the modal opens
   useEffect(() => {
     if (!isOpen) return;
-    setActiveSection('root');
+    setActiveSection(initialSection);
     setShowSchedulePreview(false);
 
     const unit = profile.unitPreference || 'km';
@@ -116,6 +122,9 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
       profile.target6kTimeSeconds ? formatDuration(profile.target6kTimeSeconds) : ''
     );
     setGoalTimeframeWeeks(profile.goalTimeframeWeeks || 12);
+    const savedRaceDate = profile.targetGoalDate?.trim() || '';
+    setHasRaceDay(Boolean(savedRaceDate));
+    setRaceDateStr(savedRaceDate);
     setWeeklyRunGoal(profile.weeklyRunGoal || 3);
     setWeeklyDistGoalStr(
       profile.weeklyDistanceGoalKm
@@ -135,7 +144,7 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
       setHrMode('auto');
       setMaxHrStr('195');
     }
-  }, [isOpen, profile]);
+  }, [isOpen, profile, initialSection]);
 
   // Escape navigates back up the hierarchy before closing
   useEffect(() => {
@@ -225,6 +234,9 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
           ).toFixed(1)} ${unitPreference} Goal`
         : presetObj?.name || `${effectiveDistKm}K Goal`;
 
+    const resolvedRaceDate =
+      hasRaceDay && raceDateStr.trim() ? raceDateStr.trim() : undefined;
+
     onSaveProfile({
       ...profile,
       targetDistanceKm: Number(effectiveDistKm.toFixed(3)),
@@ -233,7 +245,7 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
         parsedTargetSec && parsedTargetSec > 0 ? parsedTargetSec : undefined,
       hasCustomTarget: Boolean(parsedTargetSec && parsedTargetSec > 0),
       goalTimeframeWeeks,
-      targetGoalDate: computeTargetGoalDate(goalTimeframeWeeks),
+      targetGoalDate: resolvedRaceDate,
       weeklyRunGoal: Number(weeklyRunGoal) || 3,
       weeklyDistanceGoalKm: weeklyDistanceGoalKm
         ? Number(weeklyDistanceGoalKm.toFixed(2))
@@ -257,6 +269,11 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
         : formatDuration(parsedTargetSec)
       : 'No time set';
 
+  const raceDatePreview =
+    hasRaceDay && raceDateStr.trim()
+      ? calculateRaceCountdown(raceDateStr.trim())
+      : null;
+
   const raceSummary = `${
     selectedPreset === 'Custom'
       ? `${(unitPreference === 'miles'
@@ -264,7 +281,7 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
           : effectiveDistKm
         ).toFixed(1)} ${unitPreference}`
       : selectedPreset
-  } · ${targetTimeSummary}`;
+  } · ${targetTimeSummary}${raceDatePreview ? ` · ${raceDatePreview.shortDate}` : ''}`;
 
   const weeklySummary = weeklyDistGoalStr.trim()
     ? `${weeklyRunGoal} runs · ${weeklyDistGoalStr} ${unitPreference}`
@@ -313,11 +330,16 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
     const hrChanged = parsedHr !== profile.maxHeartRate;
     const timeframeChanged =
       goalTimeframeWeeks !== (profile.goalTimeframeWeeks || 12);
+    const nextRaceDate =
+      hasRaceDay && raceDateStr.trim() ? raceDateStr.trim() : undefined;
+    const raceDateChanged =
+      nextRaceDate !== (profile.targetGoalDate?.trim() || undefined);
 
     return (
       distChanged ||
       targetSecChanged ||
       timeframeChanged ||
+      raceDateChanged ||
       weeklyRunsChanged ||
       weeklyKmChanged ||
       unitChanged ||
@@ -330,14 +352,14 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-950/70 overflow-y-auto"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="relative w-full max-w-lg rounded-2xl bg-white dark:bg-[#0D1620] border border-slate-200/90 dark:border-slate-800 shadow-2xl overflow-hidden my-8">
+      <div className="relative w-full max-w-lg rounded-2xl bg-white dark:bg-[#0D1620] border border-slate-200/90 dark:border-slate-800 shadow-2xl overflow-hidden my-4 sm:my-8">
         {/* Sleek Top Navigation Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800/80">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 dark:border-slate-800/80">
           <div className="min-w-0">
             {activeSection !== 'root' ? (
               <div className="flex items-center space-x-2">
@@ -377,7 +399,7 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
         </div>
 
         <form onSubmit={handleSave}>
-          <div className="px-6 py-5 max-h-[68vh] overflow-y-auto">
+          <div className="px-4 sm:px-6 py-4 sm:py-5 max-h-[70vh] overflow-y-auto">
             {/* LEVEL 1: CLEAN UNIFIED HIERARCHY OVERVIEW */}
             {activeSection === 'root' && (
               <div className="space-y-6">
@@ -773,6 +795,86 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
                     <span className="text-xs text-slate-500">weeks to reach target</span>
                   </div>
                 </div>
+
+                {/* Optional Target Race Day for Countdown Timer */}
+                <div className="pt-5 border-t border-slate-100 dark:border-slate-800/80 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center space-x-1.5">
+                        <Clock className="w-3.5 h-3.5 text-[#0593C6]" />
+                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          Target Race Day (Optional)
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        Displays a countdown timer on your Goal Banner until race day.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={hasRaceDay}
+                      onClick={() => {
+                        const next = !hasRaceDay;
+                        setHasRaceDay(next);
+                        if (next && !raceDateStr) {
+                          setRaceDateStr(computeTargetGoalDate(goalTimeframeWeeks));
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer ${
+                        hasRaceDay
+                          ? 'bg-[#0593C6]'
+                          : 'bg-slate-200 dark:bg-slate-700'
+                      }`}
+                      aria-label="Toggle target race day"
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
+                          hasRaceDay ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {hasRaceDay && (
+                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#09121B] border border-slate-200 dark:border-slate-800 space-y-2.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <input
+                          type="date"
+                          value={raceDateStr}
+                          onChange={(e) => setRaceDateStr(e.target.value)}
+                          className="flex-1 min-h-[40px] px-3 py-2 rounded-xl bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-900 dark:text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-[#0593C6]/25 focus:border-[#0593C6]"
+                          aria-label="Target race date"
+                        />
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setRaceDateStr(computeTargetGoalDate(goalTimeframeWeeks))}
+                            className="px-2.5 py-2 rounded-lg text-[11px] font-semibold bg-[#0593C6]/10 text-[#0593C6] hover:bg-[#0593C6]/20 transition-colors cursor-pointer whitespace-nowrap"
+                          >
+                            Use {goalTimeframeWeeks}-wk date
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setHasRaceDay(false);
+                              setRaceDateStr('');
+                            }}
+                            className="px-2.5 py-2 rounded-lg text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+                      {raceDatePreview && (
+                        <div className="text-[11px] font-semibold text-[#0593C6] tabular-nums">
+                          Countdown preview: {raceDatePreview.daysLabel} ({raceDatePreview.formattedDate})
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1024,7 +1126,7 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
           </div>
 
           {/* Clean Footer */}
-          <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-[#09121B]/50">
+          <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-[#09121B]/50">
             <div className="text-xs text-slate-400 dark:text-slate-500">
               {hasUnsavedChanges ? 'Unsaved changes' : ''}
             </div>

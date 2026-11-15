@@ -1716,9 +1716,9 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                         </div>
                       )}
 
-                      <div className="min-w-0 space-y-1">
+                      <div className="min-w-0 flex-1 space-y-1">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-semibold text-neutral-900 dark:text-white truncate">
+                          <span className="font-semibold text-neutral-900 dark:text-white truncate max-w-full">
                             {run.title}
                           </span>
 
@@ -1846,7 +1846,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                     </div>
 
                     {/* Right: Metrics + Actions */}
-                    <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 tabular-nums border-t sm:border-t-0 pt-2 sm:pt-0 border-neutral-200 dark:border-neutral-800 text-xs">
+                    <div className="grid grid-cols-2 sm:flex sm:items-center sm:justify-end gap-2.5 sm:gap-4 tabular-nums border-t sm:border-t-0 pt-2.5 sm:pt-0 border-neutral-200 dark:border-neutral-800 text-xs shrink-0">
                       {/* Distance & Time */}
                       <div className="text-left sm:text-right">
                         <div className="font-bold text-neutral-900 dark:text-white">
@@ -1883,7 +1883,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                       </div>
 
                       {/* Heart Rate */}
-                      <div className="text-left sm:text-right min-w-[65px]">
+                      <div className="text-left sm:text-right sm:min-w-[65px]">
                         {run.avgHeartRate || run.maxHeartRate ? (
                           <>
                             <div className="font-bold text-[#ff375f] flex items-center justify-start sm:justify-end space-x-1">
@@ -1911,14 +1911,14 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
 
                       {/* Actions: Calibrate Interval & Delete (hidden when in combine or compare mode) */}
                       {!isCombineMode && !isCompareMode && (
-                        <div className="flex items-center space-x-1">
+                        <div className="col-span-2 sm:col-span-1 flex items-center justify-end space-x-1 pt-1 sm:pt-0 border-t sm:border-t-0 border-neutral-200/70 dark:border-neutral-800/70">
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               setCalibratingRun(run);
                             }}
-                            className={`p-1.5 rounded-full transition-colors cursor-pointer ${
+                            className={`p-2 sm:p-1.5 rounded-full transition-colors cursor-pointer ${
                               run.activeIntervalPaceSecPerKm
                                 ? 'text-[#10B981] hover:text-[#0ea372] bg-[#10B981]/10 hover:bg-[#10B981]/20'
                                 : 'text-neutral-400 hover:text-[#0593C6] hover:bg-neutral-200/60 dark:hover:bg-neutral-800'
@@ -1935,7 +1935,7 @@ export const WatchTelemetrySection: React.FC<WatchTelemetrySectionProps> = ({
                               e.stopPropagation();
                               onDeleteRun(run.id);
                             }}
-                            className="p-1.5 rounded-full text-neutral-400 hover:text-rose-500 hover:bg-neutral-200/60 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                            className="p-2 sm:p-1.5 rounded-full text-neutral-400 hover:text-rose-500 hover:bg-neutral-200/60 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
                             title="Delete workout"
                             aria-label={`Delete ${run.title}`}
                           >

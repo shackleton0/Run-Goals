@@ -2560,6 +2560,107 @@ export function computeTargetGoalDate(
   return formatLocalDateString(d);
 }
 
+export interface RaceCountdownInfo {
+  targetDateStr: string;
+  formattedDate: string;
+  shortDate: string;
+  daysRemaining: number;
+  weeksRemaining: number;
+  extraDays: number;
+  status: 'upcoming' | 'today' | 'passed';
+  targetMidnightMs: number;
+  daysLabel: string;
+  compactLabel: string;
+}
+
+export function calculateRaceCountdown(
+  targetRaceDate?: string | null,
+  referenceDate: Date = new Date()
+): RaceCountdownInfo | null {
+  if (!targetRaceDate || typeof targetRaceDate !== 'string') return null;
+  const trimmed = targetRaceDate.trim();
+  if (!trimmed) return null;
+
+  let targetLocal: Date | null = null;
+  const ymdMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (ymdMatch) {
+    const y = parseInt(ymdMatch[1], 10);
+    const m = parseInt(ymdMatch[2], 10) - 1;
+    const d = parseInt(ymdMatch[3], 10);
+    const candidate = new Date(y, m, d, 0, 0, 0, 0);
+    if (
+      !isNaN(candidate.getTime()) &&
+      candidate.getFullYear() === y &&
+      candidate.getMonth() === m &&
+      candidate.getDate() === d
+    ) {
+      targetLocal = candidate;
+    }
+  } else {
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) {
+      targetLocal = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 0, 0, 0, 0);
+    }
+  }
+
+  if (!targetLocal) return null;
+
+  const todayMidnight = new Date(
+    referenceDate.getFullYear(),
+    referenceDate.getMonth(),
+    referenceDate.getDate(),
+    0,
+    0,
+    0,
+    0
+  );
+
+  const daysRemaining = Math.round(
+    (targetLocal.getTime() - todayMidnight.getTime()) / 86400000
+  );
+
+  const status: RaceCountdownInfo['status'] =
+    daysRemaining > 0 ? 'upcoming' : daysRemaining === 0 ? 'today' : 'passed';
+
+  const weeksRemaining = Math.floor(Math.max(0, daysRemaining) / 7);
+  const extraDays = Math.max(0, daysRemaining) % 7;
+
+  const monthNames = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  const shortDate = `${monthNames[targetLocal.getMonth()]} ${targetLocal.getDate()}`;
+  const formattedDate = `${shortDate}, ${targetLocal.getFullYear()}`;
+
+  const absDays = Math.abs(daysRemaining);
+  const daysLabel =
+    status === 'today'
+      ? 'Race Day Today!'
+      : status === 'upcoming'
+      ? `${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'} remaining`
+      : `${absDays} ${absDays === 1 ? 'day' : 'days'} ago`;
+
+  const compactLabel =
+    status === 'today'
+      ? 'Race Today'
+      : status === 'upcoming'
+      ? `${daysRemaining}d to race`
+      : `${absDays}d ago`;
+
+  return {
+    targetDateStr: formatLocalDateString(targetLocal),
+    formattedDate,
+    shortDate,
+    daysRemaining,
+    weeksRemaining,
+    extraDays,
+    status,
+    targetMidnightMs: targetLocal.getTime(),
+    daysLabel,
+    compactLabel,
+  };
+}
+
 export function calculateRealImprovement(
   runs: RunRecord[] = [],
   unit: 'km' | 'miles' = 'km',

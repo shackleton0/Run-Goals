@@ -82,6 +82,9 @@ export const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
   const [customDistStr, setCustomDistStr] = useState<string>('6');
   const [targetTimeStr, setTargetTimeStr] = useState<string>('24:00');
   const [timeframeWeeks, setTimeframeWeeks] = useState<number>(12);
+  const [hasRaceDay, setHasRaceDay] = useState<boolean>(false);
+  const [raceDateStr, setRaceDateStr] = useState<string>('');
+  const [hasEditedRaceDate, setHasEditedRaceDate] = useState<boolean>(false);
 
   const [weeklyRunGoal, setWeeklyRunGoal] = useState<number>(3);
   const [weeklyDistStr, setWeeklyDistStr] = useState<string>('25');
@@ -107,6 +110,10 @@ export const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
       profile.target6kTimeSeconds ? formatDuration(profile.target6kTimeSeconds) : ''
     );
     setTimeframeWeeks(profile.goalTimeframeWeeks || 12);
+    const savedRaceDate = profile.targetGoalDate?.trim() || '';
+    setHasRaceDay(Boolean(savedRaceDate));
+    setRaceDateStr(savedRaceDate);
+    setHasEditedRaceDate(Boolean(savedRaceDate));
 
     const runsPerWk = profile.weeklyRunGoal || 3;
     setWeeklyRunGoal(runsPerWk);
@@ -151,9 +158,15 @@ export const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
     return Math.max(10, weeklyRunGoal * 8);
   }, [weeklyDistStr, unit, weeklyRunGoal]);
 
+  const activeRaceDateStr = useMemo(() => {
+    if (!hasRaceDay) return undefined;
+    const chosen = raceDateStr.trim() || computeTargetGoalDate(timeframeWeeks);
+    return chosen;
+  }, [hasRaceDay, raceDateStr, timeframeWeeks]);
+
   const targetGoalDate = useMemo(
-    () => computeTargetGoalDate(timeframeWeeks),
-    [timeframeWeeks]
+    () => activeRaceDateStr || computeTargetGoalDate(timeframeWeeks),
+    [activeRaceDateStr, timeframeWeeks]
   );
 
   const formattedTargetDate = useMemo(() => {
@@ -252,7 +265,7 @@ export const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
       target6kTimeSeconds: parsedTargetSec && parsedTargetSec > 0 ? parsedTargetSec : undefined,
       hasCustomTarget: Boolean(parsedTargetSec && parsedTargetSec > 0),
       goalTimeframeWeeks: timeframeWeeks,
-      targetGoalDate,
+      targetGoalDate: activeRaceDateStr,
       weeklyRunGoal,
       weeklyDistanceGoalKm: Number(effectiveWeeklyKm.toFixed(1)),
       onboardingCompleted: true,
@@ -612,12 +625,80 @@ export const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
                       value={timeframeWeeks}
                       onChange={(e) => {
                         const val = parseInt(e.target.value, 10);
-                        if (!isNaN(val)) setTimeframeWeeks(Math.max(1, Math.min(104, val)));
+                        if (!isNaN(val)) {
+                          const clamped = Math.max(1, Math.min(104, val));
+                          setTimeframeWeeks(clamped);
+                          if (hasRaceDay && !hasEditedRaceDate) {
+                            setRaceDateStr(computeTargetGoalDate(clamped));
+                          }
+                        }
                       }}
                       className="w-16 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-[#09121B] border border-slate-200 dark:border-slate-800 text-xs font-bold text-center text-slate-900 dark:text-white tabular-nums"
                     />
                     <span className="text-xs text-slate-500 font-semibold">wks</span>
                   </div>
+                </div>
+
+                {/* Optional Race Day Date Picker */}
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 space-y-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                        Add a specific Target Race Day? (Optional)
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Enables a live countdown timer on your dashboard Goal Banner.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={hasRaceDay}
+                      onClick={() => {
+                        const next = !hasRaceDay;
+                        setHasRaceDay(next);
+                        if (next && !raceDateStr) {
+                          setRaceDateStr(computeTargetGoalDate(timeframeWeeks));
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer ${
+                        hasRaceDay ? 'bg-[#0593C6]' : 'bg-slate-200 dark:bg-slate-700'
+                      }`}
+                      aria-label="Toggle target race day"
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
+                          hasRaceDay ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {hasRaceDay && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <input
+                        type="date"
+                        value={raceDateStr || computeTargetGoalDate(timeframeWeeks)}
+                        onChange={(e) => {
+                          setRaceDateStr(e.target.value);
+                          setHasEditedRaceDate(true);
+                        }}
+                        className="flex-1 min-h-[40px] px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#09121B] border border-slate-200 dark:border-slate-800 text-sm font-semibold text-slate-900 dark:text-white tabular-nums focus:outline-none focus:border-[#0593C6]"
+                        aria-label="Target race date"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHasRaceDay(false);
+                          setRaceDateStr('');
+                          setHasEditedRaceDate(false);
+                        }}
+                        className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 bg-slate-100 dark:bg-slate-800 cursor-pointer self-start sm:self-auto"
+                      >
+                        No Race Day
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -740,7 +821,8 @@ export const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
                     <div className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums mt-0.5">
                       Goal: {selectedPreset === 'Custom' ? `${effectiveDistKm.toFixed(1)}K` : selectedPreset}
                       {parsedTargetSec ? ` in ${formatDuration(parsedTargetSec)}` : ''} ·{' '}
-                      {timeframeWeeks} wks (by {formattedTargetDate})
+                      {timeframeWeeks} wks
+                      {activeRaceDateStr ? ` (Race Day: ${formattedTargetDate})` : ''}
                     </div>
                   </div>
 

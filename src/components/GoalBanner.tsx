@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { UserProfile, AdherenceSummary } from '../types/running';
 import {
   formatDuration,
   formatPace,
   calculateTargetCutoff,
   resolveTargetGoalName,
+  calculateRaceCountdown,
+  RaceCountdownInfo,
 } from '../utils/runningCalculations';
 import {
   Trophy,
@@ -17,6 +19,7 @@ import {
   Flame,
   Share2,
   ChevronDown,
+  Flag,
 } from 'lucide-react';
 
 interface GoalBannerProps {
@@ -25,8 +28,98 @@ interface GoalBannerProps {
   best6kSec?: number;
   isShortDistanceEstimate?: boolean;
   onEditGoal: () => void;
+  onEditRaceDay?: () => void;
   onShare?: () => void;
 }
+
+const RaceCountdownTimer: React.FC<{
+  countdown: RaceCountdownInfo;
+  onEditRaceDay: () => void;
+}> = ({ countdown, onEditRaceDay }) => {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (countdown.status !== 'upcoming') return;
+    setNowMs(Date.now());
+    const id = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [countdown.status, countdown.targetMidnightMs]);
+
+  const diffMs = Math.max(0, countdown.targetMidnightMs - nowMs);
+  const totalSec = Math.floor(diffMs / 1000);
+  const liveDays = Math.floor(totalSec / 86400);
+  const liveHours = Math.floor((totalSec % 86400) / 3600);
+  const liveMinutes = Math.floor((totalSec % 3600) / 60);
+  const liveSeconds = totalSec % 60;
+
+  return (
+    <div className="p-3.5 sm:p-4 rounded-xl bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-sky-500/10 border border-amber-500/25 dark:border-amber-500/30">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <div className="flex items-center space-x-2 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+            <Flag className="w-3.5 h-3.5 shrink-0" />
+            <span>Target Race Day Countdown</span>
+          </div>
+          <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+            {countdown.status === 'today' ? (
+              <span className="text-xl sm:text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 tracking-tight">
+                Race Day Today!
+              </span>
+            ) : countdown.status === 'passed' ? (
+              <span className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight tabular-nums">
+                {Math.abs(countdown.daysRemaining)}{' '}
+                {Math.abs(countdown.daysRemaining) === 1 ? 'day' : 'days'} since race day
+              </span>
+            ) : (
+              <span className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight tabular-nums">
+                {countdown.daysRemaining}{' '}
+                <span className="text-sm sm:text-base font-bold text-amber-600 dark:text-amber-400">
+                  {countdown.daysRemaining === 1 ? 'day' : 'days'} left
+                </span>
+              </span>
+            )}
+            <span className="text-xs font-medium text-slate-600 dark:text-slate-300 tabular-nums">
+              · {countdown.formattedDate}
+            </span>
+          </div>
+        </div>
+
+        {countdown.status === 'upcoming' ? (
+          <div className="grid grid-cols-4 gap-1.5 sm:gap-2 shrink-0 tabular-nums">
+            {[
+              { label: 'Days', val: String(liveDays).padStart(2, '0') },
+              { label: 'Hrs', val: String(liveHours).padStart(2, '0') },
+              { label: 'Min', val: String(liveMinutes).padStart(2, '0') },
+              { label: 'Sec', val: String(liveSeconds).padStart(2, '0') },
+            ].map((cell) => (
+              <div
+                key={cell.label}
+                className="px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg bg-white dark:bg-[#0D1620] border border-amber-500/20 dark:border-amber-500/25 text-center min-w-[52px]"
+              >
+                <div className="text-sm sm:text-base font-extrabold font-mono text-slate-900 dark:text-white leading-tight">
+                  {cell.val}
+                </div>
+                <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                  {cell.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onEditRaceDay}
+            className="self-start sm:self-auto px-3 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+          >
+            Update Race Date
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export const GoalBanner: React.FC<GoalBannerProps> = ({
   profile,
@@ -34,12 +127,18 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
   best6kSec,
   isShortDistanceEstimate = false,
   onEditGoal,
+  onEditRaceDay,
   onShare,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const targetDistKm = profile.targetDistanceKm || 6.0;
   const targetSec = profile.target6kTimeSeconds;
   const currentSec = best6kSec || profile.current6kPrSeconds;
+
+  const raceCountdown = useMemo(
+    () => calculateRaceCountdown(profile.targetGoalDate),
+    [profile.targetGoalDate]
+  );
 
   const cutoff = calculateTargetCutoff(targetSec, currentSec, targetDistKm);
 
@@ -102,16 +201,16 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
         tabIndex={0}
         onClick={() => setIsExpanded((prev) => !prev)}
         onKeyDown={handleHeaderKeyDown}
-        className="w-full px-4 py-4 sm:px-5 sm:py-4.5 flex items-center justify-between text-left cursor-pointer group accordion-trigger select-none hover:bg-slate-50/90 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+        className="w-full px-3.5 py-3.5 sm:px-5 sm:py-4.5 flex items-center justify-between text-left cursor-pointer group accordion-trigger select-none hover:bg-slate-50/90 dark:hover:bg-slate-800/40 active:bg-slate-100 dark:active:bg-slate-800/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
         data-no-scale
         aria-expanded={isExpanded}
       >
-        <div className="flex items-center space-x-3 min-w-0">
+        <div className="flex items-center space-x-3 min-w-0 flex-1">
           <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-sky-500 flex items-center justify-center shrink-0 transition-transform duration-150 group-hover:scale-105">
             <Target className="w-4.5 h-4.5 stroke-[2.3]" />
           </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight transition-colors">
                 {distTitle}
               </h2>
@@ -130,12 +229,30 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
                   · {profile.goalTimeframeWeeks}-Wk Plan
                 </span>
               ) : null}
+
+              {raceCountdown && (
+                <span
+                  className={`inline-flex items-center space-x-1 text-xs font-bold tabular-nums ${
+                    raceCountdown.status === 'today'
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : raceCountdown.status === 'passed'
+                      ? 'text-slate-500 dark:text-slate-400'
+                      : 'text-amber-600 dark:text-amber-400'
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5 shrink-0" />
+                  <span className="sm:hidden">{raceCountdown.compactLabel}</span>
+                  <span className="hidden sm:inline">
+                    {raceCountdown.daysLabel} ({raceCountdown.shortDate})
+                  </span>
+                </span>
+              )}
             </div>
           </div>
         </div>
 
         {/* Action Controls & Dropdown Chevron */}
-        <div className="flex items-center space-x-2 shrink-0 ml-2">
+        <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0 ml-2">
           {onShare && (
             <button
               type="button"
@@ -143,7 +260,7 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
                 e.stopPropagation();
                 onShare();
               }}
-              className="inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
+              className="inline-flex items-center space-x-1.5 px-2.5 py-2 sm:py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-all cursor-pointer"
               title="Show off progress to friends"
             >
               <Share2 className="w-3.5 h-3.5" />
@@ -182,20 +299,28 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
         aria-hidden={!isExpanded}
       >
         <div className="accordion-collapse-inner">
-          <div className="px-4 pb-5 pt-4 sm:px-5 border-t border-slate-100 dark:border-slate-800 space-y-5">
+          <div className="px-3.5 pb-4 pt-3.5 sm:px-5 sm:pb-5 sm:pt-4 border-t border-slate-100 dark:border-slate-800 space-y-4 sm:space-y-5">
             <p className="text-xs text-slate-600 dark:text-slate-300">
               Structured distance conditioning and microcycle pacing ({targetDistKm.toFixed(1)} km benchmark)
             </p>
 
+            {/* Optional Race Day Countdown Card (only rendered when user added a race day) */}
+            {raceCountdown && (
+              <RaceCountdownTimer
+                countdown={raceCountdown}
+                onEditRaceDay={onEditRaceDay || onEditGoal}
+              />
+            )}
+
             {/* Primary Metrics Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
               {/* Target Distance Time */}
-              <div className="p-4 rounded-xl bg-sky-50/70 dark:bg-sky-950/25 border border-sky-200/80 dark:border-sky-800/60 flex flex-col justify-between">
+              <div className="p-3 sm:p-4 rounded-xl bg-sky-50/70 dark:bg-sky-950/25 border border-sky-200/80 dark:border-sky-800/60 flex flex-col justify-between">
                 <div className="flex items-center justify-between text-[10px] font-bold text-sky-700 dark:text-sky-300 uppercase tracking-wider mb-1">
                   <span>{distCardLabel}</span>
                   <Target className="w-3.5 h-3.5 text-sky-500" />
                 </div>
-                <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight tabular-nums font-sans">
+                <div className="text-xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight tabular-nums font-sans">
                   {targetTotalTimeSec ? formatDuration(targetTotalTimeSec) : '--:--'}
                 </div>
                 <div className="text-xs text-slate-600 dark:text-slate-300 mt-1 tabular-nums">
@@ -206,12 +331,12 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
               </div>
 
               {/* Current PR / Best */}
-              <div className="p-4 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/25 border border-emerald-200/80 dark:border-emerald-800/60 flex flex-col justify-between">
+              <div className="p-3 sm:p-4 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/25 border border-emerald-200/80 dark:border-emerald-800/60 flex flex-col justify-between">
                 <div className="flex items-center justify-between text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider mb-1">
                   <span>Current Trial PR</span>
                   <Trophy className="w-3.5 h-3.5 text-emerald-500" />
                 </div>
-                <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400 tracking-tight tabular-nums font-sans">
+                <div className="text-xl sm:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400 tracking-tight tabular-nums font-sans">
                   {currentSec ? formatDuration(currentSec) : '--:--'}
                 </div>
                 <div className="text-xs text-slate-600 dark:text-slate-300 mt-1 tabular-nums">
@@ -226,12 +351,12 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
               </div>
 
               {/* Weekly Microcycle */}
-              <div className="p-4 rounded-xl bg-violet-50/70 dark:bg-violet-950/25 border border-violet-200/80 dark:border-violet-800/60 flex flex-col justify-between">
+              <div className="p-3 sm:p-4 rounded-xl bg-violet-50/70 dark:bg-violet-950/25 border border-violet-200/80 dark:border-violet-800/60 flex flex-col justify-between">
                 <div className="flex items-center justify-between text-[10px] font-bold text-violet-700 dark:text-violet-300 uppercase tracking-wider mb-1">
                   <span>Weekly Microcycle</span>
                   <Calendar className="w-3.5 h-3.5 text-violet-500" />
                 </div>
-                <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight tabular-nums font-sans">
+                <div className="text-xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight tabular-nums font-sans">
                   {adherence.currentWeekRuns} / {profile.weeklyRunGoal}
                 </div>
                 <div className="text-xs text-slate-600 dark:text-slate-300 mt-1">
@@ -242,12 +367,12 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
               </div>
 
               {/* Consistency Streak */}
-              <div className="p-4 rounded-xl bg-amber-50/70 dark:bg-amber-950/25 border border-amber-200/80 dark:border-amber-800/60 flex flex-col justify-between">
+              <div className="p-3 sm:p-4 rounded-xl bg-amber-50/70 dark:bg-amber-950/25 border border-amber-200/80 dark:border-amber-800/60 flex flex-col justify-between">
                 <div className="flex items-center justify-between text-[10px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider mb-1">
                   <span>Adherence Streak</span>
                   <Flame className="w-3.5 h-3.5 text-amber-500" />
                 </div>
-                <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight tabular-nums font-sans">
+                <div className="text-xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight tabular-nums font-sans">
                   {adherence.currentStreakWeeks > 0 ? (
                     <>
                       {adherence.currentStreakWeeks}{' '}

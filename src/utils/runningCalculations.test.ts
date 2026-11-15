@@ -37,6 +37,7 @@ import {
   calculateMultiDistancePredictions,
   computeTargetGoalDate,
   buildWeeklyDaySchedule,
+  calculateRaceCountdown,
 } from './runningCalculations';
 import {
   INITIAL_SAMPLE_RUNS,
@@ -885,6 +886,42 @@ test('getSuggestedWeeklySchedule + buildWeeklyDaySchedule maps 2, 3, 4, and 5 ru
   const days5 = buildWeeklyDaySchedule(plan5);
   assert.equal(days5.filter((d) => !d.isRestDay).length, 5);
   assert.equal(days5.filter((d) => d.isRestDay).length, 2);
+});
+
+test('calculateRaceCountdown computes remaining days, status, and labels accurately', () => {
+  const ref = new Date(2026, 10, 15, 14, 30, 0); // Nov 15, 2026 2:30 PM local
+
+  assert.equal(calculateRaceCountdown(undefined, ref), null);
+  assert.equal(calculateRaceCountdown('', ref), null);
+  assert.equal(calculateRaceCountdown('invalid-date', ref), null);
+
+  const twoWeeks = calculateRaceCountdown('2026-11-29', ref);
+  assert.ok(twoWeeks);
+  assert.equal(twoWeeks.status, 'upcoming');
+  assert.equal(twoWeeks.daysRemaining, 14);
+  assert.equal(twoWeeks.weeksRemaining, 2);
+  assert.equal(twoWeeks.extraDays, 0);
+  assert.equal(twoWeeks.shortDate, 'Nov 29');
+  assert.equal(twoWeeks.formattedDate, 'Nov 29, 2026');
+  assert.equal(twoWeeks.daysLabel, '14 days remaining');
+  assert.equal(twoWeeks.compactLabel, '14d to race');
+
+  const tomorrow = calculateRaceCountdown('2026-11-16', ref);
+  assert.ok(tomorrow);
+  assert.equal(tomorrow.daysRemaining, 1);
+  assert.equal(tomorrow.daysLabel, '1 day remaining');
+
+  const today = calculateRaceCountdown('2026-11-15', ref);
+  assert.ok(today);
+  assert.equal(today.status, 'today');
+  assert.equal(today.daysRemaining, 0);
+  assert.equal(today.daysLabel, 'Race Day Today!');
+
+  const passed = calculateRaceCountdown('2026-11-12', ref);
+  assert.ok(passed);
+  assert.equal(passed.status, 'passed');
+  assert.equal(passed.daysRemaining, -3);
+  assert.equal(passed.daysLabel, '3 days ago');
 });
 
 

@@ -135,7 +135,7 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
         </div>
 
         {/* View Switchers */}
-        <div className="flex items-center space-x-2 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           {/* Window: 30 Days / All Time */}
           <div className="inline-flex p-0.5 rounded-lg bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs">
             <button
@@ -262,9 +262,9 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
             {/* Interactive SVG Donut Viewport (Desktop: 5 cols, Mobile: full width centered) */}
-            <div className="lg:col-span-5 flex flex-col items-center justify-center p-2 sm:p-3">
+            <div className="lg:col-span-5 flex flex-col items-center justify-center p-1 sm:p-3">
               <div
-                className="relative w-[280px] h-[280px] flex items-center justify-center select-none"
+                className="relative w-[248px] h-[248px] sm:w-[280px] sm:h-[280px] max-w-full flex items-center justify-center select-none"
                 onMouseLeave={() => setHoveredCategory(null)}
               >
                 <svg
@@ -328,10 +328,8 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
 
                 {/* Donut Center Display: Clean, Uncluttered Informative Data Inside the Circle */}
                 <div
-                  className="absolute inset-0 rounded-full flex flex-col items-center justify-center text-center p-3 pointer-events-none select-none bg-white dark:bg-[#0c1822] border border-neutral-200/90 dark:border-neutral-700/80 shadow-md transition-colors"
+                  className="absolute inset-0 w-[54%] h-[54%] rounded-full flex flex-col items-center justify-center text-center p-2.5 sm:p-3 pointer-events-none select-none bg-white dark:bg-[#0c1822] border border-neutral-200/90 dark:border-neutral-700/80 shadow-md transition-colors"
                   style={{
-                    width: `${innerRadius * 2 - 4}px`,
-                    height: `${innerRadius * 2 - 4}px`,
                     margin: 'auto',
                     borderColor: focusedItem ? focusedItem.color : undefined,
                     boxShadow: focusedItem

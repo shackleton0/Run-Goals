@@ -17,6 +17,7 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  deleteField,
   collection,
   query,
   where,
@@ -183,7 +184,14 @@ export async function saveUserProfile(profile: UserProfile): Promise<void> {
   const path = `users/${profile.id}`;
   try {
     const userDocRef = doc(db, 'users', profile.id);
-    await setDoc(userDocRef, { ...cleanProfile, updatedAt: new Date().toISOString() }, { merge: true });
+    const payload: Record<string, unknown> = {
+      ...cleanProfile,
+      updatedAt: new Date().toISOString(),
+    };
+    if (!profile.targetGoalDate || !profile.targetGoalDate.trim()) {
+      payload.targetGoalDate = deleteField();
+    }
+    await setDoc(userDocRef, payload, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
