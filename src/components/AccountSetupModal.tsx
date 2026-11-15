@@ -37,6 +37,7 @@ interface AccountSetupModalProps {
 }
 
 const DISTANCE_PRESETS = [
+  { label: '4K', km: 4.0, name: '4K Race', quickTimes: ['20:00', '17:30', '16:00', '14:00'] },
   { label: '5K', km: 5.0, name: '5K Race', quickTimes: ['25:00', '22:00', '20:00', '18:30'] },
   { label: '6K', km: 6.0, name: '6K Race', quickTimes: ['30:00', '26:00', '24:00', '21:30'] },
   { label: '8K', km: 8.0, name: '8K Race', quickTimes: ['40:00', '35:00', '32:00', '28:30'] },
@@ -60,7 +61,7 @@ const EXPERIENCE_LEVELS: Array<{
   desc: string;
 }> = [
   { id: 'Beginner', title: 'Developing Runner', desc: 'Building consistency & aerobic habit' },
-  { id: 'High School XC', title: 'High School XC', desc: '5K–6K cross country & track prep' },
+  { id: 'High School XC', title: 'High School XC', desc: '4K–6K cross country & track prep' },
   { id: 'Collegiate / Advanced', title: 'Collegiate / Club', desc: '6K–10K competitive racing volume' },
   { id: 'Masters', title: 'Masters / Adult', desc: 'Structured road, trail & longevity' },
 ];

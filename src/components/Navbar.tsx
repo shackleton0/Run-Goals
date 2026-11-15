@@ -120,11 +120,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200 dark:border-slate-800">
                     <span className="font-bold text-slate-900 dark:text-white">RunGoals</span>
                     <span className="px-2 py-0.5 rounded-md bg-orange-500/15 text-orange-600 dark:text-orange-400 font-mono font-extrabold text-[11px] border border-orange-500/30">
-                      v2
+                      v2.1
                     </span>
                   </div>
                   <p className="mt-2 text-[11px] font-semibold text-orange-600 dark:text-orange-400">
-                    Beta v2
+                    Beta v2.1
                   </p>
                   <p className="mt-1.5 text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
                     Bugs or feedback:{' '}
@@ -465,7 +465,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <div className="flex items-center justify-between gap-2">
                       <span className="inline-flex items-center space-x-1.5 font-extrabold text-[11px] uppercase tracking-wider text-orange-600 dark:text-orange-400">
                         <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
-                        <span>Beta v2</span>
+                        <span>Beta v2.1</span>
                       </span>
                       <a
                         href="mailto:lootah07070@gmail.com"

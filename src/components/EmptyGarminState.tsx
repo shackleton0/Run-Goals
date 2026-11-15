@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, FileText, Plus, Target, CheckCircle2, AlertCircle, ArrowUpCircle, FlaskConical, Sparkles } from 'lucide-react';
+import { UploadCloud, Plus, Target, AlertCircle, ArrowUpCircle, FlaskConical, Sparkles } from 'lucide-react';
 import { RunRecord } from '../types/running';
 import { parseWatchFiles } from '../utils/watchFileParser';
 
@@ -76,28 +76,42 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto py-4">
-      {/* Central Empty Hero Card */}
-      <div className="rounded-3xl bg-white dark:bg-[#1c1c1e] border border-neutral-200 dark:border-neutral-800 shadow-xs p-6 sm:p-10 transition-colors">
-        <div className="max-w-xl mx-auto text-center space-y-3 mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-neutral-100 dark:bg-neutral-800 text-[#0a84ff] mb-1">
-            <UploadCloud className="w-7 h-7" />
-          </div>
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-neutral-900 dark:text-white">
-            Awaiting Watch &amp; Run Data
+    <div className="max-w-3xl mx-auto py-2 sm:py-4">
+      <div className="rounded-3xl bg-white dark:bg-[#1c1c1e] border border-neutral-200 dark:border-neutral-800 shadow-xs p-5 sm:p-8 transition-colors space-y-6">
+        {/* Concise Heading & Primary Actions */}
+        <div className="text-center space-y-4">
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-900 dark:text-white">
+            Log Run / Upload Data
           </h2>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
-            All 6K progression curves, Cardio Load phases, Body Battery recovery, and interval splits populate directly from your Garmin Connect or Apple Watch exports.
-          </p>
+
+          <div className="flex flex-wrap items-center justify-center gap-2.5">
+            <button
+              type="button"
+              onClick={onOpenAddRun}
+              className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-[#30d158] hover:bg-[#28b84c] text-white text-xs sm:text-sm font-bold shadow-xs transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4 stroke-[2.5]" />
+              <span>Log Run</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onOpenGarminSync}
+              className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-[#0a84ff] hover:bg-[#0070e0] text-white text-xs sm:text-sm font-bold shadow-xs transition-colors cursor-pointer"
+            >
+              <UploadCloud className="w-4 h-4" />
+              <span>Upload Data</span>
+            </button>
+          </div>
         </div>
 
-        {/* Drag & Drop Upload Zone */}
+        {/* Compact Drag & Drop File Zone */}
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`relative border-2 border-dashed rounded-2xl p-8 sm:p-12 text-center cursor-pointer transition-all ${
+          className={`relative border-2 border-dashed rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition-all ${
             isDragging
               ? 'border-[#0a84ff] bg-[#0a84ff]/5 dark:bg-[#0a84ff]/10 scale-[1.01]'
               : 'border-neutral-300 dark:border-neutral-800 hover:border-neutral-400 dark:hover:border-neutral-700 bg-neutral-50/50 dark:bg-black/30'
@@ -114,107 +128,50 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
             }}
           />
 
-          <div className="flex flex-col items-center justify-center space-y-3">
-            <div className="w-12 h-12 rounded-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 flex items-center justify-center text-[#30d158] shadow-xs">
-              <ArrowUpCircle className="w-6 h-6 stroke-[2]" />
-            </div>
-
-            <div>
-              <span className="text-sm font-semibold text-neutral-900 dark:text-white">
-                {isProcessing ? 'Processing watch file...' : 'Drop Apple Watch or Garmin file here'}
-              </span>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                Supports Apple Health <strong className="font-semibold text-neutral-700 dark:text-neutral-300">export.zip / export.xml</strong>, Garmin <strong className="font-semibold text-neutral-700 dark:text-neutral-300">.CSV</strong>, <strong className="font-semibold text-neutral-700 dark:text-neutral-300">.TCX</strong>, <strong className="font-semibold text-neutral-700 dark:text-neutral-300">.GPX</strong> &amp; JSON
-              </p>
-            </div>
-
-            <div className="pt-2">
-              <button
-                type="button"
-                disabled={isProcessing}
-                className="px-4 py-2 rounded-full bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-200 text-white dark:text-black text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-              >
-                Browse Watch Files
-              </button>
-            </div>
+          <div className="flex flex-col items-center justify-center space-y-2">
+            <ArrowUpCircle className="w-6 h-6 text-[#0a84ff]" />
+            <span className="text-sm font-semibold text-neutral-900 dark:text-white">
+              {isProcessing ? 'Processing file...' : 'Drop workout file here or browse'}
+            </span>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              .TCX, .GPX, .CSV, .XML, .ZIP &amp; JSON
+            </p>
           </div>
         </div>
 
         {/* Error message */}
         {errorMessage && (
-          <div className="mt-4 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-center space-x-2">
+          <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs flex items-center space-x-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{errorMessage}</span>
           </div>
         )}
 
-        {/* Alternative Actions */}
-        <div className={`mt-8 pt-6 border-t border-neutral-200 dark:border-neutral-800/80 grid grid-cols-1 ${onLoadPlaceholderData ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'} gap-3 text-left`}>
+        {/* Secondary Actions */}
+        <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2 border-t border-neutral-200/80 dark:border-neutral-800/80">
           <button
-            onClick={onOpenGarminSync}
-            className="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 hover:bg-neutral-100 dark:hover:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-800 text-left transition-colors cursor-pointer group"
-          >
-            <div className="flex items-center space-x-2 text-xs font-semibold text-neutral-900 dark:text-white mb-1">
-              <FileText className="w-4 h-4 text-[#0a84ff]" />
-              <span>Sync Watch Activities</span>
-            </div>
-            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              Upload Apple Watch or Garmin files with export instructions
-            </p>
-          </button>
-
-          <button
-            onClick={onOpenAddRun}
-            className="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 hover:bg-neutral-100 dark:hover:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-800 text-left transition-colors cursor-pointer group"
-          >
-            <div className="flex items-center space-x-2 text-xs font-semibold text-neutral-900 dark:text-white mb-1">
-              <Plus className="w-4 h-4 text-[#30d158]" />
-              <span>Log Run Manually</span>
-            </div>
-            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              Enter a timed 6K time trial, track interval workout, or tempo run
-            </p>
-          </button>
-
-          <button
+            type="button"
             onClick={onOpenSetup || onOpenSettings}
-            className="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 hover:bg-neutral-100 dark:hover:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-800 text-left transition-colors cursor-pointer group"
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800/70 hover:bg-neutral-200 dark:hover:bg-neutral-800 text-xs font-semibold text-neutral-800 dark:text-neutral-200 transition-colors cursor-pointer"
           >
-            <div className="flex items-center space-x-2 text-xs font-semibold text-neutral-900 dark:text-white mb-1">
-              {onOpenSetup ? (
-                <Sparkles className="w-4 h-4 text-[#10B981]" />
-              ) : (
-                <Target className="w-4 h-4 text-[#10B981]" />
-              )}
-              <span>{onOpenSetup ? 'Plan & Schedule Setup' : 'Set Goal Time'}</span>
-            </div>
-            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              {onOpenSetup
-                ? 'Customize your goal, timeline, weekly runs, and recommended schedule'
-                : 'Define your race distance goal and pace target'}
-            </p>
+            {onOpenSetup ? (
+              <Sparkles className="w-3.5 h-3.5 text-[#10B981]" />
+            ) : (
+              <Target className="w-3.5 h-3.5 text-[#10B981]" />
+            )}
+            <span>{onOpenSetup ? 'Training Plan Setup' : 'Set Goal'}</span>
           </button>
 
           {onLoadPlaceholderData && (
             <button
+              type="button"
               onClick={onLoadPlaceholderData}
-              className="p-3.5 rounded-xl bg-violet-50/70 dark:bg-violet-950/25 hover:bg-violet-100/80 dark:hover:bg-violet-950/40 border border-violet-200/80 dark:border-violet-800/60 text-left transition-colors cursor-pointer group"
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/25 text-xs font-semibold text-violet-700 dark:text-violet-300 transition-colors cursor-pointer"
             >
-              <div className="flex items-center space-x-2 text-xs font-semibold text-neutral-900 dark:text-white mb-1">
-                <FlaskConical className="w-4 h-4 text-violet-500" />
-                <span>Load Placeholder Data</span>
-              </div>
-              <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                Preview charts, Body Battery, and projections with sample runs
-              </p>
+              <FlaskConical className="w-3.5 h-3.5 text-violet-500" />
+              <span>Load Sample Data</span>
             </button>
           )}
-        </div>
-
-        {/* Clean status */}
-        <div className="mt-6 flex items-center justify-center space-x-2 text-[11px] text-neutral-400 dark:text-neutral-500">
-          <CheckCircle2 className="w-3.5 h-3.5 text-[#30d158]" />
-          <span>Garmin &amp; Apple Watch telemetry · Heart rate &amp; cadence analysis</span>
         </div>
       </div>
     </div>

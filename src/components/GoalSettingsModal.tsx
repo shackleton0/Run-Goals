@@ -57,6 +57,7 @@ interface GoalSettingsModalProps {
 
 const DISTANCE_PRESETS = [
   { label: '1 Mile', km: 1.60934, name: '1 Mile' },
+  { label: '4K', km: 4.0, name: '4K Race' },
   { label: '5K', km: 5.0, name: '5K Race' },
   { label: '6K', km: 6.0, name: '6K Race' },
   { label: '8K', km: 8.0, name: '8K Race' },
