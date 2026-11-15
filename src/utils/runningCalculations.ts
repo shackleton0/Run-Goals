@@ -4100,6 +4100,126 @@ export function calculateMultiDistancePredictions(
   };
 }
 
+export interface AccountSessionTransitionInput {
+  uid: string;
+  userProf: UserProfile;
+  isNewAccount: boolean;
+  isGuestSessionActive: boolean;
+  localCacheOwner: string | null;
+  localProfile?: Partial<UserProfile> | null;
+  localRuns?: RunRecord[];
+  localSetupDismissedForUid: boolean;
+}
+
+export interface AccountSessionTransitionResult {
+  profile: UserProfile;
+  shouldSaveProfileToCloud: boolean;
+  shouldMigrateGuestRuns: boolean;
+  guestRunsToMigrate: RunRecord[];
+  shouldOpenSetup: boolean;
+}
+
+export function resolveAccountSessionTransition(
+  input: AccountSessionTransitionInput
+): AccountSessionTransitionResult {
+  const {
+    uid,
+    userProf,
+    isNewAccount,
+    isGuestSessionActive,
+    localCacheOwner,
+    localProfile,
+    localRuns = [],
+    localSetupDismissedForUid,
+  } = input;
+
+  // Only migrate local data if the user is upgrading directly from an active guest session
+  // (never inherit cached local data left over from a different signed-in account).
+  const canMigrateGuestData = isGuestSessionActive && localCacheOwner === 'guest';
+
+  let mergedProfile: UserProfile = { ...userProf };
+  let shouldSaveProfileToCloud = false;
+
+  if (canMigrateGuestData && localProfile) {
+    const isSampleTargetOnly =
+      !localProfile.hasCustomTarget &&
+      typeof localProfile.targetGoalName === 'string' &&
+      localProfile.targetGoalName.includes('(Sample)');
+
+    const guestDisplayName =
+      typeof localProfile.displayName === 'string' ? localProfile.displayName.trim() : '';
+
+    const hasMeaningfulGuestCustomization = Boolean(
+      localProfile.onboardingCompleted ||
+        localProfile.hasCustomTarget ||
+        guestDisplayName ||
+        (!isSampleTargetOnly &&
+          (localProfile.targetDistanceKm ||
+            localProfile.targetGoalName ||
+            localProfile.target6kTimeSeconds)) ||
+        localProfile.weeklyDistanceGoalKm
+    );
+
+    if (hasMeaningfulGuestCustomization) {
+      const cleanedLocal = { ...localProfile };
+      if (isSampleTargetOnly) {
+        delete cleanedLocal.targetGoalName;
+        delete cleanedLocal.target6kTimeSeconds;
+        delete cleanedLocal.targetDistanceKm;
+      }
+
+      mergedProfile = {
+        ...userProf,
+        ...cleanedLocal,
+        id: uid,
+        email: userProf.email || cleanedLocal.email || '',
+        displayName: guestDisplayName || userProf.displayName || '',
+        onboardingCompleted: Boolean(
+          userProf.onboardingCompleted || cleanedLocal.onboardingCompleted
+        ),
+      };
+      shouldSaveProfileToCloud = true;
+    }
+  }
+
+  if (mergedProfile.targetGoalName) {
+    const sanitizedGoalName = resolveTargetGoalName(
+      mergedProfile.targetDistanceKm,
+      mergedProfile.targetGoalName,
+      '6K Race'
+    );
+    if (sanitizedGoalName !== mergedProfile.targetGoalName) {
+      mergedProfile = { ...mergedProfile, targetGoalName: sanitizedGoalName };
+      shouldSaveProfileToCloud = true;
+    }
+  }
+
+  const guestRunsToMigrate: RunRecord[] = canMigrateGuestData
+    ? localRuns
+        .filter((r) => !(typeof r?.id === 'string' && r.id.startsWith('placeholder_run_')))
+        .map((r) => ({ ...r, userId: uid }))
+    : [];
+
+  const shouldMigrateGuestRuns = guestRunsToMigrate.length > 0;
+
+  // Always launch guided setup for brand-new accounts unless they already completed setup in guest mode.
+  const shouldOpenSetup = isNewAccount
+    ? !mergedProfile.onboardingCompleted
+    : Boolean(
+        !mergedProfile.onboardingCompleted &&
+          !localSetupDismissedForUid &&
+          !mergedProfile.hasCustomTarget
+      );
+
+  return {
+    profile: mergedProfile,
+    shouldSaveProfileToCloud,
+    shouldMigrateGuestRuns,
+    guestRunsToMigrate,
+    shouldOpenSetup,
+  };
+}
+
 
 
 

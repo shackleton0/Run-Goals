@@ -322,10 +322,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         />
                       </svg>
                     </div>
-                    <span>Sign in with Google Account</span>
+                    <span>Sign in or Create Account with Google</span>
                   </>
                 )}
               </button>
+              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 text-center">
+                Choose an existing Google account or add a new one — new accounts automatically launch training plan setup.
+              </p>
 
               {/* Instant Cloud Athlete Account (1-Click Firestore Sync) */}
               {onInstantCloudSignIn && (

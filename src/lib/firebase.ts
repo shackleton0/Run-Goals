@@ -34,6 +34,7 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export enum OperationType {
   CREATE = 'create',
@@ -126,7 +127,12 @@ export async function logOut() {
 }
 
 // Profile management
-export async function getOrCreateUserProfile(user: User): Promise<UserProfile> {
+export interface GetOrCreateProfileResult {
+  profile: UserProfile;
+  isNewAccount: boolean;
+}
+
+export async function getOrCreateUserProfile(user: User): Promise<GetOrCreateProfileResult> {
   const userDocRef = doc(db, 'users', user.uid);
   try {
     const snap = await getDoc(userDocRef);
@@ -136,20 +142,21 @@ export async function getOrCreateUserProfile(user: User): Promise<UserProfile> {
       if (data.target6kTimeSeconds === 1260 && !(data as any).hasCustomTarget) {
         delete data.target6kTimeSeconds;
       }
-      return data;
+      return { profile: data, isNewAccount: false };
     }
+    const now = new Date().toISOString();
     const defaultProfile: UserProfile = {
       id: user.uid,
-      email: user.email || '',
-      displayName: user.displayName || '',
+      email: (user.email || '').slice(0, 256),
+      displayName: (user.displayName || '').slice(0, 128),
       weeklyRunGoal: 3, // Default 3 runs/week
       unitPreference: 'km',
       onboardingCompleted: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
     };
     await setDoc(userDocRef, defaultProfile);
-    return defaultProfile;
+    return { profile: defaultProfile, isNewAccount: true };
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
   }
@@ -180,7 +187,26 @@ export function cleanObjectForFirestore<T extends Record<string, any>>(obj: T): 
 }
 
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
-  const cleanProfile = cleanObjectForFirestore(profile);
+  const sanitized: UserProfile = {
+    ...profile,
+    email: (profile.email || '').slice(0, 256),
+    displayName: profile.displayName ? profile.displayName.slice(0, 128) : profile.displayName,
+    targetGoalName: profile.targetGoalName ? profile.targetGoalName.slice(0, 128) : profile.targetGoalName,
+    weeklyRunGoal: Math.min(14, Math.max(1, Math.round(profile.weeklyRunGoal || 3))),
+    weeklyDistanceGoalKm:
+      profile.weeklyDistanceGoalKm !== undefined
+        ? Math.min(500, Math.max(0, profile.weeklyDistanceGoalKm))
+        : undefined,
+    targetDistanceKm:
+      profile.targetDistanceKm !== undefined
+        ? Math.min(100, Math.max(0.1, profile.targetDistanceKm))
+        : undefined,
+    goalTimeframeWeeks:
+      profile.goalTimeframeWeeks !== undefined
+        ? Math.min(104, Math.max(1, Math.round(profile.goalTimeframeWeeks)))
+        : undefined,
+  };
+  const cleanProfile = cleanObjectForFirestore(sanitized);
   const path = `users/${profile.id}`;
   try {
     const userDocRef = doc(db, 'users', profile.id);

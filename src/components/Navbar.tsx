@@ -120,11 +120,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200 dark:border-slate-800">
                     <span className="font-bold text-slate-900 dark:text-white">RunGoals</span>
                     <span className="px-2 py-0.5 rounded-md bg-orange-500/15 text-orange-600 dark:text-orange-400 font-mono font-extrabold text-[11px] border border-orange-500/30">
-                      v1.3
+                      v2
                     </span>
                   </div>
                   <p className="mt-2 text-[11px] font-semibold text-orange-600 dark:text-orange-400">
-                    Beta v1.3
+                    Beta v2
                   </p>
                   <p className="mt-1.5 text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
                     Bugs or feedback:{' '}
@@ -412,8 +412,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {/* Account / Auth */}
                   <div className="border-t border-neutral-200 dark:border-neutral-800 my-1 px-1.5 pt-1">
                     {user ? (
-                      <div className="px-3 py-2 flex items-center justify-between">
-                        <div className="min-w-0 pr-2">
+                      <div className="px-3 py-2 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
                           <div className="font-semibold text-neutral-900 dark:text-white truncate">
                             {user.displayName || 'Athletic Member'}
                           </div>
@@ -424,10 +424,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                             setIsDropdownOpen(false);
                             onSignOut();
                           }}
-                          className="p-1.5 rounded-md text-neutral-400 hover:text-rose-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
-                          title="Sign Out"
+                          className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 border border-neutral-200 dark:border-slate-700 transition-colors cursor-pointer shrink-0"
+                          title="Sign Out or Switch Account"
                         >
-                          <LogOut className="w-4 h-4" />
+                          <LogOut className="w-3.5 h-3.5" />
+                          <span>Sign Out</span>
                         </button>
                       </div>
                     ) : (
@@ -464,7 +465,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <div className="flex items-center justify-between gap-2">
                       <span className="inline-flex items-center space-x-1.5 font-extrabold text-[11px] uppercase tracking-wider text-orange-600 dark:text-orange-400">
                         <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
-                        <span>Beta v1.3</span>
+                        <span>Beta v2</span>
                       </span>
                       <a
                         href="mailto:lootah07070@gmail.com"

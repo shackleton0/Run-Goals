@@ -38,6 +38,7 @@ import {
   computeTargetGoalDate,
   buildWeeklyDaySchedule,
   calculateRaceCountdown,
+  resolveAccountSessionTransition,
 } from './runningCalculations';
 import {
   INITIAL_SAMPLE_RUNS,
@@ -922,6 +923,128 @@ test('calculateRaceCountdown computes remaining days, status, and labels accurat
   assert.equal(passed.status, 'passed');
   assert.equal(passed.daysRemaining, -3);
   assert.equal(passed.daysLabel, '3 days ago');
+});
+
+test('resolveAccountSessionTransition prevents cross-account cache leaks and triggers setup on new accounts', () => {
+  const newUserProfile = {
+    id: 'uid_new_user',
+    email: 'newrunner@example.com',
+    displayName: 'New Runner',
+    weeklyRunGoal: 3,
+    unitPreference: 'km' as const,
+    onboardingCompleted: false,
+  };
+
+  const staleOtherUserProfile = {
+    id: 'uid_old_user',
+    email: 'eskin.adam@gmail.com',
+    displayName: 'Adam',
+    weeklyRunGoal: 5,
+    unitPreference: 'km' as const,
+    targetDistanceKm: 6,
+    targetGoalName: '6K Race',
+    target6kTimeSeconds: 1320,
+    hasCustomTarget: true,
+    onboardingCompleted: true,
+  };
+
+  const staleOtherUserRuns: RunRecord[] = [
+    {
+      id: 'old_run_1',
+      userId: 'uid_old_user',
+      date: '2026-11-10',
+      title: 'Old User Tempo',
+      distanceKm: 6,
+      durationSeconds: 1400,
+      averagePaceSecPerKm: 233,
+      runType: 'Tempo',
+      source: 'manual',
+    },
+  ];
+
+  // Case 1: Signing into a brand-new account from LoginPage after another account was previously cached
+  const newAccRes = resolveAccountSessionTransition({
+    uid: 'uid_new_user',
+    userProf: newUserProfile,
+    isNewAccount: true,
+    isGuestSessionActive: false,
+    localCacheOwner: 'uid_old_user',
+    localProfile: staleOtherUserProfile,
+    localRuns: staleOtherUserRuns,
+    localSetupDismissedForUid: false,
+  });
+
+  assert.equal(newAccRes.shouldOpenSetup, true);
+  assert.equal(newAccRes.shouldSaveProfileToCloud, false);
+  assert.equal(newAccRes.shouldMigrateGuestRuns, false);
+  assert.equal(newAccRes.guestRunsToMigrate.length, 0);
+  assert.equal(newAccRes.profile.id, 'uid_new_user');
+  assert.equal(newAccRes.profile.onboardingCompleted, false);
+  assert.equal(newAccRes.profile.target6kTimeSeconds, undefined);
+
+  // Case 2: Existing account that completed onboarding -> setup does NOT reopen
+  const returningRes = resolveAccountSessionTransition({
+    uid: 'uid_old_user',
+    userProf: staleOtherUserProfile,
+    isNewAccount: false,
+    isGuestSessionActive: false,
+    localCacheOwner: 'uid_old_user',
+    localProfile: staleOtherUserProfile,
+    localRuns: staleOtherUserRuns,
+    localSetupDismissedForUid: true,
+  });
+
+  assert.equal(returningRes.shouldOpenSetup, false);
+  assert.equal(returningRes.shouldMigrateGuestRuns, false);
+
+  // Case 3: Upgrading directly from Guest Mode with real guest runs + sample placeholder runs
+  const guestUpgradeRes = resolveAccountSessionTransition({
+    uid: 'uid_fresh_guest_upgrade',
+    userProf: { ...newUserProfile, id: 'uid_fresh_guest_upgrade' },
+    isNewAccount: true,
+    isGuestSessionActive: true,
+    localCacheOwner: 'guest',
+    localProfile: {
+      displayName: 'Sam',
+      targetGoalName: '6K (Sample)',
+      target6kTimeSeconds: 1440,
+      hasCustomTarget: false,
+      onboardingCompleted: false,
+    },
+    localRuns: [
+      {
+        id: 'placeholder_run_w0',
+        userId: 'local_user',
+        date: '2026-11-10',
+        title: 'Sample Run',
+        distanceKm: 6,
+        durationSeconds: 1500,
+        averagePaceSecPerKm: 250,
+        runType: 'Tempo',
+        source: 'manual',
+      },
+      {
+        id: 'guest_real_1',
+        userId: 'local_user',
+        date: '2026-11-12',
+        title: 'My Real Guest Run',
+        distanceKm: 5,
+        durationSeconds: 1350,
+        averagePaceSecPerKm: 270,
+        runType: 'Easy',
+        source: 'manual',
+      },
+    ],
+    localSetupDismissedForUid: false,
+  });
+
+  assert.equal(guestUpgradeRes.shouldOpenSetup, true);
+  assert.equal(guestUpgradeRes.profile.displayName, 'Sam');
+  assert.equal(guestUpgradeRes.profile.target6kTimeSeconds, undefined);
+  assert.equal(guestUpgradeRes.shouldMigrateGuestRuns, true);
+  assert.equal(guestUpgradeRes.guestRunsToMigrate.length, 1);
+  assert.equal(guestUpgradeRes.guestRunsToMigrate[0].id, 'guest_real_1');
+  assert.equal(guestUpgradeRes.guestRunsToMigrate[0].userId, 'uid_fresh_guest_upgrade');
 });
 
 

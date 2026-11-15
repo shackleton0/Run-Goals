@@ -28,6 +28,7 @@ import {
   selectBestTargetEquivalent,
   findDuplicateRuns,
   resolveTargetGoalName,
+  resolveAccountSessionTransition,
 } from './utils/runningCalculations';
 import { Navbar } from './components/Navbar';
 import { GoalBanner } from './components/GoalBanner';
@@ -63,6 +64,7 @@ import confetti from 'canvas-confetti';
 
 const LOCAL_STORAGE_RUNS_KEY = 'xc_6k_user_runs_data';
 const LOCAL_STORAGE_PROFILE_KEY = 'xc_6k_user_profile_data';
+const LOCAL_STORAGE_OWNER_KEY = 'xc_6k_local_owner';
 const LOCAL_STORAGE_THEME_KEY = 'xc_6k_theme';
 
 export default function App() {
@@ -76,12 +78,32 @@ export default function App() {
     return sessionStorage.getItem('xc_6k_guest_mode') === 'true';
   });
 
+  const clearLocalSessionCache = () => {
+    setRuns([]);
+    setProfile(DEFAULT_RUNNER_PROFILE);
+    setUsedPlaceholderTarget(false);
+    setIsAccountSetupOpen(false);
+    setDuplicateMatches([]);
+    setPendingIncomingRuns([]);
+    setPendingUniqueRuns([]);
+    setIsDuplicateModalOpen(false);
+    localStorage.removeItem(LOCAL_STORAGE_RUNS_KEY);
+    localStorage.removeItem(LOCAL_STORAGE_PROFILE_KEY);
+    localStorage.removeItem(LOCAL_STORAGE_OWNER_KEY);
+  };
+
   const handleContinueAsGuest = () => {
+    const currentOwner = localStorage.getItem(LOCAL_STORAGE_OWNER_KEY);
+    if (currentOwner && currentOwner !== 'guest') {
+      clearLocalSessionCache();
+    }
+    localStorage.setItem(LOCAL_STORAGE_OWNER_KEY, 'guest');
     setIsGuest(true);
     sessionStorage.setItem('xc_6k_guest_mode', 'true');
   };
 
   const handleExitGuestMode = () => {
+    clearLocalSessionCache();
     setIsGuest(false);
     sessionStorage.removeItem('xc_6k_guest_mode');
   };
@@ -203,7 +225,12 @@ export default function App() {
   const handleCompleteAccountSetup = (updatedProfile: UserProfile) => {
     const setupStorageKey = `xc_setup_completed_${user ? user.uid : 'guest'}`;
     localStorage.setItem(setupStorageKey, 'true');
-    handleSaveProfile({ ...updatedProfile, onboardingCompleted: true });
+    handleSaveProfile({
+      ...updatedProfile,
+      id: user ? user.uid : updatedProfile.id,
+      email: user ? user.email || updatedProfile.email || '' : updatedProfile.email,
+      onboardingCompleted: true,
+    });
     setIsAccountSetupOpen(false);
   };
 
@@ -230,102 +257,176 @@ export default function App() {
 
   // Firebase Auth & Firestore Subscription
   useEffect(() => {
+    let isMounted = true;
+    let unsubscribeRuns: (() => void) | null = null;
+    let activeUid: string | null = null;
+
+    const cleanupRunsSub = () => {
+      if (unsubscribeRuns) {
+        unsubscribeRuns();
+        unsubscribeRuns = null;
+      }
+    };
+
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        try {
-          const userProf = await getOrCreateUserProfile(currentUser);
+      cleanupRunsSub();
 
-          // Check if user set custom targets or distance goals locally before logging in
-          const savedLocalProf = localStorage.getItem(LOCAL_STORAGE_PROFILE_KEY);
-          let mergedProfile = userProf;
-          let shouldSaveMerged = false;
-          if (savedLocalProf) {
-            try {
-              const parsedLocal = JSON.parse(savedLocalProf);
-              if (
-                parsedLocal.targetDistanceKm ||
-                parsedLocal.targetGoalName ||
-                parsedLocal.hasCustomTarget ||
-                parsedLocal.weeklyDistanceGoalKm ||
-                parsedLocal.target6kTimeSeconds
-              ) {
-                mergedProfile = {
-                  ...userProf,
-                  ...parsedLocal,
-                  id: currentUser.uid,
-                  email: currentUser.email || userProf.email,
-                };
-                shouldSaveMerged = true;
-              }
-            } catch (e) {
-              console.warn('Error merging local profile with cloud profile:', e);
-            }
-          }
-          if (mergedProfile.targetGoalName) {
-            const sanitizedGoalName = resolveTargetGoalName(
-              mergedProfile.targetDistanceKm,
-              mergedProfile.targetGoalName,
-              '6K Race'
-            );
-            if (sanitizedGoalName !== mergedProfile.targetGoalName) {
-              mergedProfile = { ...mergedProfile, targetGoalName: sanitizedGoalName };
-              shouldSaveMerged = true;
-            }
-          }
-          if (shouldSaveMerged) {
-            await saveUserProfile(mergedProfile);
-          }
-          setProfile(mergedProfile);
-          localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(mergedProfile));
-
-          const unsubscribeRuns = subscribeUserRuns(
-            currentUser.uid,
-            async (cloudRuns) => {
-              if (cloudRuns && cloudRuns.length > 0) {
-                setRuns(cloudRuns);
-                localStorage.setItem(LOCAL_STORAGE_RUNS_KEY, JSON.stringify(cloudRuns));
-              } else {
-                // If cloud has no runs, but user logged local runs, migrate them to cloud
-                const savedLocalRuns = localStorage.getItem(LOCAL_STORAGE_RUNS_KEY);
-                if (savedLocalRuns) {
-                  try {
-                    const parsed: RunRecord[] = JSON.parse(savedLocalRuns);
-                    const realLocalRuns = parsed.filter((r) => !isPlaceholderRun(r));
-                    if (realLocalRuns.length > 0) {
-                      const toUpload = realLocalRuns.map((r) => ({ ...r, userId: currentUser.uid }));
-                      await batchSaveRuns(toUpload);
-                      setRuns(toUpload);
-                    }
-                  } catch (e) {
-                    console.warn('Error uploading local runs to cloud:', e);
-                  }
-                }
-              }
-            },
-            (error) => {
-              console.warn('Could not subscribe to cloud runs:', error);
-            }
-          );
-          setAuthLoading(false);
-          return () => unsubscribeRuns();
-        } catch (error) {
-          console.error('Error in auth setup:', error);
+      if (!currentUser) {
+        const guestActive = sessionStorage.getItem('xc_6k_guest_mode') === 'true';
+        const cacheOwner = localStorage.getItem(LOCAL_STORAGE_OWNER_KEY);
+        if (!guestActive && (activeUid !== null || (cacheOwner && cacheOwner !== 'guest'))) {
+          clearLocalSessionCache();
+        }
+        activeUid = null;
+        if (isMounted) {
+          setUser(null);
           setAuthLoading(false);
         }
-      } else {
-        setAuthLoading(false);
+        return;
+      }
+
+      const prevUid = activeUid;
+      activeUid = currentUser.uid;
+      const localCacheOwner = localStorage.getItem(LOCAL_STORAGE_OWNER_KEY);
+      const isGuestSessionActive = sessionStorage.getItem('xc_6k_guest_mode') === 'true';
+
+      // Immediately clear stale UI data when switching away from another user
+      if (
+        (prevUid !== null && prevUid !== currentUser.uid) ||
+        (localCacheOwner && localCacheOwner !== currentUser.uid && localCacheOwner !== 'guest')
+      ) {
+        setRuns([]);
+        setProfile(DEFAULT_RUNNER_PROFILE);
+        setIsAccountSetupOpen(false);
+      }
+
+      if (isMounted) {
+        setAuthLoading(true);
+        setUser(currentUser);
+      }
+
+      let parsedLocalProfile: Partial<UserProfile> | null = null;
+      const savedLocalProf = localStorage.getItem(LOCAL_STORAGE_PROFILE_KEY);
+      if (savedLocalProf) {
+        try {
+          parsedLocalProfile = JSON.parse(savedLocalProf);
+        } catch (e) {
+          console.warn('Error parsing local profile:', e);
+        }
+      }
+
+      let parsedLocalRuns: RunRecord[] = [];
+      const savedLocalRuns = localStorage.getItem(LOCAL_STORAGE_RUNS_KEY);
+      if (savedLocalRuns) {
+        try {
+          parsedLocalRuns = JSON.parse(savedLocalRuns);
+        } catch (e) {
+          console.warn('Error parsing local runs:', e);
+        }
+      }
+
+      try {
+        const { profile: userProf, isNewAccount } = await getOrCreateUserProfile(currentUser);
+        if (!isMounted || auth.currentUser?.uid !== currentUser.uid) return;
+
+        const setupStorageKey = `xc_setup_completed_${currentUser.uid}`;
+        if (isNewAccount) {
+          localStorage.removeItem(setupStorageKey);
+        }
+
+        const transition = resolveAccountSessionTransition({
+          uid: currentUser.uid,
+          userProf,
+          isNewAccount,
+          isGuestSessionActive,
+          localCacheOwner,
+          localProfile: parsedLocalProfile,
+          localRuns: parsedLocalRuns,
+          localSetupDismissedForUid: Boolean(localStorage.getItem(setupStorageKey)),
+        });
+
+        if (transition.shouldSaveProfileToCloud) {
+          await saveUserProfile(transition.profile);
+          if (!isMounted || auth.currentUser?.uid !== currentUser.uid) return;
+        }
+
+        setProfile(transition.profile);
+        localStorage.setItem(LOCAL_STORAGE_OWNER_KEY, currentUser.uid);
+        localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(transition.profile));
+
+        setIsGuest(false);
+        sessionStorage.removeItem('xc_6k_guest_mode');
+
+        if (!transition.shouldMigrateGuestRuns) {
+          setRuns([]);
+          localStorage.setItem(LOCAL_STORAGE_RUNS_KEY, JSON.stringify([]));
+        }
+
+        if (transition.shouldOpenSetup) {
+          setIsAccountSetupOpen(true);
+        }
+
+        let didMigrateGuest = false;
+        unsubscribeRuns = subscribeUserRuns(
+          currentUser.uid,
+          async (cloudRuns) => {
+            if (!isMounted || auth.currentUser?.uid !== currentUser.uid) return;
+            if (cloudRuns && cloudRuns.length > 0) {
+              setRuns(cloudRuns);
+              localStorage.setItem(LOCAL_STORAGE_RUNS_KEY, JSON.stringify(cloudRuns));
+            } else if (
+              !didMigrateGuest &&
+              transition.shouldMigrateGuestRuns &&
+              transition.guestRunsToMigrate.length > 0
+            ) {
+              didMigrateGuest = true;
+              try {
+                await batchSaveRuns(transition.guestRunsToMigrate);
+                if (!isMounted || auth.currentUser?.uid !== currentUser.uid) return;
+                setRuns(transition.guestRunsToMigrate);
+                localStorage.setItem(
+                  LOCAL_STORAGE_RUNS_KEY,
+                  JSON.stringify(transition.guestRunsToMigrate)
+                );
+              } catch (e) {
+                console.warn('Error uploading guest runs to cloud:', e);
+                setRuns([]);
+              }
+            } else {
+              setRuns([]);
+              localStorage.setItem(LOCAL_STORAGE_RUNS_KEY, JSON.stringify([]));
+            }
+          },
+          (error) => {
+            console.warn('Could not subscribe to cloud runs:', error);
+          }
+        );
+
+        if (isMounted) {
+          setAuthLoading(false);
+        }
+      } catch (error) {
+        console.error('Error in auth setup:', error);
+        if (isMounted) {
+          setAuthLoading(false);
+        }
       }
     });
 
-    return () => unsubscribeAuth();
+    return () => {
+      isMounted = false;
+      cleanupRunsSub();
+      unsubscribeAuth();
+    };
   }, []);
 
-  // Always keep localStorage updated as immediate local cache
+  // Always keep localStorage updated as immediate local cache for the active session
   useEffect(() => {
+    if (authLoading || (!user && !isGuest)) return;
+    localStorage.setItem(LOCAL_STORAGE_OWNER_KEY, user ? user.uid : 'guest');
     localStorage.setItem(LOCAL_STORAGE_RUNS_KEY, JSON.stringify(runs));
     localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(profile));
-  }, [runs, profile]);
+  }, [runs, profile, user, isGuest, authLoading]);
 
   // Derived metrics
   const { weeklyStats, adherence } = groupRunsByWeek(runs, profile.weeklyRunGoal);
@@ -511,7 +612,11 @@ export default function App() {
   };
 
   const handleSaveProfile = async (updatedProfile: UserProfile) => {
-    const normalized: UserProfile = { ...updatedProfile };
+    const normalized: UserProfile = {
+      ...updatedProfile,
+      id: user ? user.uid : updatedProfile.id,
+      email: user ? user.email || updatedProfile.email || '' : updatedProfile.email,
+    };
     if (!normalized.targetGoalDate || !normalized.targetGoalDate.trim()) {
       delete normalized.targetGoalDate;
     }
@@ -591,6 +696,7 @@ export default function App() {
   const handleSignOut = async () => {
     try {
       await logOut();
+      clearLocalSessionCache();
       setUser(null);
       setIsGuest(false);
       sessionStorage.removeItem('xc_6k_guest_mode');
