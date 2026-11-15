@@ -5,6 +5,8 @@ import {
   signInWithPopup,
   signInAnonymously,
   signOut as firebaseSignOut,
+  deleteUser,
+  reauthenticateWithPopup,
   onAuthStateChanged,
   User,
 } from 'firebase/auth';
@@ -123,6 +125,66 @@ export async function logOut() {
   } catch (error) {
     console.error('Error signing out', error);
     throw error;
+  }
+}
+
+async function reauthenticateForDeletion(user: User) {
+  const reauthProvider = new GoogleAuthProvider();
+  if (user.email) {
+    reauthProvider.setCustomParameters({ login_hint: user.email });
+  }
+  await reauthenticateWithPopup(user, reauthProvider);
+}
+
+export async function deleteCurrentUserAccount(user: User): Promise<void> {
+  // Reauthenticate proactively if session is older than 4 minutes so Firestore data isn't deleted before Auth verification succeeds
+  if (!user.isAnonymous && user.metadata?.lastSignInTime) {
+    const lastSignInMs = new Date(user.metadata.lastSignInTime).getTime();
+    if (!isNaN(lastSignInMs) && Date.now() - lastSignInMs > 4 * 60 * 1000) {
+      await reauthenticateForDeletion(user);
+    }
+  }
+
+  // 1. Delete all user runs in Firestore (batched)
+  const runsQuery = query(collection(db, 'runs'), where('userId', '==', user.uid));
+  let runsSnap;
+  try {
+    runsSnap = await getDocs(runsQuery);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'runs');
+  }
+
+  const runDocs = runsSnap.docs;
+  for (let i = 0; i < runDocs.length; i += 400) {
+    const chunk = runDocs.slice(i, i + 400);
+    const batch = writeBatch(db);
+    chunk.forEach((docSnap) => batch.delete(docSnap.ref));
+    try {
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'runs (batch)');
+    }
+  }
+
+  // 2. Delete user profile document
+  const userPath = `users/${user.uid}`;
+  try {
+    await deleteDoc(doc(db, 'users', user.uid));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, userPath);
+  }
+
+  // 3. Delete Firebase Authentication account (with recent-login fallback)
+  try {
+    await deleteUser(user);
+  } catch (err: unknown) {
+    const authErr = err as { code?: string };
+    if (authErr?.code === 'auth/requires-recent-login' && !user.isAnonymous) {
+      await reauthenticateForDeletion(user);
+      await deleteUser(user);
+    } else {
+      throw err;
+    }
   }
 }
 

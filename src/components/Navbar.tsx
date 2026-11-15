@@ -325,7 +325,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-neutral-900 dark:text-white">Settings</div>
-                        <div className="text-[10px] text-neutral-500 truncate">Goals, units, profile & appearance</div>
+                        <div className="text-[10px] text-neutral-500 truncate">Goals, units, profile &amp; account</div>
                       </div>
                     </button>
 

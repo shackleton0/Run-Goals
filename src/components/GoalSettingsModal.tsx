@@ -33,9 +33,12 @@ import {
   Plus,
   Sparkles,
   Clock,
+  Trash2,
+  AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 
-export type SettingsSection = 'root' | 'profile' | 'race' | 'weekly' | 'units';
+export type SettingsSection = 'root' | 'profile' | 'race' | 'weekly' | 'units' | 'delete_account';
 
 interface GoalSettingsModalProps {
   isOpen: boolean;
@@ -45,6 +48,10 @@ interface GoalSettingsModalProps {
   theme?: 'dark' | 'light';
   onToggleTheme?: () => void;
   onOpenSetupWizard?: () => void;
+  onDeleteAccount?: () => Promise<void>;
+  isGuest?: boolean;
+  userEmail?: string;
+  runsCount?: number;
   initialSection?: SettingsSection;
 }
 
@@ -77,10 +84,17 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
   theme,
   onToggleTheme,
   onOpenSetupWizard,
+  onDeleteAccount,
+  isGuest = false,
+  userEmail,
+  runsCount = 0,
   initialSection = 'root',
 }) => {
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection);
   const [showSchedulePreview, setShowSchedulePreview] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [selectedPreset, setSelectedPreset] = useState<string>('6K');
   const [customDistanceStr, setCustomDistanceStr] = useState<string>('6');
@@ -104,6 +118,9 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
     if (!isOpen) return;
     setActiveSection(initialSection);
     setShowSchedulePreview(false);
+    setDeleteConfirmText('');
+    setIsDeletingAccount(false);
+    setDeleteError(null);
 
     const unit = profile.unitPreference || 'km';
     const currentDistKm = profile.targetDistanceKm || 6.0;
@@ -297,6 +314,28 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
     race: 'Race & Target Goal',
     weekly: 'Weekly Training Plan',
     units: 'Units & Heart Rate',
+    delete_account: 'Delete Account',
+  };
+
+  const handleConfirmDeleteAccount = async () => {
+    if (!onDeleteAccount) return;
+    setIsDeletingAccount(true);
+    setDeleteError(null);
+    try {
+      await onDeleteAccount();
+    } catch (err: unknown) {
+      const errObj = err as { code?: string; message?: string };
+      if (errObj?.code === 'auth/popup-closed-by-user') {
+        setDeleteError('Re-authentication cancelled. Account was not deleted.');
+      } else if (errObj?.code === 'auth/popup-blocked') {
+        setDeleteError('Popup blocked by your browser. Allow popups so we can verify your account before deletion.');
+      } else if (errObj?.code === 'auth/user-mismatch') {
+        setDeleteError('Please confirm with the same Google account that is currently signed in.');
+      } else {
+        setDeleteError(errObj?.message || 'Failed to delete account. Please sign out, sign back in, and try again.');
+      }
+      setIsDeletingAccount(false);
+    }
   };
 
   const runnerInitial = (displayName.trim() || profile.email || 'R')
@@ -579,6 +618,41 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
                     )}
                   </div>
                 </div>
+
+                {/* Group 3: Account Management */}
+                {onDeleteAccount && (
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-rose-500/80 mb-2">
+                      Account
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteConfirmText('');
+                        setDeleteError(null);
+                        setActiveSection('delete_account');
+                      }}
+                      className="w-full flex items-center justify-between -mx-2.5 px-2.5 py-3 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/25 transition-colors text-left cursor-pointer group"
+                    >
+                      <div className="flex items-center space-x-3 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-rose-500/12 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                          <Trash2 className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-sm font-medium text-rose-600 dark:text-rose-400 block">
+                            {isGuest ? 'Erase Local Account Data' : 'Delete Account'}
+                          </span>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 block truncate">
+                            {isGuest
+                              ? 'Clear local workouts, goals, and exit guest mode'
+                              : `Permanently delete ${userEmail || 'your account'} and all runs`}
+                          </span>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-rose-400 shrink-0 transition-transform group-hover:translate-x-0.5" />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1123,29 +1197,115 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
                 </div>
               </div>
             )}
+
+            {/* SUB-PAGE 5: DELETE ACCOUNT CONFIRMATION */}
+            {activeSection === 'delete_account' && (
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-start space-x-3">
+                  <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1.5 text-xs">
+                    <h3 className="font-bold text-sm text-rose-700 dark:text-rose-300">
+                      {isGuest ? 'Erase All Local Data?' : 'Permanently Delete Your Account?'}
+                    </h3>
+                    <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                      This action cannot be undone. Everything tied to{' '}
+                      <span className="font-semibold text-slate-900 dark:text-white">
+                        {isGuest ? 'your guest session' : userEmail || 'your account'}
+                      </span>{' '}
+                      will be permanently removed:
+                    </p>
+                    <ul className="list-disc list-inside text-slate-600 dark:text-slate-300 space-y-0.5 pt-0.5">
+                      <li>All logged &amp; synced workouts ({runsCount} {runsCount === 1 ? 'run' : 'runs'})</li>
+                      <li>Your runner profile, race goals, and weekly training plan</li>
+                      {!isGuest && <li>Your Firebase login &amp; cloud profile record</li>}
+                    </ul>
+                  </div>
+                </div>
+
+                {!isGuest && (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    For your security, Google may prompt you to confirm your sign-in before deleting your account.
+                  </p>
+                )}
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Type <span className="font-mono font-extrabold text-rose-600 dark:text-rose-400">DELETE</span> to confirm
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={(e) => {
+                      setDeleteConfirmText(e.target.value);
+                      if (deleteError) setDeleteError(null);
+                    }}
+                    placeholder="Type DELETE"
+                    disabled={isDeletingAccount}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-[#09121B] border border-slate-200 dark:border-slate-800 text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/30 focus:border-rose-500 disabled:opacity-60"
+                  />
+                </div>
+
+                {deleteError && (
+                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-700 dark:text-rose-300 font-medium">
+                    {deleteError}
+                  </div>
+                )}
+
+                <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    disabled={isDeletingAccount}
+                    onClick={() => setActiveSection('root')}
+                    className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Keep Account
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deleteConfirmText.trim().toUpperCase() !== 'DELETE' || isDeletingAccount}
+                    onClick={handleConfirmDeleteAccount}
+                    className="inline-flex items-center justify-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 transition-colors cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed shadow-xs"
+                  >
+                    {isDeletingAccount ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Deleting Account...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>{isGuest ? 'Erase Local Data' : 'Permanently Delete Account'}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Clean Footer */}
-          <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-[#09121B]/50">
-            <div className="text-xs text-slate-400 dark:text-slate-500">
-              {hasUnsavedChanges ? 'Unsaved changes' : ''}
+          {/* Clean Footer (hidden on delete confirmation view which has its own dedicated actions) */}
+          {activeSection !== 'delete_account' && (
+            <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-[#09121B]/50">
+              <div className="text-xs text-slate-400 dark:text-slate-500">
+                {hasUnsavedChanges ? 'Unsaved changes' : ''}
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl text-xs font-semibold text-white bg-[#0593C6] hover:bg-[#047da8] transition-colors cursor-pointer shadow-xs"
+                >
+                  {hasUnsavedChanges ? 'Save Changes' : 'Done'}
+                </button>
+              </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 rounded-xl text-xs font-semibold text-white bg-[#0593C6] hover:bg-[#047da8] transition-colors cursor-pointer shadow-xs"
-              >
-                {hasUnsavedChanges ? 'Save Changes' : 'Done'}
-              </button>
-            </div>
-          </div>
+          )}
         </form>
       </div>
     </div>

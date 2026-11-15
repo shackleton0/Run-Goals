@@ -10,6 +10,7 @@ import {
   signInWithGoogle,
   signInAnonymousUser,
   logOut,
+  deleteCurrentUserAccount,
   getOrCreateUserProfile,
   saveUserProfile,
   subscribeUserRuns,
@@ -705,6 +706,19 @@ export default function App() {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    const targetUid = user ? user.uid : 'guest';
+    if (user) {
+      await deleteCurrentUserAccount(user);
+    }
+    localStorage.removeItem(`xc_setup_completed_${targetUid}`);
+    clearLocalSessionCache();
+    setUser(null);
+    setIsGuest(false);
+    setIsSettingsOpen(false);
+    sessionStorage.removeItem('xc_6k_guest_mode');
+  };
+
   // 1. Initial auth loading splash
   if (authLoading) {
     return (
@@ -1123,6 +1137,10 @@ export default function App() {
           theme={theme}
           onToggleTheme={toggleTheme}
           onOpenSetupWizard={() => setIsAccountSetupOpen(true)}
+          onDeleteAccount={handleDeleteAccount}
+          isGuest={isGuest}
+          userEmail={user?.email || profile.email || undefined}
+          runsCount={runs.length}
           initialSection={settingsInitialSection}
         />
 
