@@ -230,6 +230,47 @@ export function calculateTargetCutoff(
   };
 }
 
+/**
+ * Ensures the displayed target goal name matches the active targetDistanceKm.
+ * Guards against stale saved labels (e.g. "8K Race" lingering when targetDistanceKm is 6).
+ */
+export function resolveTargetGoalName(
+  targetDistanceKm?: number | null,
+  targetGoalName?: string | null,
+  fallbackSixKLabel: string = '6K Race'
+): string {
+  const distKm = targetDistanceKm && targetDistanceKm > 0 ? targetDistanceKm : 6.0;
+  const canonicalFallback =
+    Math.abs(distKm - 6.0) < 0.05
+      ? fallbackSixKLabel
+      : `${Number(distKm.toFixed(1))}K Race`;
+
+  const trimmed = targetGoalName?.trim();
+  if (!trimmed) {
+    return canonicalFallback;
+  }
+
+  const kmMatch = trimmed.match(/^(\d+(?:\.\d+)?)\s*K\b/i);
+  if (kmMatch) {
+    const namedKm = parseFloat(kmMatch[1]);
+    if (!isNaN(namedKm) && Math.abs(namedKm - distKm) > 0.2) {
+      return canonicalFallback;
+    }
+  }
+
+  if (/^1\s*Mile\b/i.test(trimmed) && Math.abs(distKm - 1.60934) > 0.2) {
+    return canonicalFallback;
+  }
+  if (/^Half\s*Marathon\b/i.test(trimmed) && Math.abs(distKm - 21.0975) > 0.5) {
+    return canonicalFallback;
+  }
+  if (/^Marathon\b/i.test(trimmed) && Math.abs(distKm - 42.195) > 0.5) {
+    return canonicalFallback;
+  }
+
+  return trimmed;
+}
+
 export function isAerobicRun(type: RunType): boolean {
   return type === 'Aerobic' || type === 'Easy' || type === 'Long Run';
 }

@@ -26,6 +26,7 @@ import {
   calculateTargetDistanceEquivalent,
   selectBestTargetEquivalent,
   findDuplicateRuns,
+  resolveTargetGoalName,
 } from './utils/runningCalculations';
 import { Navbar } from './components/Navbar';
 import { GoalBanner } from './components/GoalBanner';
@@ -123,7 +124,15 @@ export default function App() {
         if (parsed.target6kTimeSeconds === 1260 && !(parsed as any).hasCustomTarget) {
           delete parsed.target6kTimeSeconds;
         }
-        return { ...DEFAULT_RUNNER_PROFILE, ...parsed };
+        const merged = { ...DEFAULT_RUNNER_PROFILE, ...parsed };
+        if (merged.targetGoalName) {
+          merged.targetGoalName = resolveTargetGoalName(
+            merged.targetDistanceKm,
+            merged.targetGoalName,
+            '6K Race'
+          );
+        }
+        return merged;
       } catch {
         // fallback
       }
@@ -218,6 +227,7 @@ export default function App() {
           // Check if user set custom targets or distance goals locally before logging in
           const savedLocalProf = localStorage.getItem(LOCAL_STORAGE_PROFILE_KEY);
           let mergedProfile = userProf;
+          let shouldSaveMerged = false;
           if (savedLocalProf) {
             try {
               const parsedLocal = JSON.parse(savedLocalProf);
@@ -234,11 +244,25 @@ export default function App() {
                   id: currentUser.uid,
                   email: currentUser.email || userProf.email,
                 };
-                await saveUserProfile(mergedProfile);
+                shouldSaveMerged = true;
               }
             } catch (e) {
               console.warn('Error merging local profile with cloud profile:', e);
             }
+          }
+          if (mergedProfile.targetGoalName) {
+            const sanitizedGoalName = resolveTargetGoalName(
+              mergedProfile.targetDistanceKm,
+              mergedProfile.targetGoalName,
+              '6K Race'
+            );
+            if (sanitizedGoalName !== mergedProfile.targetGoalName) {
+              mergedProfile = { ...mergedProfile, targetGoalName: sanitizedGoalName };
+              shouldSaveMerged = true;
+            }
+          }
+          if (shouldSaveMerged) {
+            await saveUserProfile(mergedProfile);
           }
           setProfile(mergedProfile);
           localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(mergedProfile));

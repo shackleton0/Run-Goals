@@ -4,6 +4,7 @@ import {
   formatDuration,
   formatPace,
   calculateTargetCutoff,
+  resolveTargetGoalName,
 } from '../utils/runningCalculations';
 import {
   Trophy,
@@ -77,9 +78,11 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
     }
   }
 
-  const distTitle =
-    profile.targetGoalName ||
-    (targetDistKm === 6 ? '6K Race Target' : `${targetDistKm}K Competition Goal`);
+  const distTitle = resolveTargetGoalName(
+    targetDistKm,
+    profile.targetGoalName,
+    '6K Race Target'
+  );
   const distCardLabel = targetDistKm === 6 ? 'Target 6K' : `Target ${targetDistKm}K`;
   const projectedCardLabel =
     targetDistKm === 6 ? 'Fastest Projected 6K Time' : `Fastest Projected ${targetDistKm}K Time`;

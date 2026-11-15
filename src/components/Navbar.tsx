@@ -112,11 +112,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200 dark:border-slate-800">
                     <span className="font-bold text-slate-900 dark:text-white">RunGoals</span>
                     <span className="px-2 py-0.5 rounded-md bg-orange-500/15 text-orange-600 dark:text-orange-400 font-mono font-extrabold text-[11px] border border-orange-500/30">
-                      v1.2
+                      v1.3
                     </span>
                   </div>
                   <p className="mt-2 text-[11px] font-semibold text-orange-600 dark:text-orange-400">
-                    Beta v1.2
+                    Beta v1.3
                   </p>
                   <p className="mt-1.5 text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
                     Bugs or feedback:{' '}

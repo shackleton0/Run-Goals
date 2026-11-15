@@ -6,6 +6,7 @@ import {
   calculateTargetDistanceEquivalent,
   isAerobicRun,
   isIntervalRun,
+  resolveTargetGoalName,
   KM_TO_MILES,
 } from '../utils/runningCalculations';
 import { CategoryPieChart } from './CategoryPieChart';
@@ -58,7 +59,11 @@ export const ProgressVisualizer: React.FC<ProgressVisualizerProps> = ({
   const [hoveredWeek, setHoveredWeek] = useState<WeeklyStat | null>(null);
   const [pinnedWeek, setPinnedWeek] = useState<WeeklyStat | null>(null);
   const targetDistKm = targetDistanceKm || 6.0;
-  const targetLabel = targetGoalName || `${targetDistKm}K`;
+  const targetLabel = resolveTargetGoalName(
+    targetDistKm,
+    targetGoalName,
+    `${targetDistKm}K`
+  );
 
   const activeRun = hoveredRun || pinnedRun;
   const activeWeek = hoveredWeek || pinnedWeek;

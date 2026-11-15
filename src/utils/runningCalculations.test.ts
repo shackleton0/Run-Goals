@@ -10,6 +10,7 @@ import {
   calculateTargetDistanceEquivalent,
   selectBestTargetEquivalent,
   calculateTargetCutoff,
+  resolveTargetGoalName,
   groupRunsByWeek,
   inferRunType,
   findDuplicateRuns,
@@ -839,6 +840,14 @@ test('calculateMultiDistancePredictions estimates 5K, 8K, 10K, and Half Marathon
   assert.ok(high8k.predictedSeconds < low8k.predictedSeconds);
   assert.ok(high10k.predictedSeconds < low10k.predictedSeconds);
   assert.ok(highVol.enduranceExponent < lowVol.enduranceExponent);
+});
+
+test('resolveTargetGoalName prevents stale 8K Race label when targetDistanceKm is 6K', () => {
+  assert.equal(resolveTargetGoalName(6.0, '8K Race'), '6K Race');
+  assert.equal(resolveTargetGoalName(6.0, '8K Race', '6K Race Target'), '6K Race Target');
+  assert.equal(resolveTargetGoalName(6.0, '6K XC'), '6K XC');
+  assert.equal(resolveTargetGoalName(8.0, '8K Race'), '8K Race');
+  assert.equal(resolveTargetGoalName(5.0, '8K Race'), '5K Race');
 });
 
 
