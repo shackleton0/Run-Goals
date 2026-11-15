@@ -597,17 +597,16 @@ export default function App() {
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
       <div className="relative min-h-screen bg-[#ECF3F8] dark:bg-[#070E16] text-slate-900 dark:text-white flex flex-col font-sans transition-colors selection:bg-[#0EA5E9] selection:text-white">
-        {/* Ambient Mesh Backdrop for Liquid Glass Refraction (skipped in Lightweight Mode) */}
+        {/* Subtle Zero-Blur Ambient Backdrop */}
         {!isLightweight && (
           <div
             aria-hidden="true"
-            className="pointer-events-none fixed inset-0 overflow-hidden z-0"
-          >
-            <div className="absolute -bottom-24 -left-20 w-[560px] h-[560px] rounded-full bg-sky-400/22 dark:bg-[#0593C6]/22 blur-3xl" />
-            <div className="absolute bottom-10 right-[-6%] w-[520px] h-[520px] rounded-full bg-violet-400/18 dark:bg-violet-500/18 blur-3xl" />
-            <div className="absolute top-[42%] left-[22%] w-[600px] h-[340px] rounded-full bg-emerald-400/14 dark:bg-cyan-500/14 blur-3xl" />
-            <div className="absolute -bottom-36 left-1/2 -translate-x-1/2 w-[780px] h-[280px] rounded-full bg-cyan-400/20 dark:bg-sky-500/18 blur-3xl" />
-          </div>
+            className="pointer-events-none fixed inset-0 z-0 opacity-60 dark:opacity-45"
+            style={{
+              backgroundImage:
+                'radial-gradient(600px circle at 10% 85%, rgba(5, 147, 198, 0.10), transparent 65%), radial-gradient(520px circle at 90% 25%, rgba(139, 92, 246, 0.07), transparent 65%)',
+            }}
+          />
         )}
         {/* Top Navigation */}
         <Navbar
