@@ -43,9 +43,12 @@ export const MotivationalGreeting: React.FC<MotivationalGreetingProps> = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600 dark:text-slate-300 mt-1">
-              <span className="font-medium">Cross Country · {targetDistKm.toFixed(1)}K Distance Target</span>
+              <span className="font-medium">
+                {targetDistKm.toFixed(1)}K Distance Target
+                {profile.goalTimeframeWeeks ? ` (${profile.goalTimeframeWeeks}-Wk Timeline)` : ''}
+              </span>
               <span aria-hidden="true">·</span>
-              <span>3-Session Weekly Microcycle</span>
+              <span>{profile.weeklyRunGoal || 3}-Run Weekly Plan</span>
               {onOpenSettings && (
                 <>
                   <span aria-hidden="true">·</span>
@@ -148,7 +151,7 @@ export const MotivationalGreeting: React.FC<MotivationalGreetingProps> = ({
                   : 'text-slate-500 dark:text-slate-400'
               }`}
             >
-              {profile.target6kTimeSeconds ? 'Target configured' : 'Awaiting 6K goal'}
+              {profile.target6kTimeSeconds ? 'Target configured' : `Awaiting ${targetDistKm.toFixed(0)}K goal`}
             </span>
           </div>
         </div>

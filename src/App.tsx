@@ -17,6 +17,7 @@ import {
   deleteRunRecord,
   batchSaveRuns,
   firebaseConfig,
+  isAuthorizedAdmin,
 } from './lib/firebase';
 import { RunRecord, UserProfile, DuplicateRunMatch, RunType } from './types/running';
 import { DEFAULT_RUNNER_PROFILE, createPlaceholderRuns, isPlaceholderRun } from './data/sampleRuns';
@@ -36,7 +37,7 @@ import { BodyBatteryCard } from './components/BodyBatteryCard';
 import { CardioLoadCard } from './components/CardioLoadCard';
 import { ProgressVisualizer } from './components/ProgressVisualizer';
 import { MotivationalGreeting } from './components/MotivationalGreeting';
-import { FirstTimeNameModal } from './components/FirstTimeNameModal';
+import { AccountSetupModal } from './components/AccountSetupModal';
 import { GarminSyncModal } from './components/GarminSyncModal';
 import { DuplicateRunsModal } from './components/DuplicateRunsModal';
 import { AiExportModal } from './components/AiExportModal';
@@ -45,23 +46,19 @@ import { GoalSettingsModal } from './components/GoalSettingsModal';
 import { ShareProgressModal } from './components/ShareProgressModal';
 import { EmptyGarminState } from './components/EmptyGarminState';
 import { WatchTelemetrySection } from './components/WatchTelemetrySection';
-import { LiquidGlassReveal } from './components/LiquidGlassReveal';
 import { LoginPage } from './components/LoginPage';
+import { AdminPanelModal } from './components/AdminPanelModal';
 import {
   Cloud,
   CloudOff,
-  Loader2,
   AlertCircle,
   X,
   FlaskConical,
   Activity,
   Copy,
-  Check,
   ExternalLink,
   ShieldAlert,
-  Zap,
 } from 'lucide-react';
-import { usePerformanceMode } from './contexts/PerformanceModeContext';
 import confetti from 'canvas-confetti';
 
 const LOCAL_STORAGE_RUNS_KEY = 'xc_6k_user_runs_data';
@@ -73,12 +70,6 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [showBetaBanner, setShowBetaBanner] = useState(true);
-  const {
-    isLightweight,
-    showAutoNotice,
-    dismissAutoNotice,
-    setPreference: setPerformancePref,
-  } = usePerformanceMode();
 
   // Guest Testing Mode
   const [isGuest, setIsGuest] = useState<boolean>(() => {
@@ -177,28 +168,44 @@ export default function App() {
   };
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isShareOpen, setIsShareOpen] = useState(false);
-  const [isFirstTimeNameOpen, setIsFirstTimeNameOpen] = useState(false);
+  const [isAccountSetupOpen, setIsAccountSetupOpen] = useState(false);
+  const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
 
-  // Check if runner needs to be prompted for their name on first login / app entry
+  const isAdmin = isAuthorizedAdmin(user);
+
+  // Lock and close admin panel whenever user signs out or switches accounts
+  useEffect(() => {
+    if (!isAdmin) {
+      setIsAdminOpen(false);
+      setIsAdminUnlocked(false);
+    }
+  }, [isAdmin, user?.uid]);
+
+  // Trigger guided setup wizard for brand new accounts without saved onboarding or runs
   useEffect(() => {
     if (!authLoading && (user || isGuest)) {
-      const hasPrompted = localStorage.getItem('xc_name_prompt_completed');
-      if (!profile.displayName && !hasPrompted) {
-        setIsFirstTimeNameOpen(true);
+      const setupStorageKey = `xc_setup_completed_${user ? user.uid : 'guest'}`;
+      const hasDoneOrDismissed = Boolean(
+        profile.onboardingCompleted || localStorage.getItem(setupStorageKey)
+      );
+      if (!hasDoneOrDismissed && runs.length === 0 && !profile.hasCustomTarget) {
+        setIsAccountSetupOpen(true);
       }
     }
-  }, [authLoading, user, isGuest, profile.displayName]);
+  }, [authLoading, user, isGuest, profile.onboardingCompleted, profile.hasCustomTarget, runs.length]);
 
-  const handleSaveFirstTimeName = (name: string) => {
-    const updated = { ...profile, displayName: name };
-    handleSaveProfile(updated);
-    localStorage.setItem('xc_name_prompt_completed', 'true');
-    setIsFirstTimeNameOpen(false);
+  const handleCompleteAccountSetup = (updatedProfile: UserProfile) => {
+    const setupStorageKey = `xc_setup_completed_${user ? user.uid : 'guest'}`;
+    localStorage.setItem(setupStorageKey, 'true');
+    handleSaveProfile({ ...updatedProfile, onboardingCompleted: true });
+    setIsAccountSetupOpen(false);
   };
 
-  const handleDismissFirstTimeName = () => {
-    localStorage.setItem('xc_name_prompt_completed', 'true');
-    setIsFirstTimeNameOpen(false);
+  const handleDismissAccountSetup = () => {
+    const setupStorageKey = `xc_setup_completed_${user ? user.uid : 'guest'}`;
+    localStorage.setItem(setupStorageKey, 'true');
+    setIsAccountSetupOpen(false);
   };
 
   const handleOpenGarminSync = () => {
@@ -621,17 +628,6 @@ export default function App() {
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
       <div className="relative min-h-screen bg-[#ECF3F8] dark:bg-[#070E16] text-slate-900 dark:text-white flex flex-col font-sans transition-colors selection:bg-[#0EA5E9] selection:text-white">
-        {/* Subtle Zero-Blur Ambient Backdrop */}
-        {!isLightweight && (
-          <div
-            aria-hidden="true"
-            className="pointer-events-none fixed inset-0 z-0 opacity-60 dark:opacity-45"
-            style={{
-              backgroundImage:
-                'radial-gradient(600px circle at 10% 85%, rgba(5, 147, 198, 0.10), transparent 65%), radial-gradient(520px circle at 90% 25%, rgba(139, 92, 246, 0.07), transparent 65%)',
-            }}
-          />
-        )}
         {/* Top Navigation */}
         <Navbar
           user={user}
@@ -640,6 +636,7 @@ export default function App() {
           best6kSec={best6kSec}
           theme={theme}
           isGuest={isGuest}
+          isAdmin={isAdmin}
           hasPlaceholderData={hasPlaceholderData}
           onExitGuestMode={handleExitGuestMode}
           onToggleTheme={toggleTheme}
@@ -648,6 +645,7 @@ export default function App() {
           onOpenAddRun={() => handleOpenAddRunWithPrefill()}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenShare={() => setIsShareOpen(true)}
+          onOpenAdmin={() => setIsAdminOpen(true)}
           onLoadPlaceholderData={handleLoadPlaceholderData}
           onClearPlaceholderData={handleClearPlaceholderData}
           onSignIn={handleSignIn}
@@ -655,7 +653,7 @@ export default function App() {
         />
 
         {/* Cloud / Guest Status Banner */}
-        <div className="bg-white/90 dark:bg-[#0D1823]/95 border-b border-slate-200 dark:border-slate-800 px-4 py-2 text-xs text-slate-600 dark:text-slate-300 backdrop-blur-xs">
+        <div className="bg-white dark:bg-[#0D1823] border-b border-slate-200 dark:border-slate-800 px-4 py-2 text-xs text-slate-600 dark:text-slate-300">
           <div className="max-w-6xl mx-auto flex items-center justify-between">
             <div className="flex items-center space-x-2">
               {user ? (
@@ -727,44 +725,6 @@ export default function App() {
               >
                 <X className="w-3.5 h-3.5" />
               </button>
-            </div>
-          </div>
-        )}
-
-        {/* Auto-Activated Lightweight Mode Notice */}
-        {showAutoNotice && (
-          <div className="relative z-10 bg-emerald-500/10 border-b border-emerald-500/25 px-4 py-2 text-xs text-emerald-950 dark:text-emerald-100">
-            <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <Zap className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <p className="text-[11px] sm:text-xs leading-snug">
-                  <span className="font-semibold">Lightweight Mode activated automatically</span> — animations and liquid glass were paused because rendering slowed down.
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIsSettingsOpen(true)}
-                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] cursor-pointer"
-                >
-                  Settings
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPerformancePref('standard')}
-                  className="px-2.5 py-1 rounded-lg bg-white/80 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-semibold text-[11px] cursor-pointer"
-                >
-                  Restore Effects
-                </button>
-                <button
-                  type="button"
-                  onClick={dismissAutoNotice}
-                  className="p-1 rounded-md text-emerald-700/70 dark:text-emerald-300/70 hover:text-emerald-950 dark:hover:text-emerald-100 cursor-pointer"
-                  aria-label="Dismiss performance notice"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
             </div>
           </div>
         )}
@@ -873,6 +833,8 @@ export default function App() {
                 unit={profile.unitPreference}
                 weeklyDistanceGoalKm={profile.weeklyDistanceGoalKm}
                 weeklyRunGoal={profile.weeklyRunGoal || 3}
+                targetDistanceKm={profile.targetDistanceKm}
+                targetTimeSeconds={profile.target6kTimeSeconds}
                 onUpdateWeeklyDistanceGoal={(newKm) =>
                   handleSaveProfile({ ...profile, weeklyDistanceGoalKm: newKm })
                 }
@@ -885,6 +847,7 @@ export default function App() {
                 onOpenGarminSyncWithRuns={handleOpenGarminSyncWithRuns}
                 onOpenAddRun={() => handleOpenAddRunWithPrefill()}
                 onOpenSettings={() => setIsSettingsOpen(true)}
+                onOpenSetup={() => setIsAccountSetupOpen(true)}
                 onLoadPlaceholderData={handleLoadPlaceholderData}
               />
             </div>
@@ -910,82 +873,74 @@ export default function App() {
                 onSaveProfile={handleSaveProfile}
               />
 
-              {/* 3. WEEKLY TRAINING (Weekly Training Schedule: Interval, 6K Threshold Tempo, Aerobic Long Run) */}
-              <LiquidGlassReveal>
-                <WeeklyAdherenceCard
-                  weeklyStats={weeklyStats}
-                  adherence={adherence}
-                  runs={runs}
-                  onOpenAddRun={handleOpenAddRunWithPrefill}
-                  onOpenGarminSync={handleOpenGarminSync}
-                  onSaveRun={handleSaveRun}
-                  unit={profile.unitPreference}
-                  weeklyDistanceGoalKm={profile.weeklyDistanceGoalKm}
-                  weeklyRunGoal={profile.weeklyRunGoal || 3}
-                  onUpdateWeeklyDistanceGoal={(newKm) =>
-                    handleSaveProfile({ ...profile, weeklyDistanceGoalKm: newKm })
-                  }
-                  onOpenSettings={() => setIsSettingsOpen(true)}
-                />
-              </LiquidGlassReveal>
+              {/* 3. WEEKLY TRAINING (Weekly Training Schedule: Interval, Threshold Tempo, Aerobic Long Run) */}
+              <WeeklyAdherenceCard
+                weeklyStats={weeklyStats}
+                adherence={adherence}
+                runs={runs}
+                onOpenAddRun={handleOpenAddRunWithPrefill}
+                onOpenGarminSync={handleOpenGarminSync}
+                onSaveRun={handleSaveRun}
+                unit={profile.unitPreference}
+                weeklyDistanceGoalKm={profile.weeklyDistanceGoalKm}
+                weeklyRunGoal={profile.weeklyRunGoal || 3}
+                targetDistanceKm={profile.targetDistanceKm}
+                targetTimeSeconds={profile.target6kTimeSeconds}
+                onUpdateWeeklyDistanceGoal={(newKm) =>
+                  handleSaveProfile({ ...profile, weeklyDistanceGoalKm: newKm })
+                }
+                onOpenSettings={() => setIsSettingsOpen(true)}
+              />
 
               {/* 4. BODY BATTERY (Garmin-style Physiological Energy Reserve & Recovery) */}
-              <LiquidGlassReveal>
-                <BodyBatteryCard
-                  runs={runs}
-                  maxHeartRate={profile.maxHeartRate}
-                />
-              </LiquidGlassReveal>
+              <BodyBatteryCard
+                runs={runs}
+                maxHeartRate={profile.maxHeartRate}
+              />
 
               {/* 5. CARDIO LOAD (Fitbit-style Acute vs. Chronic Load & Training Phases) */}
-              <LiquidGlassReveal>
-                <CardioLoadCard
-                  runs={runs}
-                  maxHeartRate={profile.maxHeartRate}
-                />
-              </LiquidGlassReveal>
+              <CardioLoadCard
+                runs={runs}
+                maxHeartRate={profile.maxHeartRate}
+              />
 
               {/* 6. PERFORMANCE ANALYTICS (30-day category breakdown, progression curves, aerobic base, intervals) */}
-              <LiquidGlassReveal>
-                <ProgressVisualizer
-                  runs={runs}
-                  weeklyStats={weeklyStats}
-                  target6kSec={profile.target6kTimeSeconds}
-                  targetDistanceKm={profile.targetDistanceKm}
-                  targetGoalName={profile.targetGoalName}
-                  unit={profile.unitPreference}
-                  maxHeartRate={profile.maxHeartRate}
-                  onOpenGarminSync={handleOpenGarminSync}
-                  onOpenAddRun={() => handleOpenAddRunWithPrefill()}
-                />
-              </LiquidGlassReveal>
+              <ProgressVisualizer
+                runs={runs}
+                weeklyStats={weeklyStats}
+                target6kSec={profile.target6kTimeSeconds}
+                targetDistanceKm={profile.targetDistanceKm}
+                targetGoalName={profile.targetGoalName}
+                unit={profile.unitPreference}
+                maxHeartRate={profile.maxHeartRate}
+                onOpenGarminSync={handleOpenGarminSync}
+                onOpenAddRun={() => handleOpenAddRunWithPrefill()}
+              />
 
               {/* 7. FITNESS TRACKER DATA & UNIFIED ACTIVITY LOGS (Fastest Pace, Peak HR, HR Training Zones, Workout Combining, Categories & Deletion) */}
-              <LiquidGlassReveal>
-                <WatchTelemetrySection
-                  runs={runs}
-                  unit={profile.unitPreference}
-                  targetDistanceKm={profile.targetDistanceKm}
-                  target6kSec={profile.target6kTimeSeconds}
-                  best6kSec={best6kSec}
-                  customMaxHr={profile.maxHeartRate}
-                  onUpdateMaxHr={(val) => handleSaveProfile({ ...profile, maxHeartRate: val })}
-                  onDeleteRun={handleDeleteRun}
-                  onUpdateRunCategory={handleUpdateRunCategory}
-                  onUpdateRun={handleUpdateRun}
-                  onCombineRuns={handleCombineRuns}
-                  onOpenGarminSync={handleOpenGarminSync}
-                  onOpenAddRun={() => handleOpenAddRunWithPrefill()}
-                  savedDefaultInterval={savedDefaultInterval}
-                  onSaveDefaultInterval={handleSaveDefaultInterval}
-                />
-              </LiquidGlassReveal>
+              <WatchTelemetrySection
+                runs={runs}
+                unit={profile.unitPreference}
+                targetDistanceKm={profile.targetDistanceKm}
+                target6kSec={profile.target6kTimeSeconds}
+                best6kSec={best6kSec}
+                customMaxHr={profile.maxHeartRate}
+                onUpdateMaxHr={(val) => handleSaveProfile({ ...profile, maxHeartRate: val })}
+                onDeleteRun={handleDeleteRun}
+                onUpdateRunCategory={handleUpdateRunCategory}
+                onUpdateRun={handleUpdateRun}
+                onCombineRuns={handleCombineRuns}
+                onOpenGarminSync={handleOpenGarminSync}
+                onOpenAddRun={() => handleOpenAddRunWithPrefill()}
+                savedDefaultInterval={savedDefaultInterval}
+                onSaveDefaultInterval={handleSaveDefaultInterval}
+              />
             </div>
           )}
         </main>
 
         {/* Footer */}
-        <footer className="relative z-10 border-t border-slate-200/80 dark:border-slate-800/80 bg-white/60 dark:bg-[#09121B]/75 backdrop-blur-md py-6 px-4 text-center text-xs text-slate-500 dark:text-slate-400">
+        <footer className="relative z-10 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-[#09121B] py-6 px-4 text-center text-xs text-slate-500 dark:text-slate-400">
           <div className="max-w-4xl mx-auto">
             <p className="font-semibold text-slate-700 dark:text-slate-300">
               RUNGOALS · Garmin &amp; Apple Watch Telemetry · Goal Projections, Predictor &amp; YRAA Insights
@@ -994,11 +949,12 @@ export default function App() {
         </footer>
 
         {/* Modals */}
-        <FirstTimeNameModal
-          isOpen={isFirstTimeNameOpen}
-          initialName={profile.displayName || (user?.displayName ? user.displayName.split(' ')[0] : '')}
-          onSaveName={handleSaveFirstTimeName}
-          onDismiss={handleDismissFirstTimeName}
+        <AccountSetupModal
+          isOpen={isAccountSetupOpen}
+          profile={profile}
+          initialSuggestedName={profile.displayName || (user?.displayName ? user.displayName.split(' ')[0] : '')}
+          onComplete={handleCompleteAccountSetup}
+          onDismiss={handleDismissAccountSetup}
         />
 
         <GarminSyncModal
@@ -1049,6 +1005,7 @@ export default function App() {
           onSaveProfile={handleSaveProfile}
           theme={theme}
           onToggleTheme={toggleTheme}
+          onOpenSetupWizard={() => setIsAccountSetupOpen(true)}
         />
 
         <ShareProgressModal
@@ -1059,6 +1016,16 @@ export default function App() {
           adherence={adherence}
           best6kSec={best6kSec}
         />
+
+        {isAdmin && user && (
+          <AdminPanelModal
+            isOpen={isAdminOpen}
+            onClose={() => setIsAdminOpen(false)}
+            user={user}
+            isUnlocked={isAdminUnlocked}
+            onUnlockChange={setIsAdminUnlocked}
+          />
+        )}
       </div>
     </div>
   );

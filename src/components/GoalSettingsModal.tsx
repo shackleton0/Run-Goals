@@ -13,6 +13,7 @@ import {
   MILES_TO_KM,
   getSuggestedWeeklySchedule,
   inferDefaultYraaDivision,
+  computeTargetGoalDate,
 } from '../utils/runningCalculations';
 import {
   X,
@@ -29,12 +30,8 @@ import {
   Moon,
   Minus,
   Plus,
-  Zap,
+  Sparkles,
 } from 'lucide-react';
-import {
-  usePerformanceMode,
-  PerformancePreference,
-} from '../contexts/PerformanceModeContext';
 
 type SettingsSection = 'root' | 'profile' | 'race' | 'weekly' | 'units';
 
@@ -45,6 +42,7 @@ interface GoalSettingsModalProps {
   onSaveProfile: (profile: UserProfile) => void;
   theme?: 'dark' | 'light';
   onToggleTheme?: () => void;
+  onOpenSetupWizard?: () => void;
 }
 
 const DISTANCE_PRESETS = [
@@ -75,20 +73,15 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
   onSaveProfile,
   theme,
   onToggleTheme,
+  onOpenSetupWizard,
 }) => {
   const [activeSection, setActiveSection] = useState<SettingsSection>('root');
   const [showSchedulePreview, setShowSchedulePreview] = useState(false);
-  const {
-    preference: performancePref,
-    setPreference: setPerformancePref,
-    isLightweight,
-    autoSlowDetected,
-    prefersReducedMotion,
-  } = usePerformanceMode();
 
   const [selectedPreset, setSelectedPreset] = useState<string>('6K');
   const [customDistanceStr, setCustomDistanceStr] = useState<string>('6');
   const [targetTimeStr, setTargetTimeStr] = useState<string>('');
+  const [goalTimeframeWeeks, setGoalTimeframeWeeks] = useState<number>(12);
   const [weeklyRunGoal, setWeeklyRunGoal] = useState<number>(3);
   const [weeklyDistGoalStr, setWeeklyDistGoalStr] = useState<string>('');
   const [unitPreference, setUnitPreference] = useState<'km' | 'miles'>('km');
@@ -122,6 +115,7 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
     setTargetTimeStr(
       profile.target6kTimeSeconds ? formatDuration(profile.target6kTimeSeconds) : ''
     );
+    setGoalTimeframeWeeks(profile.goalTimeframeWeeks || 12);
     setWeeklyRunGoal(profile.weeklyRunGoal || 3);
     setWeeklyDistGoalStr(
       profile.weeklyDistanceGoalKm
@@ -238,6 +232,8 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
       target6kTimeSeconds:
         parsedTargetSec && parsedTargetSec > 0 ? parsedTargetSec : undefined,
       hasCustomTarget: Boolean(parsedTargetSec && parsedTargetSec > 0),
+      goalTimeframeWeeks,
+      targetGoalDate: computeTargetGoalDate(goalTimeframeWeeks),
       weeklyRunGoal: Number(weeklyRunGoal) || 3,
       weeklyDistanceGoalKm: weeklyDistanceGoalKm
         ? Number(weeklyDistanceGoalKm.toFixed(2))
@@ -315,10 +311,13 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
     const parsedHr =
       hrMode === 'custom' ? parseInt(maxHrStr, 10) || undefined : undefined;
     const hrChanged = parsedHr !== profile.maxHeartRate;
+    const timeframeChanged =
+      goalTimeframeWeeks !== (profile.goalTimeframeWeeks || 12);
 
     return (
       distChanged ||
       targetSecChanged ||
+      timeframeChanged ||
       weeklyRunsChanged ||
       weeklyKmChanged ||
       unitChanged ||
@@ -331,7 +330,7 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 overflow-y-auto"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -531,63 +530,31 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
                       </div>
                     )}
 
-                    {/* Performance & Visual Effects */}
-                    <div className="py-3 -mx-2.5 px-2.5 space-y-2.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start space-x-3 min-w-0">
-                          <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 flex items-center justify-center shrink-0 mt-0.5">
-                            <Zap className={`w-4 h-4 ${isLightweight ? 'text-emerald-500' : 'text-[#0593C6]'}`} />
+                    {onOpenSetupWizard && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenSetupWizard();
+                        }}
+                        className="w-full flex items-center justify-between -mx-2.5 px-2.5 py-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/45 transition-colors text-left cursor-pointer group"
+                      >
+                        <div className="flex items-center space-x-3 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-[#0593C6]/12 text-[#0593C6] flex items-center justify-center shrink-0">
+                            <Sparkles className="w-4 h-4" />
                           </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center flex-wrap gap-1.5">
-                              <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                                Performance Mode
-                              </span>
-                              {isLightweight && (
-                                <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
-                                  Lightweight On
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
-                              {performancePref === 'auto' && autoSlowDetected
-                                ? 'Slowness detected — animations & liquid glass were turned off automatically.'
-                                : performancePref === 'auto' && prefersReducedMotion
-                                  ? 'Following system reduced-motion — animations & liquid glass paused.'
-                                  : performancePref === 'lightweight'
-                                    ? 'Animations, blurs & liquid glass disabled for faster performance.'
-                                    : 'Auto switches to Lightweight without animations or liquid glass if the site runs slowly.'}
-                            </p>
+                          <div>
+                            <span className="text-sm font-medium text-slate-900 dark:text-slate-100 block">
+                              Guided Plan &amp; Schedule Wizard
+                            </span>
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                              Re-run onboarding for name, goal timeline, and weekly schedule
+                            </span>
                           </div>
                         </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80">
-                        {(
-                          [
-                            { id: 'auto', label: 'Auto' },
-                            { id: 'standard', label: 'Full Effects' },
-                            { id: 'lightweight', label: 'Lightweight' },
-                          ] as Array<{ id: PerformancePreference; label: string }>
-                        ).map((opt) => {
-                          const isSelected = performancePref === opt.id;
-                          return (
-                            <button
-                              key={opt.id}
-                              type="button"
-                              onClick={() => setPerformancePref(opt.id)}
-                              className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                                isSelected
-                                  ? 'bg-white dark:bg-[#162433] text-slate-900 dark:text-white shadow-xs'
-                                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-                              }`}
-                            >
-                              {opt.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
+                        <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -765,6 +732,47 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
                     </p>
                   )}
                 </div>
+
+                <div className="pt-5 border-t border-slate-100 dark:border-slate-800/80 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Goal Timeframe
+                    </label>
+                    <span className="text-xs font-semibold text-[#0593C6] tabular-nums">
+                      {goalTimeframeWeeks} wks · {computeTargetGoalDate(goalTimeframeWeeks)}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {[4, 8, 12, 16, 26].map((wk) => (
+                      <button
+                        key={wk}
+                        type="button"
+                        onClick={() => setGoalTimeframeWeeks(wk)}
+                        className={`py-2 rounded-xl text-xs font-semibold tabular-nums cursor-pointer ${
+                          goalTimeframeWeeks === wk
+                            ? 'bg-[#0593C6] text-white'
+                            : 'bg-slate-100 dark:bg-slate-800/75 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        {wk} wks
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={104}
+                      value={goalTimeframeWeeks}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        if (!isNaN(v)) setGoalTimeframeWeeks(Math.max(1, Math.min(104, v)));
+                      }}
+                      className="w-24 px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#09121B] border border-slate-200 dark:border-slate-800 text-sm font-semibold text-slate-900 dark:text-white tabular-nums"
+                    />
+                    <span className="text-xs text-slate-500">weeks to reach target</span>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -867,7 +875,10 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
                   const livePlan = getSuggestedWeeklySchedule(
                     effectiveKm,
                     weeklyRunGoal || 3,
-                    unitPreference
+                    unitPreference,
+                    effectiveDistKm,
+                    [],
+                    parsedTargetSec
                   );
 
                   return (
@@ -894,12 +905,17 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
                         <div className="mt-2 space-y-2 divide-y divide-slate-100 dark:divide-slate-800/70">
                           {livePlan.slots.map((s) => (
                             <div
-                              key={s.id}
+                              key={`${s.slotNumber}_${s.id}`}
                               className="flex items-start justify-between gap-3 pt-2 text-xs"
                             >
                               <div className="min-w-0">
-                                <div className="font-semibold text-slate-900 dark:text-white">
-                                  {s.name}
+                                <div className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                                  {s.recommendedDay && (
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#0593C6]">
+                                      {s.recommendedDay}
+                                    </span>
+                                  )}
+                                  <span>{s.name}</span>
                                 </div>
                                 <div className="text-slate-500 dark:text-slate-400 mt-0.5">
                                   {s.structure}

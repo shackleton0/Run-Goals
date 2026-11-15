@@ -11,6 +11,12 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.email == 'eskin.adam@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+
     function incoming() {
       return request.resource.data;
     }
@@ -21,6 +27,17 @@ service cloud.firestore {
 
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.:]+$');
+    }
+
+    function isValidAdminConfig(data) {
+      return data.keys().hasAll(['id', 'pinHash', 'pinSalt'])
+        && data.keys().hasOnly(['id', 'pinHash', 'pinSalt', 'pinLength', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.pinHash is string && data.pinHash.size() == 64 && data.pinHash.matches('^[a-f0-9]+$')
+        && data.pinSalt is string && data.pinSalt.size() >= 16 && data.pinSalt.size() <= 64
+        && (!('pinLength' in data) || (data.pinLength is number && data.pinLength >= 4 && data.pinLength <= 8))
+        && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64))
+        && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
     }
 
     function isValidUserProfile(data) {
@@ -44,6 +61,9 @@ service cloud.firestore {
         && (!('defaultRepDistanceMeters' in data) || (data.defaultRepDistanceMeters is number && data.defaultRepDistanceMeters > 0))
         && (!('defaultRestDurationSeconds' in data) || (data.defaultRestDurationSeconds is number && data.defaultRestDurationSeconds >= 0))
         && (!('defaultRepCount' in data) || (data.defaultRepCount is number && data.defaultRepCount > 0))
+        && (!('goalTimeframeWeeks' in data) || (data.goalTimeframeWeeks is number && data.goalTimeframeWeeks >= 1 && data.goalTimeframeWeeks <= 104))
+        && (!('targetGoalDate' in data) || (data.targetGoalDate is string && data.targetGoalDate.size() <= 32))
+        && (!('onboardingCompleted' in data) || (data.onboardingCompleted is bool))
         && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64))
         && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
     }
@@ -80,8 +100,8 @@ service cloud.firestore {
 
     // User Profile: /users/{userId}
     match /users/{userId} {
-      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
-      allow list: if false; // Blanket queries disallowed
+      allow get: if isValidId(userId) && (isAdmin() || (isSignedIn() && request.auth.uid == userId));
+      allow list: if isAdmin();
       allow create: if isSignedIn()
         && isValidId(userId)
         && request.auth.uid == userId
@@ -99,8 +119,8 @@ service cloud.firestore {
 
     // Runs Collection: /runs/{runId}
     match /runs/{runId} {
-      allow get: if isSignedIn() && isValidId(runId) && existing().userId == request.auth.uid;
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isValidId(runId) && (isAdmin() || (isSignedIn() && existing().userId == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow create: if isSignedIn()
         && isValidId(runId)
         && incoming().userId == request.auth.uid
@@ -113,6 +133,23 @@ service cloud.firestore {
       allow delete: if isSignedIn()
         && isValidId(runId)
         && existing().userId == request.auth.uid;
+    }
+
+    // Admin Passcode Config: /adminConfig/{userId}
+    match /adminConfig/{userId} {
+      allow get: if isAdmin() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if false;
+      allow create: if isAdmin()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && incoming().id == userId
+        && isValidAdminConfig(incoming());
+      allow update: if isAdmin()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && incoming().id == existing().id
+        && isValidAdminConfig(incoming());
+      allow delete: if false;
     }
   }
 }

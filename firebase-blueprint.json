@@ -28,6 +28,9 @@
         "defaultRepDistanceMeters": { "type": "number" },
         "defaultRestDurationSeconds": { "type": "number" },
         "defaultRepCount": { "type": "number" },
+        "goalTimeframeWeeks": { "type": "number" },
+        "targetGoalDate": { "type": "string", "maxLength": 32 },
+        "onboardingCompleted": { "type": "boolean" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
@@ -66,6 +69,20 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "userId", "date", "title", "distanceKm", "durationSeconds", "runType"]
+    },
+    "AdminConfig": {
+      "title": "AdminConfig",
+      "description": "Salted SHA-256 passcode configuration for the admin panel",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "pinHash": { "type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[a-f0-9]+$" },
+        "pinSalt": { "type": "string", "minLength": 16, "maxLength": 64 },
+        "pinLength": { "type": "number" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "pinHash", "pinSalt"]
     }
   },
   "firestore": {
@@ -76,6 +93,10 @@
     "/runs/{runId}": {
       "schema": "RunRecord",
       "description": "Cross country training runs, Garmin sync activities, and 6k trial performances"
+    },
+    "/adminConfig/{userId}": {
+      "schema": "AdminConfig",
+      "description": "Admin numeric passcode hash and salt restricted to the verified admin account"
     }
   }
 }

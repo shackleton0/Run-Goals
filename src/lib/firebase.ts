@@ -12,6 +12,7 @@ import {
   getFirestore,
   doc,
   getDoc,
+  getDocs,
   getDocFromServer,
   setDoc,
   updateDoc,
@@ -142,6 +143,7 @@ export async function getOrCreateUserProfile(user: User): Promise<UserProfile> {
       displayName: user.displayName || '',
       weeklyRunGoal: 3, // Default 3 runs/week
       unitPreference: 'km',
+      onboardingCompleted: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -266,4 +268,121 @@ export async function batchSaveRuns(runs: RunRecord[]): Promise<void> {
       handleFirestoreError(error, OperationType.WRITE, 'runs (batch)');
     }
   }
+}
+
+// ============================================================
+// Admin Gate, Salted Passcode & Cross-User Data Explorer
+// ============================================================
+
+export const ADMIN_EMAIL = 'eskin.adam@gmail.com';
+
+export function isAuthorizedAdmin(user: User | null): boolean {
+  return Boolean(
+    user &&
+      user.email &&
+      user.email.toLowerCase() === ADMIN_EMAIL &&
+      user.emailVerified !== false
+  );
+}
+
+export interface AdminConfigRecord {
+  id: string;
+  pinHash: string;
+  pinSalt: string;
+  pinLength?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+function generateAdminSalt(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function hashAdminPin(pin: string, salt: string): Promise<string> {
+  const data = new TextEncoder().encode(`${salt}:${pin}`);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+export async function getAdminConfig(user: User): Promise<AdminConfigRecord | null> {
+  if (!isAuthorizedAdmin(user)) {
+    throw new Error('Unauthorized admin access attempt.');
+  }
+  const path = `adminConfig/${user.uid}`;
+  try {
+    const snap = await getDoc(doc(db, 'adminConfig', user.uid));
+    if (!snap.exists()) return null;
+    return snap.data() as AdminConfigRecord;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+  }
+}
+
+export async function saveAdminPasscode(user: User, pin: string): Promise<AdminConfigRecord> {
+  if (!isAuthorizedAdmin(user)) {
+    throw new Error('Unauthorized admin access attempt.');
+  }
+  const cleanedPin = pin.replace(/\D/g, '');
+  if (cleanedPin.length < 4 || cleanedPin.length > 8) {
+    throw new Error('Passcode must be 4 to 8 digits.');
+  }
+
+  const path = `adminConfig/${user.uid}`;
+  const docRef = doc(db, 'adminConfig', user.uid);
+  const existing = await getAdminConfig(user);
+  const now = new Date().toISOString();
+  const salt = generateAdminSalt();
+  const pinHash = await hashAdminPin(cleanedPin, salt);
+
+  const payload: AdminConfigRecord = {
+    id: user.uid,
+    pinHash,
+    pinSalt: salt,
+    pinLength: cleanedPin.length,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  };
+
+  try {
+    await setDoc(docRef, payload);
+    return payload;
+  } catch (error) {
+    handleFirestoreError(error, existing ? OperationType.UPDATE : OperationType.CREATE, path);
+  }
+}
+
+export async function verifyAdminPasscode(
+  pin: string,
+  config: AdminConfigRecord
+): Promise<boolean> {
+  const cleanedPin = pin.replace(/\D/g, '');
+  if (!cleanedPin || !config?.pinHash || !config?.pinSalt) return false;
+  const computed = await hashAdminPin(cleanedPin, config.pinSalt);
+  return computed === config.pinHash;
+}
+
+export async function fetchAllAdminData(): Promise<{
+  users: UserProfile[];
+  runs: RunRecord[];
+}> {
+  let users: UserProfile[] = [];
+  let runs: RunRecord[] = [];
+
+  try {
+    const usersSnap = await getDocs(collection(db, 'users'));
+    users = usersSnap.docs.map((d) => d.data() as UserProfile);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'users');
+  }
+
+  try {
+    const runsSnap = await getDocs(collection(db, 'runs'));
+    runs = runsSnap.docs.map((d) => d.data() as RunRecord);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'runs');
+  }
+
+  return { users, runs };
 }

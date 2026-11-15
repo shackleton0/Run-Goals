@@ -35,6 +35,8 @@ import {
   estimateYraaPlacement,
   formatOrdinalPlace,
   calculateMultiDistancePredictions,
+  computeTargetGoalDate,
+  buildWeeklyDaySchedule,
 } from './runningCalculations';
 import {
   INITIAL_SAMPLE_RUNS,
@@ -849,6 +851,42 @@ test('resolveTargetGoalName prevents stale 8K Race label when targetDistanceKm i
   assert.equal(resolveTargetGoalName(8.0, '8K Race'), '8K Race');
   assert.equal(resolveTargetGoalName(5.0, '8K Race'), '5K Race');
 });
+
+test('computeTargetGoalDate calculates exact target completion date from weeks offset', () => {
+  const ref = new Date(2026, 9, 1); // Oct 1, 2026
+  assert.equal(computeTargetGoalDate(1, ref), '2026-10-08');
+  assert.equal(computeTargetGoalDate(12, ref), '2026-12-24');
+});
+
+test('getSuggestedWeeklySchedule + buildWeeklyDaySchedule maps 2, 3, 4, and 5 run plans with goal pace hints', () => {
+  // 2-run schedule with 6K 24:00 (4:00/km) goal time
+  const plan2 = getSuggestedWeeklySchedule(18, 2, 'km', 6.0, [], 1440);
+  assert.equal(plan2.slots.length, 2);
+  assert.equal(plan2.slots[0].recommendedDay, 'Wed');
+  assert.equal(plan2.slots[1].recommendedDay, 'Sun');
+  assert.equal(plan2.slots[0].suggestedPaceFormatted, undefined);
+  assert.ok(plan2.slots[0].targetPaceHint);
+
+  const days2 = buildWeeklyDaySchedule(plan2);
+  assert.equal(days2.length, 7);
+  assert.equal(days2.filter((d) => !d.isRestDay).length, 2);
+  assert.equal(days2.filter((d) => d.isRestDay).length, 5);
+
+  // 4-run schedule
+  const plan4 = getSuggestedWeeklySchedule(32, 4, 'km', 5.0, [], 1200);
+  assert.equal(plan4.slots.length, 4);
+  const days4 = buildWeeklyDaySchedule(plan4);
+  assert.equal(days4.filter((d) => !d.isRestDay).length, 4);
+  assert.equal(days4.filter((d) => d.isRestDay).length, 3);
+
+  // 5-run schedule
+  const plan5 = getSuggestedWeeklySchedule(40, 5, 'km', 6.0, [], 1380);
+  assert.equal(plan5.slots.length, 5);
+  const days5 = buildWeeklyDaySchedule(plan5);
+  assert.equal(days5.filter((d) => !d.isRestDay).length, 5);
+  assert.equal(days5.filter((d) => d.isRestDay).length, 2);
+});
+
 
 
 

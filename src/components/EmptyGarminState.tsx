@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, FileText, Plus, Target, CheckCircle2, AlertCircle, ArrowUpCircle, FlaskConical } from 'lucide-react';
+import { UploadCloud, FileText, Plus, Target, CheckCircle2, AlertCircle, ArrowUpCircle, FlaskConical, Sparkles } from 'lucide-react';
 import { RunRecord } from '../types/running';
 import { parseWatchFiles } from '../utils/watchFileParser';
 
@@ -10,6 +10,7 @@ interface EmptyGarminStateProps {
   onOpenGarminSyncWithRuns?: (runs: RunRecord[]) => void;
   onOpenAddRun: () => void;
   onOpenSettings: () => void;
+  onOpenSetup?: () => void;
   onLoadPlaceholderData?: () => void;
 }
 
@@ -20,6 +21,7 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
   onOpenGarminSyncWithRuns,
   onOpenAddRun,
   onOpenSettings,
+  onOpenSetup,
   onLoadPlaceholderData,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -175,15 +177,21 @@ export const EmptyGarminState: React.FC<EmptyGarminStateProps> = ({
           </button>
 
           <button
-            onClick={onOpenSettings}
+            onClick={onOpenSetup || onOpenSettings}
             className="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 hover:bg-neutral-100 dark:hover:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-800 text-left transition-colors cursor-pointer group"
           >
             <div className="flex items-center space-x-2 text-xs font-semibold text-neutral-900 dark:text-white mb-1">
-              <Target className="w-4 h-4 text-[#10B981]" />
-              <span>Set 6K Goal Time</span>
+              {onOpenSetup ? (
+                <Sparkles className="w-4 h-4 text-[#10B981]" />
+              ) : (
+                <Target className="w-4 h-4 text-[#10B981]" />
+              )}
+              <span>{onOpenSetup ? 'Plan & Schedule Setup' : 'Set Goal Time'}</span>
             </div>
             <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              Define your cross country 6K race goal and split target
+              {onOpenSetup
+                ? 'Customize your goal, timeline, weekly runs, and recommended schedule'
+                : 'Define your race distance goal and pace target'}
             </p>
           </button>
 

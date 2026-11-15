@@ -83,7 +83,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
       <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0c151c] text-neutral-900 dark:text-white flex flex-col font-sans transition-colors selection:bg-[#0593C6] selection:text-white">
         {/* Minimal Navigation Bar */}
-        <header className="border-b border-neutral-200 dark:border-neutral-800 bg-white/95 dark:bg-[#0c151c]/95 backdrop-blur-md">
+        <header className="border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#0c151c]">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 rounded-lg bg-[#0593C6] text-white flex items-center justify-center font-bold shadow-xs">

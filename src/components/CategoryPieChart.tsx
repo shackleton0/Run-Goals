@@ -232,7 +232,7 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
         <div className="space-y-4">
           {/* Active Isolation Status Pill */}
           {activeCategory && focusedItem && (
-            <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-white/90 dark:bg-[#12222f]/90 backdrop-blur-md border border-neutral-200/90 dark:border-neutral-700 shadow-xs animate-in fade-in duration-150">
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-white dark:bg-[#12222f] border border-neutral-200/90 dark:border-neutral-700 shadow-xs">
               <div className="flex items-center space-x-2">
                 <span
                   className="w-3 h-3 rounded-full shadow-xs"
@@ -328,7 +328,7 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
 
                 {/* Donut Center Display: Clean, Uncluttered Informative Data Inside the Circle */}
                 <div
-                  className="absolute inset-0 rounded-full flex flex-col items-center justify-center text-center p-3 pointer-events-none select-none bg-white/92 dark:bg-[#0c1822]/95 backdrop-blur-md border border-neutral-200/90 dark:border-neutral-700/80 shadow-md transition-all duration-200"
+                  className="absolute inset-0 rounded-full flex flex-col items-center justify-center text-center p-3 pointer-events-none select-none bg-white dark:bg-[#0c1822] border border-neutral-200/90 dark:border-neutral-700/80 shadow-md transition-colors"
                   style={{
                     width: `${innerRadius * 2 - 4}px`,
                     height: `${innerRadius * 2 - 4}px`,

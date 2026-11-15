@@ -87,6 +87,9 @@ export interface UserProfile {
   defaultRepDistanceMeters?: number;
   defaultRestDurationSeconds?: number;
   defaultRepCount?: number;
+  goalTimeframeWeeks?: number;
+  targetGoalDate?: string;
+  onboardingCompleted?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

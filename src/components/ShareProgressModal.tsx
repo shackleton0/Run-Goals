@@ -469,7 +469,7 @@ ${best6kSec ? `⚡ Current Projected ${distLabel}: ${formatDuration(best6kSec)} 
   const emailHref = `mailto:?subject=${encodedSubject}&body=${encodedBody}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75">
       {/* Hidden canvas for drawing high-res export image */}
       <canvas ref={canvasRef} className="hidden" />
 
@@ -570,7 +570,7 @@ ${best6kSec ? `⚡ Current Projected ${distLabel}: ${formatDuration(best6kSec)} 
             {/* 4 Key Stat Badges */}
             <div className="grid grid-cols-2 gap-3 pt-2 relative z-10">
               {/* Stat 1: Target */}
-              <div className="p-3 rounded-xl bg-black/35 backdrop-blur-xs border border-white/10">
+              <div className="p-3 rounded-xl bg-black/40 border border-white/10">
                 <div className="flex items-center space-x-1.5 text-[10px] font-bold text-white/60 uppercase">
                   <Target className="w-3 h-3 text-[#38bdf8]" />
                   <span>Target {distLabel}</span>
@@ -584,7 +584,7 @@ ${best6kSec ? `⚡ Current Projected ${distLabel}: ${formatDuration(best6kSec)} 
               </div>
 
               {/* Stat 2: Current Best */}
-              <div className="p-3 rounded-xl bg-black/35 backdrop-blur-xs border border-white/10">
+              <div className="p-3 rounded-xl bg-black/40 border border-white/10">
                 <div className="flex items-center space-x-1.5 text-[10px] font-bold text-white/60 uppercase">
                   <Trophy className="w-3 h-3 text-amber-400" />
                   <span>Projected Best</span>
@@ -598,7 +598,7 @@ ${best6kSec ? `⚡ Current Projected ${distLabel}: ${formatDuration(best6kSec)} 
               </div>
 
               {/* Stat 3: Weekly Consistency */}
-              <div className="p-3 rounded-xl bg-black/35 backdrop-blur-xs border border-white/10">
+              <div className="p-3 rounded-xl bg-black/40 border border-white/10">
                 <div className="flex items-center space-x-1.5 text-[10px] font-bold text-white/60 uppercase">
                   <Flame className="w-3 h-3 text-orange-400" />
                   <span>Weekly Runs</span>
@@ -612,7 +612,7 @@ ${best6kSec ? `⚡ Current Projected ${distLabel}: ${formatDuration(best6kSec)} 
               </div>
 
               {/* Stat 4: Weekly Distance */}
-              <div className="p-3 rounded-xl bg-black/35 backdrop-blur-xs border border-white/10">
+              <div className="p-3 rounded-xl bg-black/40 border border-white/10">
                 <div className="flex items-center space-x-1.5 text-[10px] font-bold text-white/60 uppercase">
                   <Activity className="w-3 h-3 text-purple-400" />
                   <span>Weekly Distance</span>

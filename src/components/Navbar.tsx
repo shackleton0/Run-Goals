@@ -16,6 +16,7 @@ import {
   Share2,
   FlaskConical,
   Trash2,
+  Shield,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -25,6 +26,7 @@ interface NavbarProps {
   best6kSec?: number;
   theme: 'dark' | 'light';
   isGuest?: boolean;
+  isAdmin?: boolean;
   hasPlaceholderData?: boolean;
   onExitGuestMode?: () => void;
   onToggleTheme: () => void;
@@ -33,6 +35,7 @@ interface NavbarProps {
   onOpenAddRun: () => void;
   onOpenSettings: () => void;
   onOpenShare?: () => void;
+  onOpenAdmin?: () => void;
   onLoadPlaceholderData?: () => void;
   onClearPlaceholderData?: () => void;
   onSignIn: () => void;
@@ -46,6 +49,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   best6kSec,
   theme,
   isGuest,
+  isAdmin = false,
   hasPlaceholderData = false,
   onExitGuestMode,
   onToggleTheme,
@@ -54,6 +58,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAddRun,
   onOpenSettings,
   onOpenShare,
+  onOpenAdmin,
   onLoadPlaceholderData,
   onClearPlaceholderData,
   onSignIn,
@@ -78,7 +83,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#09121B]/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-xs transition-colors">
+    <header className="sticky top-0 z-40 bg-white dark:bg-[#09121B] border-b border-slate-200 dark:border-slate-800 shadow-xs transition-colors">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between h-16 gap-4">
           {/* Brand Identity */}
@@ -130,6 +135,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Admin Panel Action (exclusively visible for eskin.adam@gmail.com) */}
+            {isAdmin && onOpenAdmin && (
+              <button
+                type="button"
+                onClick={onOpenAdmin}
+                className="flex items-center space-x-1.5 px-3 py-2 min-h-[38px] rounded-xl text-xs font-bold bg-violet-500/15 hover:bg-violet-500/25 active:scale-[0.96] text-violet-700 dark:text-violet-300 border border-violet-500/35 transition-all cursor-pointer shadow-xs"
+                aria-label="Open Admin Console"
+                title="Admin Console (Passcode Protected)"
+              >
+                <Shield className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Admin</span>
+              </button>
+            )}
 
             {/* Sync Data Action */}
             <button

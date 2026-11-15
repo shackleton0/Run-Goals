@@ -123,6 +123,11 @@ export const GoalBanner: React.FC<GoalBannerProps> = ({
               ) : targetTotalTimeSec ? (
                 <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums">
                   · {distCardLabel} {formatDuration(targetTotalTimeSec)}
+                  {profile.goalTimeframeWeeks ? ` · ${profile.goalTimeframeWeeks}-Wk Plan` : ''}
+                </span>
+              ) : profile.goalTimeframeWeeks ? (
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tabular-nums">
+                  · {profile.goalTimeframeWeeks}-Wk Plan
                 </span>
               ) : null}
             </div>

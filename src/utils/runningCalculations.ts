@@ -2525,6 +2525,8 @@ export interface SuggestedSlotSchedule {
   structure: string;
   purpose: string;
   suggestedPaceFormatted?: string;
+  recommendedDay?: 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun';
+  targetPaceHint?: string;
 }
 
 export interface SuggestedWeeklySchedulePlan {
@@ -2534,6 +2536,28 @@ export interface SuggestedWeeklySchedulePlan {
   slots: SuggestedSlotSchedule[];
   totalSuggestedKm: number;
   improvement: RealImprovementMetrics;
+}
+
+export interface WeeklyDayScheduleItem {
+  day: 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun';
+  dayFull: string;
+  isRestDay: boolean;
+  slot?: SuggestedSlotSchedule;
+  restNote?: string;
+}
+
+export function computeTargetGoalDate(
+  weeks: number,
+  referenceDate: Date = new Date()
+): string {
+  const safeWeeks = Math.max(1, Math.min(104, Math.round(weeks || 12)));
+  const d = new Date(
+    referenceDate.getFullYear(),
+    referenceDate.getMonth(),
+    referenceDate.getDate()
+  );
+  d.setDate(d.getDate() + safeWeeks * 7);
+  return formatLocalDateString(d);
 }
 
 export function calculateRealImprovement(
@@ -2631,9 +2655,11 @@ export function getSuggestedWeeklySchedule(
   weeklyRunGoal: number = 3,
   unit: 'km' | 'miles' = 'km',
   targetGoalDistanceKm: number = 6.0,
-  runs?: RunRecord[]
+  runs?: RunRecord[],
+  targetTimeSeconds?: number | null
 ): SuggestedWeeklySchedulePlan {
-  const improvement = calculateRealImprovement(runs || [], unit, targetGoalDistanceKm);
+  const safeTargetDist = targetGoalDistanceKm > 0 ? targetGoalDistanceKm : 6.0;
+  const improvement = calculateRealImprovement(runs || [], unit, safeTargetDist);
 
   // If no weekly distance goal is set, suggest a baseline: 25 km (~15.5 mi) for 3 runs, or 8 km per run
   const effectiveWeeklyKm = Math.max(
@@ -2643,10 +2669,92 @@ export function getSuggestedWeeklySchedule(
       : Math.max(15, weeklyRunGoal * 8)
   );
 
+  // Compute goal-based pace cues when targetTimeSeconds is provided (even before 2 logged runs)
+  const goalPaceSecPerKm =
+    targetTimeSeconds && targetTimeSeconds > 0
+      ? targetTimeSeconds < 600
+        ? targetTimeSeconds
+        : targetTimeSeconds / safeTargetDist
+      : null;
+
+  const goalIntervalPaceHint = goalPaceSecPerKm
+    ? formatPace(Math.max(150, Math.round(goalPaceSecPerKm - 15)), unit)
+    : undefined;
+  const goalTempoPaceHint = goalPaceSecPerKm
+    ? formatPace(Math.max(165, Math.round(goalPaceSecPerKm + 10)), unit)
+    : undefined;
+  const goalEasyPaceHint = goalPaceSecPerKm
+    ? formatPace(Math.max(190, Math.round(goalPaceSecPerKm + 48)), unit)
+    : undefined;
+
+  const targetDistLabel =
+    Math.abs(safeTargetDist - Math.round(safeTargetDist)) < 0.05
+      ? `${Math.round(safeTargetDist)}K`
+      : `${safeTargetDist.toFixed(1)}K`;
+
   const runsCount = Math.max(1, Math.min(14, weeklyRunGoal));
   const slots: SuggestedSlotSchedule[] = [];
 
-  if (runsCount <= 3) {
+  if (runsCount === 1) {
+    const longKm = Number(effectiveWeeklyKm.toFixed(1));
+    slots.push({
+      id: 'long_run',
+      slotNumber: 1,
+      name: 'Aerobic Endurance Run',
+      category: 'Endurance Base',
+      suggestedDistanceKm: longKm,
+      suggestedDistanceFormatted:
+        unit === 'miles' ? `${(longKm * KM_TO_MILES).toFixed(1)} mi` : `${longKm.toFixed(1)} km`,
+      percentageOfWeekly: 100,
+      structure: 'Steady aerobic run with a smooth progression finish over the final 15–20%',
+      purpose: 'Maintains cardiovascular fitness and foundational endurance on a 1-run/week schedule',
+      suggestedPaceFormatted: improvement.hasEnoughData ? improvement.suggestedLongRunPaceFormatted : undefined,
+      recommendedDay: 'Sun',
+      targetPaceHint: improvement.hasEnoughData
+        ? improvement.suggestedLongRunPaceFormatted
+        : goalEasyPaceHint,
+    });
+  } else if (runsCount === 2) {
+    const tempoKm = Number(Math.max(3.0, Number((effectiveWeeklyKm * 0.4).toFixed(1))));
+    const longKm = Number(Math.max(4.0, Number((effectiveWeeklyKm - tempoKm).toFixed(1))));
+    const tempoWorkDist = Math.max(2.0, Number((tempoKm - 2.0).toFixed(1)));
+
+    slots.push({
+      id: 'tempo',
+      slotNumber: 1,
+      name: 'Threshold Tempo',
+      category: 'Lactate Clearance',
+      suggestedDistanceKm: tempoKm,
+      suggestedDistanceFormatted:
+        unit === 'miles' ? `${(tempoKm * KM_TO_MILES).toFixed(1)} mi` : `${tempoKm.toFixed(1)} km`,
+      percentageOfWeekly: Math.round((tempoKm / effectiveWeeklyKm) * 100),
+      structure: `1.0 km warm-up + ${tempoWorkDist.toFixed(1)} km continuous tempo + 1.0 km cool-down`,
+      purpose: `Builds threshold speed and ${targetDistLabel} pacing efficiency`,
+      suggestedPaceFormatted: improvement.hasEnoughData ? improvement.suggestedTempoPaceFormatted : undefined,
+      recommendedDay: 'Wed',
+      targetPaceHint: improvement.hasEnoughData
+        ? improvement.suggestedTempoPaceFormatted
+        : goalTempoPaceHint,
+    });
+
+    slots.push({
+      id: 'long_run',
+      slotNumber: 2,
+      name: 'Aerobic Long Run',
+      category: 'Endurance Base',
+      suggestedDistanceKm: longKm,
+      suggestedDistanceFormatted:
+        unit === 'miles' ? `${(longKm * KM_TO_MILES).toFixed(1)} mi` : `${longKm.toFixed(1)} km`,
+      percentageOfWeekly: Math.round((longKm / effectiveWeeklyKm) * 100),
+      structure: 'Continuous relaxed conversational effort over rolling trails, grass, or road',
+      purpose: 'Builds cardiac stroke volume, mitochondrial density, and endurance',
+      suggestedPaceFormatted: improvement.hasEnoughData ? improvement.suggestedLongRunPaceFormatted : undefined,
+      recommendedDay: 'Sun',
+      targetPaceHint: improvement.hasEnoughData
+        ? improvement.suggestedLongRunPaceFormatted
+        : goalEasyPaceHint,
+    });
+  } else if (runsCount === 3) {
     // Standard 3-Session Cross Country Microcycle:
     // Slot 1: Intervals (~24% of weekly volume)
     // Slot 2: Lactate Threshold Tempo (~30% of weekly volume)
@@ -2664,7 +2772,7 @@ export function getSuggestedWeeklySchedule(
         : intervalKm >= 5
         ? '5 × 800m'
         : '4 × 600m';
-    const intervalStructure = `1.5 km warm-up + ${intervalReps} @ 6K pace + 1.5 km cool-down`;
+    const intervalStructure = `1.5 km warm-up + ${intervalReps} @ ${targetDistLabel} pace + 1.5 km cool-down`;
 
     const tempoWorkDist = Math.max(3.0, tempoKm - 2.0);
     const tempoStructure = `1.0 km warm-up + ${tempoWorkDist.toFixed(1)} km continuous tempo + 1.0 km cool-down`;
@@ -2681,6 +2789,10 @@ export function getSuggestedWeeklySchedule(
       structure: intervalStructure,
       purpose: 'Develops biomechanical stride efficiency and maximum aerobic oxygen uptake (VO2 max)',
       suggestedPaceFormatted: improvement.hasEnoughData ? improvement.suggestedIntervalPaceFormatted : undefined,
+      recommendedDay: 'Tue',
+      targetPaceHint: improvement.hasEnoughData
+        ? improvement.suggestedIntervalPaceFormatted
+        : goalIntervalPaceHint,
     });
 
     slots.push({
@@ -2695,6 +2807,10 @@ export function getSuggestedWeeklySchedule(
       structure: tempoStructure,
       purpose: 'Raises anaerobic lactate threshold to eliminate late-race muscular fatigue',
       suggestedPaceFormatted: improvement.hasEnoughData ? improvement.suggestedTempoPaceFormatted : undefined,
+      recommendedDay: 'Thu',
+      targetPaceHint: improvement.hasEnoughData
+        ? improvement.suggestedTempoPaceFormatted
+        : goalTempoPaceHint,
     });
 
     slots.push({
@@ -2709,9 +2825,13 @@ export function getSuggestedWeeklySchedule(
       structure: 'Continuous relaxed conversational effort over rolling trails, grass, or turf',
       purpose: 'Builds cardiac stroke volume, mitochondrial density, and mental race grit',
       suggestedPaceFormatted: improvement.hasEnoughData ? improvement.suggestedLongRunPaceFormatted : undefined,
+      recommendedDay: 'Sun',
+      targetPaceHint: improvement.hasEnoughData
+        ? improvement.suggestedLongRunPaceFormatted
+        : goalEasyPaceHint,
     });
   } else {
-    // 4+ runs per week: includes recovery / easy runs
+    // 4+ runs per week: includes recovery / easy runs distributed cleanly around key workouts
     const intervalKm = Number(Math.max(3.0, Number((effectiveWeeklyKm * 0.20).toFixed(1))));
     const tempoKm = Number(Math.max(4.0, Number((effectiveWeeklyKm * 0.25).toFixed(1))));
     const longRunKm = Number(Math.max(6.0, Number((effectiveWeeklyKm * 0.35).toFixed(1))));
@@ -2720,6 +2840,24 @@ export function getSuggestedWeeklySchedule(
     );
     const easyDaysCount = runsCount - 3;
     const easyPerDayKm = Number((remainingKm / easyDaysCount).toFixed(1));
+
+    const easyDayPool: Array<'Mon' | 'Wed' | 'Fri' | 'Sat'> =
+      runsCount === 4
+        ? ['Sat']
+        : runsCount === 5
+        ? ['Mon', 'Sat']
+        : runsCount === 6
+        ? ['Mon', 'Wed', 'Sat']
+        : ['Mon', 'Wed', 'Fri', 'Sat'];
+
+    const intervalReps =
+      intervalKm >= 10
+        ? '6 × 1000m'
+        : intervalKm >= 7
+        ? '5 × 1000m'
+        : intervalKm >= 5
+        ? '5 × 800m'
+        : '4 × 600m';
 
     slots.push({
       id: 'interval',
@@ -2730,9 +2868,13 @@ export function getSuggestedWeeklySchedule(
       suggestedDistanceFormatted:
         unit === 'miles' ? `${(intervalKm * KM_TO_MILES).toFixed(1)} mi` : `${intervalKm.toFixed(1)} km`,
       percentageOfWeekly: Math.round((intervalKm / effectiveWeeklyKm) * 100),
-      structure: `1.5 km warm-up + 5 × 800m–1000m @ goal pace + 1.5 km cool-down`,
+      structure: `1.5 km warm-up + ${intervalReps} @ ${targetDistLabel} goal pace + 1.5 km cool-down`,
       purpose: 'Develops biomechanical turnover and top aerobic power',
       suggestedPaceFormatted: improvement.hasEnoughData ? improvement.suggestedIntervalPaceFormatted : undefined,
+      recommendedDay: 'Tue',
+      targetPaceHint: improvement.hasEnoughData
+        ? improvement.suggestedIntervalPaceFormatted
+        : goalIntervalPaceHint,
     });
 
     slots.push({
@@ -2744,9 +2886,13 @@ export function getSuggestedWeeklySchedule(
       suggestedDistanceFormatted:
         unit === 'miles' ? `${(tempoKm * KM_TO_MILES).toFixed(1)} mi` : `${tempoKm.toFixed(1)} km`,
       percentageOfWeekly: Math.round((tempoKm / effectiveWeeklyKm) * 100),
-      structure: `1.0 km warm-up + ${(tempoKm - 2).toFixed(1)} km tempo + 1.0 km cool-down`,
+      structure: `1.0 km warm-up + ${Math.max(2.0, tempoKm - 2).toFixed(1)} km tempo + 1.0 km cool-down`,
       purpose: 'Elevates lactate threshold capacity for sustained pacing',
       suggestedPaceFormatted: improvement.hasEnoughData ? improvement.suggestedTempoPaceFormatted : undefined,
+      recommendedDay: 'Thu',
+      targetPaceHint: improvement.hasEnoughData
+        ? improvement.suggestedTempoPaceFormatted
+        : goalTempoPaceHint,
     });
 
     slots.push({
@@ -2761,9 +2907,14 @@ export function getSuggestedWeeklySchedule(
       structure: 'Steady aerobic endurance run over natural terrain',
       purpose: 'Builds cellular capillary bed density and stamina',
       suggestedPaceFormatted: improvement.hasEnoughData ? improvement.suggestedLongRunPaceFormatted : undefined,
+      recommendedDay: 'Sun',
+      targetPaceHint: improvement.hasEnoughData
+        ? improvement.suggestedLongRunPaceFormatted
+        : goalEasyPaceHint,
     });
 
     for (let i = 0; i < easyDaysCount; i++) {
+      const assignedDay = easyDayPool[i % easyDayPool.length];
       slots.push({
         id: 'recovery',
         slotNumber: 4 + i,
@@ -2776,6 +2927,10 @@ export function getSuggestedWeeklySchedule(
         structure: 'Very relaxed conversational jog to promote blood flow and tissue recovery',
         purpose: 'Facilitates musculoskeletal repair without adding neural fatigue',
         suggestedPaceFormatted: improvement.hasEnoughData ? improvement.suggestedLongRunPaceFormatted : undefined,
+        recommendedDay: assignedDay,
+        targetPaceHint: improvement.hasEnoughData
+          ? improvement.suggestedLongRunPaceFormatted
+          : goalEasyPaceHint,
       });
     }
   }
@@ -2791,6 +2946,42 @@ export function getSuggestedWeeklySchedule(
     totalSuggestedKm: totalSuggested,
     improvement,
   };
+}
+
+const WEEKDAY_ORDER: Array<{
+  day: WeeklyDayScheduleItem['day'];
+  dayFull: string;
+  defaultRestNote: string;
+}> = [
+  { day: 'Mon', dayFull: 'Monday', defaultRestNote: 'Rest or light mobility' },
+  { day: 'Tue', dayFull: 'Tuesday', defaultRestNote: 'Rest & dynamic stretch' },
+  { day: 'Wed', dayFull: 'Wednesday', defaultRestNote: 'Recovery / core strength' },
+  { day: 'Thu', dayFull: 'Thursday', defaultRestNote: 'Rest or easy cross-train' },
+  { day: 'Fri', dayFull: 'Friday', defaultRestNote: 'Pre-weekend rest & hydration' },
+  { day: 'Sat', dayFull: 'Saturday', defaultRestNote: 'Rest or strides prep' },
+  { day: 'Sun', dayFull: 'Sunday', defaultRestNote: 'Full rest & recovery' },
+];
+
+export function buildWeeklyDaySchedule(
+  plan: SuggestedWeeklySchedulePlan
+): WeeklyDayScheduleItem[] {
+  return WEEKDAY_ORDER.map(({ day, dayFull, defaultRestNote }) => {
+    const matchedSlot = plan.slots.find((s) => s.recommendedDay === day);
+    if (matchedSlot) {
+      return {
+        day,
+        dayFull,
+        isRestDay: false,
+        slot: matchedSlot,
+      };
+    }
+    return {
+      day,
+      dayFull,
+      isRestDay: true,
+      restNote: defaultRestNote,
+    };
+  });
 }
 
 export interface MonthWeekSummary {

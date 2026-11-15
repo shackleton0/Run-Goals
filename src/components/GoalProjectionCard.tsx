@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import { RunRecord, UserProfile, AdherenceSummary } from '../types/running';
-import { LiquidGlassReveal } from './LiquidGlassReveal';
 import {
   YRAA_DIVISIONS,
   YRAA_DIVISION_LIST,
@@ -534,6 +533,9 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
                           </div>
                           <div className="text-[11px] font-semibold text-violet-600 dark:text-violet-400 mt-1">
                             {activeScenarioData.date}
+                            {profile.goalTimeframeWeeks
+                              ? ` (Goal: ${profile.goalTimeframeWeeks} wks)`
+                              : ''}
                           </div>
                         </div>
 
@@ -967,7 +969,6 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
 
       {/* CARD 2: TRAINING SCENARIOS & MILESTONES */}
       {projection.hasTarget && projection.hasData && !projection.isAchieved && (
-        <LiquidGlassReveal>
           <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#0F1C28] border border-slate-200/95 dark:border-slate-700/75 shadow-sm transition-colors">
           <button
             type="button"
@@ -1195,11 +1196,9 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
             </div>
           </div>
           </div>
-        </LiquidGlassReveal>
       )}
 
       {/* CARD 3: YRAA CHAMPIONSHIP PLACEMENT */}
-      <LiquidGlassReveal>
         <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#0F1C28] border border-slate-200/95 dark:border-slate-700/75 shadow-sm transition-colors">
         <button
           type="button"
@@ -2055,10 +2054,8 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
           </div>
         </div>
         </div>
-      </LiquidGlassReveal>
 
       {/* CARD 4: PREDICTOR TOOL (5K, 8K, 10K & MULTI-DISTANCE) */}
-      <LiquidGlassReveal>
         <div className="rounded-2xl overflow-hidden bg-white dark:bg-[#0F1C28] border border-slate-200/95 dark:border-slate-700/75 shadow-sm transition-colors">
         <button
           type="button"
@@ -2296,7 +2293,6 @@ export const GoalProjectionCard: React.FC<GoalProjectionCardProps> = ({
           </div>
         </div>
         </div>
-      </LiquidGlassReveal>
     </div>
   );
 };

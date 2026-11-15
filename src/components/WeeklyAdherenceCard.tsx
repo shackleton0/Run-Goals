@@ -11,6 +11,7 @@ import {
   getCurrentWeekRange,
   isRunInCurrentWeek,
   getSuggestedWeeklySchedule,
+  buildWeeklyDaySchedule,
   calculateMonthlyConsistency,
   formatLocalDateString,
   calculate6kEquivalent,
@@ -55,6 +56,8 @@ interface WeeklyAdherenceCardProps {
   unit: 'km' | 'miles';
   weeklyDistanceGoalKm?: number;
   weeklyRunGoal?: number;
+  targetDistanceKm?: number;
+  targetTimeSeconds?: number;
   runs?: RunRecord[];
   onUpdateWeeklyDistanceGoal?: (newKm: number) => void;
   onOpenSettings?: () => void;
@@ -72,6 +75,8 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
   unit,
   weeklyDistanceGoalKm,
   weeklyRunGoal = 3,
+  targetDistanceKm = 6.0,
+  targetTimeSeconds,
   runs = [],
   onUpdateWeeklyDistanceGoal,
   onOpenSettings,
@@ -112,14 +117,16 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
       ? (effectiveWeeklyGoalKm * KM_TO_MILES).toFixed(1)
       : effectiveWeeklyGoalKm.toFixed(1);
 
-  // Generate suggested schedule based on chosen weekly km and real data of improvement
+  // Generate suggested schedule based on chosen weekly km, target goal, and real data
   const schedulePlan = getSuggestedWeeklySchedule(
     effectiveWeeklyGoalKm,
     weeklyRunGoal,
     unit,
-    6.0,
-    runs
+    targetDistanceKm || 6.0,
+    runs,
+    targetTimeSeconds
   );
+  const weeklyDaySchedule = buildWeeklyDaySchedule(schedulePlan);
 
   // Calculate Monthly Training Consistency Analysis
   const monthlyAnalysis = calculateMonthlyConsistency(
@@ -243,7 +250,11 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
       durationSeconds,
       averagePaceSecPerKm: estPaceSec,
       best6kTimeSeconds: calculate6kEquivalent(suggestedKm, durationSeconds),
-      targetEquivalentSeconds: calculateTargetDistanceEquivalent(suggestedKm, durationSeconds, 6.0),
+      targetEquivalentSeconds: calculateTargetDistanceEquivalent(
+        suggestedKm,
+        durationSeconds,
+        targetDistanceKm || 6.0
+      ),
       runType: slotType,
       slotId: slot.id,
       source: 'manual',
@@ -456,7 +467,7 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
 
       {/* VIEW MODE 1: WEEKLY VIEW */}
       {viewMode === 'weekly' && (
-        <div className="space-y-5 animate-in fade-in duration-150">
+        <div className="space-y-5">
           {/* Interactive Weekly Distance Goal Selector Bar */}
           <div className="p-3.5 sm:p-4 rounded-xl bg-neutral-50 dark:bg-[#0c1822] border border-neutral-200/80 dark:border-neutral-800 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
@@ -586,7 +597,7 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
 
           {/* Training Blueprint Explainer (Expandable) */}
           {showTrainingGuide && (
-            <div className="p-4 rounded-xl bg-neutral-50/80 dark:bg-[#0c1822]/80 border border-neutral-200/80 dark:border-neutral-800 text-xs text-neutral-600 dark:text-neutral-400 space-y-3 animate-in fade-in duration-200">
+            <div className="p-4 rounded-xl bg-neutral-50/80 dark:bg-[#0c1822]/80 border border-neutral-200/80 dark:border-neutral-800 text-xs text-neutral-600 dark:text-neutral-400 space-y-3">
               <div className="flex items-center justify-between border-b border-neutral-200/60 dark:border-neutral-800 pb-2">
                 <div className="flex items-center space-x-2">
                   <Activity className="w-4 h-4 text-[#0593C6]" />
@@ -641,7 +652,10 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
                 unit === 'miles'
                   ? `${(suggestedKm * KM_TO_MILES).toFixed(1)} mi`
                   : `${suggestedKm.toFixed(1)} km`;
-              const targetPaceStr = suggestedPlan?.suggestedPaceFormatted || 'Not enough data yet';
+              const targetPaceStr =
+                suggestedPlan?.suggestedPaceFormatted ||
+                suggestedPlan?.targetPaceHint ||
+                'Not enough data yet';
               const Icon = slot.icon;
 
               if (!run) {
@@ -654,6 +668,7 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
                           Slot {slot.slotNumber}
+                          {suggestedPlan?.recommendedDay ? ` · ${suggestedPlan.recommendedDay}` : ''}
                         </span>
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-neutral-200/70 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">
                           Pending This Week
@@ -892,12 +907,62 @@ export const WeeklyAdherenceCard: React.FC<WeeklyAdherenceCardProps> = ({
               </div>
             </div>
           )}
+          {/* Recommended Mon-Sun Full Schedule Strip */}
+          <div className="pt-3 border-t border-neutral-200/80 dark:border-neutral-800">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+              <div className="flex items-center space-x-1.5">
+                <Calendar className="w-3.5 h-3.5 text-[#0593C6]" />
+                <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
+                  Recommended Mon–Sun Schedule ({schedulePlan.weeklyRunGoal} runs · {schedulePlan.weeklyDistanceFormatted})
+                </span>
+              </div>
+              {onOpenSettings && (
+                <button
+                  type="button"
+                  onClick={onOpenSettings}
+                  className="text-[11px] font-semibold text-[#0593C6] hover:underline cursor-pointer"
+                >
+                  Adjust Runs / Week
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+              {weeklyDaySchedule.map((dayItem) => (
+                <div
+                  key={dayItem.day}
+                  className={`p-2.5 rounded-xl border text-xs ${
+                    dayItem.isRestDay
+                      ? 'bg-neutral-50/60 dark:bg-[#0c1822]/50 border-dashed border-neutral-200 dark:border-neutral-800 text-neutral-400'
+                      : 'bg-white dark:bg-[#0e1b25] border-neutral-200/90 dark:border-neutral-800 text-neutral-900 dark:text-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`text-[10px] font-extrabold uppercase tracking-wider ${
+                        dayItem.isRestDay ? 'text-neutral-400' : 'text-[#0593C6]'
+                      }`}
+                    >
+                      {dayItem.day}
+                    </span>
+                    {!dayItem.isRestDay && dayItem.slot && (
+                      <span className="text-[11px] font-bold tabular-nums text-neutral-700 dark:text-neutral-200">
+                        {dayItem.slot.suggestedDistanceFormatted}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 font-semibold text-[11px] truncate">
+                    {dayItem.isRestDay || !dayItem.slot ? 'Rest / Mobility' : dayItem.slot.name}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
       {/* VIEW MODE 2: MONTHLY VIEW */}
       {viewMode === 'monthly' && (
-        <div className="space-y-5 animate-in fade-in duration-150">
+        <div className="space-y-5">
           {/* Month Navigation & Header Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-neutral-50 dark:bg-[#0c1822] border border-neutral-200/80 dark:border-neutral-800">
             <div className="flex items-center space-x-2">

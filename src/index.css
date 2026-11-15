@@ -40,8 +40,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Mobile tap latency removal */
-  button, 
+  button,
   [role="button"],
   a,
   input[type="button"],
@@ -50,50 +49,17 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* Premium tactile click and tap animations on interactive elements */
-  button, 
-  [role="button"],
-  input[type="button"],
-  input[type="submit"] {
-    transition: transform 0.1s cubic-bezier(0.16, 1, 0.3, 1), 
-                box-shadow 0.15s cubic-bezier(0.16, 1, 0.3, 1), 
-                background-color 0.12s ease, 
-                border-color 0.12s ease, 
-                opacity 0.12s ease;
-  }
-
-  /* Scoped tactile press micro-interaction: exempt wide accordion triggers and cards to prevent jarring page shifts */
-  button:not([data-no-scale]):not(.accordion-trigger):not(.no-press-scale):active, 
-  [role="button"]:not([data-no-scale]):not(.accordion-trigger):not(.no-press-scale):active,
-  input[type="button"]:not([data-no-scale]):not(.accordion-trigger):not(.no-press-scale):active,
-  input[type="submit"]:not([data-no-scale]):not(.accordion-trigger):not(.no-press-scale):active {
-    transform: scale(0.96);
-  }
-
-  /* Full-bleed sensitive accordion header trigger feedback */
   .accordion-trigger {
     position: relative;
-    transition: background-color 120ms ease, opacity 120ms ease;
-  }
-
-  .accordion-trigger:hover .chevron-badge {
-    transform: translateY(1px) scale(1.06);
-  }
-
-  .accordion-trigger:active .chevron-badge {
-    transform: scale(0.86);
-    background-color: rgba(14, 165, 233, 0.22);
   }
 }
 
-/* Snappy & Fluid CSS-Grid Accordion Transitions */
+/* Lightweight instant-feel CSS-Grid Accordion (zero blur / zero heavy repaints) */
 .accordion-collapse-wrapper {
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
-  transition: grid-template-rows 220ms cubic-bezier(0.16, 1, 0.3, 1),
-              opacity 170ms cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: grid-template-rows, opacity;
+  transition: grid-template-rows 140ms ease-out, opacity 110ms ease-out;
 }
 
 .accordion-collapse-wrapper.is-expanded {
@@ -106,187 +72,8 @@
   min-height: 0;
 }
 
-/* Reduced motion preference respect */
 @media (prefers-reduced-motion: reduce) {
   .accordion-collapse-wrapper {
     transition: none !important;
   }
-}
-
-/* Subtle, Fast Liquid Glass Utilities */
-.liquid-glass-active {
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 8px 20px -8px rgba(15, 23, 42, 0.10);
-}
-
-.dark .liquid-glass-active {
-  background: rgba(16, 30, 44, 0.90);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 10px 24px -10px rgba(0, 0, 0, 0.45);
-}
-
-.liquid-glass-muted {
-  background: rgba(240, 244, 248, 0.6);
-  border: 1px solid rgba(210, 222, 232, 0.45);
-  opacity: 0.45;
-  transition: opacity 0.2s ease, background-color 0.2s ease;
-}
-
-.dark .liquid-glass-muted {
-  background: rgba(12, 24, 34, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  opacity: 0.4;
-}
-
-.liquid-glass-sheen {
-  position: relative;
-  overflow: hidden;
-}
-
-.liquid-glass-sheen::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 32%;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, transparent 100%);
-  pointer-events: none;
-  border-top-left-radius: inherit;
-  border-top-right-radius: inherit;
-}
-
-.dark .liquid-glass-sheen::after {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, transparent 100%);
-}
-
-/* Very Subtle, Lightweight Glass Reveal Shell */
-.liquid-glass-scroll-shell {
-  opacity: 1;
-  transition: opacity 180ms ease-out;
-}
-
-.liquid-glass-scroll-shell[data-glass-state="frosted"] {
-  opacity: 0.78;
-}
-
-.liquid-glass-scroll-shell[data-glass-state="frosted"]:hover,
-.liquid-glass-scroll-shell:has([aria-expanded="true"]) {
-  opacity: 1;
-}
-
-.liquid-glass-scroll-shell > div {
-  position: relative;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  background: rgba(255, 255, 255, 0.84) !important;
-  border: 1px solid rgba(255, 255, 255, 0.78) !important;
-  box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.75),
-    0 8px 22px -12px rgba(15, 23, 42, 0.10);
-}
-
-.dark .liquid-glass-scroll-shell > div {
-  background: rgba(15, 29, 43, 0.82) !important;
-  border-color: rgba(186, 230, 253, 0.14) !important;
-  box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.08),
-    0 10px 24px -12px rgba(0, 0, 0, 0.48);
-}
-
-/* Delicate Top Edge Highlight (static, zero re-paint cost) */
-.liquid-glass-scroll-shell > div::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.65) 50%,
-    transparent 100%
-  );
-  pointer-events: none;
-  z-index: 0;
-}
-
-.dark .liquid-glass-scroll-shell > div::before {
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(186, 230, 253, 0.22) 50%,
-    transparent 100%
-  );
-}
-
-.liquid-glass-scroll-shell > div > * {
-  position: relative;
-  z-index: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .liquid-glass-scroll-shell {
-    transition: none !important;
-    opacity: 1 !important;
-  }
-}
-
-/* Lightweight / Low-Demand Mode: Remove animations, transitions, backdrop blur & liquid glass */
-.low-power-mode *,
-.low-power-mode *::before,
-.low-power-mode *::after {
-  animation: none !important;
-  transition: none !important;
-  scroll-behavior: auto !important;
-}
-
-.low-power-mode button:active,
-.low-power-mode [role="button"]:active,
-.low-power-mode input[type="button"]:active,
-.low-power-mode input[type="submit"]:active {
-  transform: none !important;
-}
-
-.low-power-mode .accordion-collapse-wrapper {
-  transition: none !important;
-  will-change: auto !important;
-}
-
-.low-power-mode [class*="backdrop-blur"],
-.low-power-mode .liquid-glass-active,
-.low-power-mode .liquid-glass-muted,
-.low-power-mode .liquid-glass-scroll-shell,
-.low-power-mode .liquid-glass-scroll-shell > div,
-.low-power-mode .liquid-glass-scroll-shell .accordion-trigger > div:first-child > div:first-child,
-.low-power-mode .liquid-glass-scroll-shell .chevron-badge {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  will-change: auto !important;
-}
-
-.low-power-mode .liquid-glass-scroll-shell {
-  opacity: 1 !important;
-  transform: none !important;
-}
-
-.low-power-mode .liquid-glass-scroll-shell > div::before,
-.low-power-mode .liquid-glass-scroll-shell > div::after,
-.low-power-mode .liquid-glass-sheen::after {
-  display: none !important;
-}
-
-.low-power-mode .liquid-glass-active {
-  background: #ffffff !important;
-  border: 1px solid #e2e8f0 !important;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06) !important;
-}
-
-.dark.low-power-mode .liquid-glass-active,
-.low-power-mode .dark .liquid-glass-active {
-  background: #101c28 !important;
-  border: 1px solid #1e293b !important;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35) !important;
 }
