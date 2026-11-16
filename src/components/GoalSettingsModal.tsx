@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { UserProfile } from '../types/running';
+import { TeamInvite, UserProfile } from '../types/running';
+import {
+  getTeamInvite,
+  joinTeamWithInvite,
+  leaveCurrentTeam,
+  normalizeInviteCode,
+} from '../lib/firebase';
 import {
   YRAA_DIVISIONS,
   YRAA_DIVISION_LIST,
@@ -36,9 +42,12 @@ import {
   Trash2,
   AlertTriangle,
   Loader2,
+  GraduationCap,
+  Link2,
+  UserCheck,
 } from 'lucide-react';
 
-export type SettingsSection = 'root' | 'profile' | 'race' | 'weekly' | 'units' | 'delete_account';
+export type SettingsSection = 'root' | 'profile' | 'race' | 'weekly' | 'units' | 'team' | 'delete_account';
 
 interface GoalSettingsModalProps {
   isOpen: boolean;
@@ -49,6 +58,8 @@ interface GoalSettingsModalProps {
   onToggleTheme?: () => void;
   onOpenSetupWizard?: () => void;
   onDeleteAccount?: () => Promise<void>;
+  userUid?: string;
+  onTeamMembershipChange?: (updatedProfile: UserProfile, updatedTeamCode?: string) => void;
   isGuest?: boolean;
   userEmail?: string;
   runsCount?: number;
@@ -86,6 +97,8 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
   onToggleTheme,
   onOpenSetupWizard,
   onDeleteAccount,
+  userUid,
+  onTeamMembershipChange,
   isGuest = false,
   userEmail,
   runsCount = 0,
@@ -96,6 +109,13 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const [inviteCodeInput, setInviteCodeInput] = useState('');
+  const [invitePreview, setInvitePreview] = useState<TeamInvite | null>(null);
+  const [isTeamLoading, setIsTeamLoading] = useState(false);
+  const [teamError, setTeamError] = useState<string | null>(null);
+  const [teamStatusMsg, setTeamStatusMsg] = useState<string | null>(null);
+  const [confirmLeaveTeam, setConfirmLeaveTeam] = useState(false);
 
   const [selectedPreset, setSelectedPreset] = useState<string>('6K');
   const [customDistanceStr, setCustomDistanceStr] = useState<string>('6');
@@ -122,6 +142,12 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
     setDeleteConfirmText('');
     setIsDeletingAccount(false);
     setDeleteError(null);
+    setInviteCodeInput('');
+    setInvitePreview(null);
+    setIsTeamLoading(false);
+    setTeamError(null);
+    setTeamStatusMsg(null);
+    setConfirmLeaveTeam(false);
 
     const unit = profile.unitPreference || 'km';
     const currentDistKm = profile.targetDistanceKm || 6.0;
@@ -315,7 +341,91 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
     race: 'Race & Target Goal',
     weekly: 'Weekly Training Plan',
     units: 'Units & Heart Rate',
+    team: 'Team & Coach',
     delete_account: 'Delete Account',
+  };
+
+  const handleLookupInviteCode = async () => {
+    const cleaned = normalizeInviteCode(inviteCodeInput);
+    if (cleaned.length < 6) {
+      setTeamError('Enter a valid team invite code (e.g. from your coach link).');
+      return;
+    }
+    setIsTeamLoading(true);
+    setTeamError(null);
+    setTeamStatusMsg(null);
+    setInvitePreview(null);
+    try {
+      const invite = await getTeamInvite(cleaned);
+      if (!invite || !invite.active) {
+        setTeamError('That team invite code is invalid or no longer active.');
+      } else {
+        setInvitePreview(invite);
+      }
+    } catch (err) {
+      setTeamError(err instanceof Error ? err.message : 'Unable to look up team invite code.');
+    } finally {
+      setIsTeamLoading(false);
+    }
+  };
+
+  const handleJoinTeamFromSettings = async () => {
+    if (!userUid) return;
+    const code = invitePreview?.id || normalizeInviteCode(inviteCodeInput);
+    if (!code) return;
+    setIsTeamLoading(true);
+    setTeamError(null);
+    setTeamStatusMsg(null);
+    try {
+      const inviteObj = invitePreview || (await getTeamInvite(code));
+      if (!inviteObj || !inviteObj.active) {
+        setTeamError('That team invite code is invalid or no longer active.');
+        setIsTeamLoading(false);
+        return;
+      }
+      const joined = await joinTeamWithInvite(userUid, inviteObj);
+      const updatedProfile: UserProfile = {
+        ...profile,
+        teamCode: joined.teamCode,
+        teamName: joined.teamName,
+        coachName: joined.coachName,
+        joinedTeamAt: joined.joinedTeamAt,
+      };
+      setTeamStatusMsg(`Joined "${joined.teamName}" (${joined.coachName}).`);
+      setInvitePreview(null);
+      setInviteCodeInput('');
+      if (onTeamMembershipChange) {
+        onTeamMembershipChange(updatedProfile, joined.teamCode);
+      }
+    } catch (err) {
+      setTeamError(err instanceof Error ? err.message : 'Failed to join team.');
+    } finally {
+      setIsTeamLoading(false);
+    }
+  };
+
+  const handleLeaveTeamFromSettings = async () => {
+    if (!userUid) return;
+    setIsTeamLoading(true);
+    setTeamError(null);
+    setTeamStatusMsg(null);
+    try {
+      await leaveCurrentTeam(userUid);
+      const updatedProfile: UserProfile = { ...profile };
+      delete updatedProfile.teamCode;
+      delete updatedProfile.teamName;
+      delete updatedProfile.coachName;
+      delete updatedProfile.joinedTeamAt;
+      setConfirmLeaveTeam(false);
+      setTeamStatusMsg('You have left your team roster.');
+      if (onTeamMembershipChange) {
+        onTeamMembershipChange(updatedProfile, undefined);
+      }
+    } catch (err) {
+      setTeamError(err instanceof Error ? err.message : 'Failed to leave team.');
+    } finally {
+      setIsTeamLoading(false);
+    }
   };
 
   const handleConfirmDeleteAccount = async () => {
@@ -591,6 +701,29 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
                         </div>
                       </div>
                     )}
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveSection('team')}
+                      className="w-full flex items-center justify-between -mx-2.5 px-2.5 py-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/45 transition-colors text-left cursor-pointer group"
+                    >
+                      <div className="flex items-center space-x-3 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-500/12 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                          <GraduationCap className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-sm font-medium text-slate-900 dark:text-slate-100 block">
+                            Team &amp; Coach
+                          </span>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 block truncate">
+                            {profile.teamName
+                              ? `${profile.teamName}${profile.coachName ? ` · ${profile.coachName}` : ''}`
+                              : 'Join your coach’s team via invite code'}
+                          </span>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-400 shrink-0 transition-transform group-hover:translate-x-0.5" />
+                    </button>
 
                     {onOpenSetupWizard && (
                       <button
@@ -1199,6 +1332,177 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
               </div>
             )}
 
+            {/* SUB-PAGE 4B: TEAM & COACH */}
+            {activeSection === 'team' && (
+              <div className="space-y-4">
+                {teamError && (
+                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-700 dark:text-rose-300 font-medium">
+                    {teamError}
+                  </div>
+                )}
+
+                {teamStatusMsg && (
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-700 dark:text-emerald-300 font-medium">
+                    {teamStatusMsg}
+                  </div>
+                )}
+
+                {isGuest || !userUid ? (
+                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#09121B] border border-slate-200 dark:border-slate-800 text-xs space-y-2">
+                    <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <GraduationCap className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      <span>Cloud Account Required</span>
+                    </div>
+                    <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                      Sign in with a Google athlete account to join a coach&apos;s team roster and share your training telemetry.
+                    </p>
+                  </div>
+                ) : profile.teamCode ? (
+                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#09121B] border border-emerald-500/30 space-y-3 text-xs">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-500/12 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                          <UserCheck className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-extrabold text-slate-900 dark:text-white truncate">
+                            {profile.teamName || 'Active Team'}
+                          </div>
+                          <div className="text-slate-600 dark:text-slate-300 mt-0.5">
+                            Coach: <span className="font-semibold">{profile.coachName || 'Coach'}</span> · Code{' '}
+                            <code className="font-mono font-bold text-slate-900 dark:text-white">
+                              {profile.teamCode}
+                            </code>
+                          </div>
+                          {profile.joinedTeamAt && (
+                            <div className="text-[11px] text-slate-400 mt-0.5 tabular-nums">
+                              Joined {new Date(profile.joinedTeamAt).toLocaleDateString()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                      Your coach can view your workouts, update your training targets, log or edit team workouts, and send you direct feedback.
+                    </p>
+
+                    {!confirmLeaveTeam ? (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmLeaveTeam(true)}
+                        className="px-3.5 py-2 rounded-xl border border-rose-500/35 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 font-semibold text-xs cursor-pointer"
+                      >
+                        Leave Team
+                      </button>
+                    ) : (
+                      <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-rose-800 dark:text-rose-200 font-semibold">
+                          Disconnect from {profile.teamName || 'this team'}?
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={isTeamLoading}
+                            onClick={handleLeaveTeamFromSettings}
+                            className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer disabled:opacity-50"
+                          >
+                            {isTeamLoading ? 'Leaving...' : 'Confirm Leave'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmLeaveTeam(false)}
+                            className="px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-4 text-xs">
+                    <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#09121B] border border-slate-200 dark:border-slate-800 space-y-3">
+                      <div className="flex items-start gap-2.5">
+                        <Link2 className="w-4 h-4 text-[#0593C6] shrink-0 mt-0.5" />
+                        <div>
+                          <div className="font-bold text-slate-900 dark:text-white text-sm">
+                            Join a Coach&apos;s Team
+                          </div>
+                          <p className="text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                            Paste the invite code or URL from your coach to sync your training dashboard with the team roster.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          value={inviteCodeInput}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            const match = raw.match(/[?&]join=([A-Za-z0-9]+)/);
+                            setInviteCodeInput(match ? match[1].toUpperCase() : raw.toUpperCase());
+                            setTeamError(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleLookupInviteCode();
+                            }
+                          }}
+                          placeholder="Enter team code (e.g. XCA9K4P2)"
+                          className="flex-1 px-3.5 py-2.5 rounded-xl bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-sm font-mono font-bold text-slate-900 dark:text-white uppercase"
+                        />
+                        <button
+                          type="button"
+                          disabled={isTeamLoading || !inviteCodeInput.trim()}
+                          onClick={handleLookupInviteCode}
+                          className="px-4 py-2.5 rounded-xl bg-[#0593C6] hover:bg-[#047ea8] text-white font-bold cursor-pointer disabled:opacity-45 whitespace-nowrap"
+                        >
+                          {isTeamLoading ? 'Checking...' : 'Find Team'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {invitePreview && (
+                      <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-3">
+                        <div>
+                          <div className="font-extrabold text-sm text-slate-900 dark:text-white">
+                            {invitePreview.teamName}
+                          </div>
+                          <div className="text-slate-600 dark:text-slate-300 mt-0.5">
+                            Coach: <span className="font-semibold">{invitePreview.coachName}</span> · Code{' '}
+                            <code className="font-mono font-bold">{invitePreview.id}</code>
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                          Joining lets {invitePreview.coachName} monitor your workouts &amp; weekly adherence, edit your training goals or workouts, and send direct coaching notes. You can leave the team anytime.
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={isTeamLoading}
+                            onClick={handleJoinTeamFromSettings}
+                            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer disabled:opacity-50"
+                          >
+                            {isTeamLoading ? 'Joining...' : 'Join Team'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setInvitePreview(null)}
+                            className="px-3 py-2 rounded-xl text-slate-600 dark:text-slate-300 cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* SUB-PAGE 5: DELETE ACCOUNT CONFIRMATION */}
             {activeSection === 'delete_account' && (
               <div className="space-y-4">
@@ -1284,8 +1588,8 @@ export const GoalSettingsModal: React.FC<GoalSettingsModalProps> = ({
             )}
           </div>
 
-          {/* Clean Footer (hidden on delete confirmation view which has its own dedicated actions) */}
-          {activeSection !== 'delete_account' && (
+          {/* Clean Footer (hidden on delete confirmation & team sub-pages which have dedicated actions) */}
+          {activeSection !== 'delete_account' && activeSection !== 'team' && (
             <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 sm:py-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-[#09121B]/50">
               <div className="text-xs text-slate-400 dark:text-slate-500">
                 {hasUnsavedChanges ? 'Unsaved changes' : ''}

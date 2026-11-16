@@ -28,6 +28,7 @@ export interface IntervalDetails {
 export interface RunRecord {
   id: string;
   userId: string;
+  teamCode?: string;
   date: string; // YYYY-MM-DD
   title: string;
   distanceKm: number;
@@ -93,6 +94,11 @@ export interface UserProfile {
   accountStatus?: 'active' | 'suspended';
   suspensionReason?: string;
   adminNotes?: string;
+  coachNotes?: string;
+  teamCode?: string;
+  teamName?: string;
+  coachName?: string;
+  joinedTeamAt?: string;
   directMessageTitle?: string;
   directMessageBody?: string;
   directMessageSeverity?: 'info' | 'warning' | 'success';
@@ -100,6 +106,31 @@ export interface UserProfile {
   directMessageReadAt?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface TeacherRecord {
+  id: string; // normalized lowercase email
+  email: string;
+  displayName: string;
+  teamName: string;
+  inviteCode: string;
+  status: 'active' | 'suspended';
+  addedBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TeamInvite {
+  id: string; // inviteCode
+  teamName: string;
+  coachName: string;
+  active: boolean;
+  teamAnnouncementTitle?: string;
+  teamAnnouncementMessage?: string;
+  teamAnnouncementSeverity?: 'info' | 'warning' | 'success';
+  teamAnnouncementUpdatedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AppAnnouncement {
@@ -126,6 +157,12 @@ export type AdminAuditAction =
   | 'update_announcement'
   | 'send_user_message'
   | 'clear_user_message'
+  | 'add_teacher'
+  | 'edit_teacher'
+  | 'suspend_teacher'
+  | 'restore_teacher'
+  | 'delete_teacher'
+  | 'rotate_teacher_code'
   | 'change_pin';
 
 export interface AdminAuditLog {

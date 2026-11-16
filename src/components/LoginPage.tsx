@@ -16,6 +16,7 @@ import {
   ExternalLink,
   ShieldAlert,
   X,
+  GraduationCap,
 } from 'lucide-react';
 import { firebaseConfig } from '../lib/firebase';
 
@@ -28,6 +29,7 @@ interface LoginPageProps {
   onClearAuthError: () => void;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
+  pendingTeamCode?: string | null;
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({
@@ -39,6 +41,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   onClearAuthError,
   theme,
   onToggleTheme,
+  pendingTeamCode,
 }) => {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isInstantSigningIn, setIsInstantSigningIn] = useState(false);
@@ -269,6 +272,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
         {/* Main Hero & Auth Portal */}
         <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-10 sm:py-16 flex flex-col items-center justify-center">
+          {pendingTeamCode && (
+            <div className="w-full max-w-md mb-4 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5 text-xs text-emerald-950 dark:text-emerald-100">
+              <GraduationCap className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <div className="font-bold text-slate-900 dark:text-white">
+                  Team Invite Pending · <span className="font-mono">{pendingTeamCode}</span>
+                </div>
+                <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                  Sign in with Google below to link your athlete account with your coach&apos;s team roster.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Main Card */}
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#111c24] border border-neutral-200 dark:border-neutral-800 shadow-xl p-6 sm:p-8 transition-colors">
             {/* Logo Badge */}

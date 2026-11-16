@@ -22,8 +22,13 @@ import {
   markDirectMessageRead,
   firebaseConfig,
   isAuthorizedAdmin,
+  subscribeTeacherRecord,
+  subscribeTeamInvite,
+  getTeamInvite,
+  joinTeamWithInvite,
+  normalizeInviteCode,
 } from './lib/firebase';
-import { RunRecord, UserProfile, DuplicateRunMatch, RunType, AppAnnouncement } from './types/running';
+import { RunRecord, UserProfile, DuplicateRunMatch, RunType, AppAnnouncement, TeacherRecord, TeamInvite } from './types/running';
 import { DEFAULT_RUNNER_PROFILE, createPlaceholderRuns, isPlaceholderRun } from './data/sampleRuns';
 import {
   groupRunsByWeek,
@@ -53,6 +58,7 @@ import { EmptyGarminState } from './components/EmptyGarminState';
 import { WatchTelemetrySection } from './components/WatchTelemetrySection';
 import { LoginPage } from './components/LoginPage';
 import { AdminPanelModal } from './components/AdminPanelModal';
+import { TeacherPanelModal } from './components/TeacherPanelModal';
 import {
   Cloud,
   CloudOff,
@@ -64,6 +70,8 @@ import {
   ExternalLink,
   ShieldAlert,
   MessageSquare,
+  GraduationCap,
+  Loader2,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -71,6 +79,7 @@ const LOCAL_STORAGE_RUNS_KEY = 'xc_6k_user_runs_data';
 const LOCAL_STORAGE_PROFILE_KEY = 'xc_6k_user_profile_data';
 const LOCAL_STORAGE_OWNER_KEY = 'xc_6k_local_owner';
 const LOCAL_STORAGE_THEME_KEY = 'xc_6k_theme';
+const PENDING_TEAM_JOIN_KEY = 'xc_pending_team_join';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -82,6 +91,32 @@ export default function App() {
     localStorage.getItem('xc_dismissed_announcement')
   );
   const [dismissedDirectMsgSentAt, setDismissedDirectMsgSentAt] = useState<string | null>(null);
+  const [pendingTeamCode, setPendingTeamCode] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const raw = params.get('join');
+      if (raw) {
+        const normalized = normalizeInviteCode(raw);
+        if (/^[A-Z0-9]{6,16}$/.test(normalized)) {
+          sessionStorage.setItem(PENDING_TEAM_JOIN_KEY, normalized);
+          const cleanUrl = `${window.location.pathname}${window.location.hash}`;
+          window.history.replaceState({}, document.title, cleanUrl);
+          return normalized;
+        }
+      }
+      const stored = sessionStorage.getItem(PENDING_TEAM_JOIN_KEY);
+      return stored ? normalizeInviteCode(stored) : null;
+    }
+    return null;
+  });
+  const [teacherRecord, setTeacherRecord] = useState<TeacherRecord | null>(null);
+  const [teamInviteBanner, setTeamInviteBanner] = useState<TeamInvite | null>(null);
+  const [dismissedTeamAnnKey, setDismissedTeamAnnKey] = useState<string | null>(() =>
+    localStorage.getItem('xc_dismissed_team_announcement')
+  );
+  const [joinInvitePreview, setJoinInvitePreview] = useState<TeamInvite | null>(null);
+  const [joinInviteError, setJoinInviteError] = useState<string | null>(null);
+  const [isJoiningTeam, setIsJoiningTeam] = useState(false);
 
   // Guest Testing Mode
   const [isGuest, setIsGuest] = useState<boolean>(() => {
@@ -209,8 +244,10 @@ export default function App() {
   const [isAccountSetupOpen, setIsAccountSetupOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
+  const [isTeacherOpen, setIsTeacherOpen] = useState(false);
 
   const isAdmin = isAuthorizedAdmin(user);
+  const isTeacher = Boolean(teacherRecord && teacherRecord.status === 'active');
 
   // Lock and close admin panel whenever user signs out or switches accounts
   useEffect(() => {
@@ -219,6 +256,12 @@ export default function App() {
       setIsAdminUnlocked(false);
     }
   }, [isAdmin, user?.uid]);
+
+  useEffect(() => {
+    if (!isTeacher) {
+      setIsTeacherOpen(false);
+    }
+  }, [isTeacher, user?.uid]);
 
   // Trigger guided setup wizard for brand new accounts without saved onboarding or runs
   useEffect(() => {
@@ -272,6 +315,7 @@ export default function App() {
     let unsubscribeRuns: (() => void) | null = null;
     let unsubscribeProfile: (() => void) | null = null;
     let unsubscribeAnnouncement: (() => void) | null = null;
+    let unsubscribeTeacher: (() => void) | null = null;
     let activeUid: string | null = null;
 
     const cleanupCloudSubs = () => {
@@ -286,6 +330,10 @@ export default function App() {
       if (unsubscribeAnnouncement) {
         unsubscribeAnnouncement();
         unsubscribeAnnouncement = null;
+      }
+      if (unsubscribeTeacher) {
+        unsubscribeTeacher();
+        unsubscribeTeacher = null;
       }
     };
 
@@ -302,6 +350,8 @@ export default function App() {
         if (isMounted) {
           setUser(null);
           setAppAnnouncement(null);
+          setTeacherRecord(null);
+          setTeamInviteBanner(null);
           setAuthLoading(false);
         }
         return;
@@ -403,7 +453,7 @@ export default function App() {
             ) {
               didMigrateGuest = true;
               try {
-                await batchSaveRuns(transition.guestRunsToMigrate);
+                await batchSaveRuns(transition.guestRunsToMigrate, transition.profile.teamCode);
                 if (!isMounted || auth.currentUser?.uid !== currentUser.uid) return;
                 setRuns(transition.guestRunsToMigrate);
                 localStorage.setItem(
@@ -444,6 +494,11 @@ export default function App() {
           setAppAnnouncement(announcement);
         });
 
+        unsubscribeTeacher = subscribeTeacherRecord(currentUser, (rec) => {
+          if (!isMounted || auth.currentUser?.uid !== currentUser.uid) return;
+          setTeacherRecord(rec);
+        });
+
         if (isMounted) {
           setAuthLoading(false);
         }
@@ -461,6 +516,93 @@ export default function App() {
       unsubscribeAuth();
     };
   }, []);
+
+  // Subscribe to team broadcast banner whenever student belongs to a team
+  useEffect(() => {
+    if (!user || !profile.teamCode) {
+      setTeamInviteBanner(null);
+      return;
+    }
+    const unsub = subscribeTeamInvite(profile.teamCode, (inv) => {
+      setTeamInviteBanner(inv);
+    });
+    return () => unsub();
+  }, [user, profile.teamCode]);
+
+  // Resolve pending invite link (?join=CODE) once athlete signs in and finishes initial setup
+  useEffect(() => {
+    if (!user || authLoading || !pendingTeamCode || isAccountSetupOpen) return;
+    if (profile.teamCode === pendingTeamCode) {
+      sessionStorage.removeItem(PENDING_TEAM_JOIN_KEY);
+      setPendingTeamCode(null);
+      setJoinInvitePreview(null);
+      setJoinInviteError(null);
+      return;
+    }
+
+    let cancelled = false;
+    getTeamInvite(pendingTeamCode)
+      .then((invite) => {
+        if (cancelled) return;
+        if (!invite || !invite.active) {
+          setJoinInvitePreview(null);
+          setJoinInviteError('This team invite link is invalid or no longer active.');
+        } else {
+          setJoinInvitePreview(invite);
+          setJoinInviteError(null);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setJoinInvitePreview(null);
+        setJoinInviteError(
+          err instanceof Error ? err.message : 'Could not verify the team invite link.'
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, authLoading, pendingTeamCode, isAccountSetupOpen, profile.teamCode]);
+
+  const handleAcceptPendingTeamJoin = async () => {
+    if (!user || !pendingTeamCode || isJoiningTeam) return;
+    setIsJoiningTeam(true);
+    setJoinInviteError(null);
+    try {
+      const inviteObj = joinInvitePreview || (await getTeamInvite(pendingTeamCode));
+      if (!inviteObj || !inviteObj.active) {
+        setJoinInviteError('This team invite link is invalid or no longer active.');
+        setIsJoiningTeam(false);
+        return;
+      }
+      const joined = await joinTeamWithInvite(user.uid, inviteObj);
+      setProfile((prev) => ({
+        ...prev,
+        teamCode: joined.teamCode,
+        teamName: joined.teamName,
+        coachName: joined.coachName,
+        joinedTeamAt: joined.joinedTeamAt,
+      }));
+      setRuns((prev) => prev.map((r) => ({ ...r, teamCode: joined.teamCode })));
+      sessionStorage.removeItem(PENDING_TEAM_JOIN_KEY);
+      setPendingTeamCode(null);
+      setJoinInvitePreview(null);
+    } catch (err) {
+      setJoinInviteError(
+        err instanceof Error ? err.message : 'Unable to join the team right now.'
+      );
+    } finally {
+      setIsJoiningTeam(false);
+    }
+  };
+
+  const handleDismissPendingTeamJoin = () => {
+    sessionStorage.removeItem(PENDING_TEAM_JOIN_KEY);
+    setPendingTeamCode(null);
+    setJoinInvitePreview(null);
+    setJoinInviteError(null);
+  };
 
   // Always keep localStorage updated as immediate local cache for the active session
   useEffect(() => {
@@ -551,11 +693,16 @@ export default function App() {
       }
     }
 
-    const updated = [...pendingIncomingRuns, ...filteredCurrentRuns];
+    const formattedIncoming = pendingIncomingRuns.map((r) => ({
+      ...r,
+      userId: user ? user.uid : r.userId,
+      ...(profile.teamCode ? { teamCode: profile.teamCode } : {}),
+    }));
+    const updated = [...formattedIncoming, ...filteredCurrentRuns];
     setRuns(updated);
 
     if (user) {
-      await batchSaveRuns(pendingIncomingRuns.map((r) => ({ ...r, userId: user.uid })));
+      await batchSaveRuns(formattedIncoming, profile.teamCode);
     }
 
     setDuplicateMatches([]);
@@ -573,11 +720,15 @@ export default function App() {
 
   const executeImportRuns = async (newRuns: RunRecord[]) => {
     const targetUserId = user ? user.uid : 'local_user';
-    const formatted = newRuns.map((r) => ({ ...r, userId: targetUserId }));
+    const formatted = newRuns.map((r) => ({
+      ...r,
+      userId: targetUserId,
+      ...(profile.teamCode ? { teamCode: profile.teamCode } : {}),
+    }));
     setRuns((prev) => [...formatted, ...prev]);
 
     if (user) {
-      await batchSaveRuns(formatted);
+      await batchSaveRuns(formatted, profile.teamCode);
     }
   };
 
@@ -593,21 +744,25 @@ export default function App() {
 
     const targetRun = updatedRuns.find((r) => r.id === runId);
     if (targetRun && user && !isPlaceholderRun(targetRun)) {
-      await saveRunRecord(targetRun);
+      await saveRunRecord(targetRun, profile.teamCode);
     }
   };
 
   const handleUpdateRun = async (updatedRun: RunRecord) => {
-    const runToSave = user ? { ...updatedRun, userId: user.uid } : updatedRun;
+    const runToSave = user
+      ? { ...updatedRun, userId: user.uid, ...(profile.teamCode ? { teamCode: profile.teamCode } : {}) }
+      : updatedRun;
     setRuns((prev) => prev.map((r) => (r.id === updatedRun.id ? runToSave : r)));
 
     if (user && !isPlaceholderRun(runToSave)) {
-      await saveRunRecord(runToSave);
+      await saveRunRecord(runToSave, profile.teamCode);
     }
   };
 
   const handleSaveRun = async (newRun: RunRecord) => {
-    const runToSave = user ? { ...newRun, userId: user.uid } : newRun;
+    const runToSave = user
+      ? { ...newRun, userId: user.uid, ...(profile.teamCode ? { teamCode: profile.teamCode } : {}) }
+      : newRun;
     const runEquiv = runToSave.targetEquivalentSeconds || runToSave.best6kTimeSeconds;
     const isNewPr =
       best6kSec === undefined ||
@@ -616,7 +771,7 @@ export default function App() {
     setRuns((prev) => [runToSave, ...prev]);
 
     if (user) {
-      await saveRunRecord(runToSave);
+      await saveRunRecord(runToSave, profile.teamCode);
     }
 
     if (isNewPr) {
@@ -637,14 +792,18 @@ export default function App() {
 
   const handleCombineRuns = async (combinedRun: RunRecord, sourceRunIds: string[]) => {
     const targetUserId = user ? user.uid : 'local_user';
-    const runToSave: RunRecord = { ...combinedRun, userId: targetUserId };
+    const runToSave: RunRecord = {
+      ...combinedRun,
+      userId: targetUserId,
+      ...(profile.teamCode ? { teamCode: profile.teamCode } : {}),
+    };
     const sourceIdsSet = new Set(sourceRunIds);
 
     const updatedRuns = [runToSave, ...runs.filter((r) => !sourceIdsSet.has(r.id))];
     setRuns(updatedRuns);
 
     if (user) {
-      await saveRunRecord(runToSave);
+      await saveRunRecord(runToSave, profile.teamCode);
       for (const id of sourceRunIds) {
         if (!isPlaceholderRun({ id })) {
           await deleteRunRecord(id);
@@ -791,6 +950,7 @@ export default function App() {
         onClearAuthError={() => setAuthError(null)}
         theme={theme}
         onToggleTheme={toggleTheme}
+        pendingTeamCode={pendingTeamCode}
       />
     );
   }
@@ -844,6 +1004,8 @@ export default function App() {
           theme={theme}
           isGuest={isGuest}
           isAdmin={isAdmin}
+          isTeacher={isTeacher}
+          teamName={teacherRecord?.teamName}
           hasPlaceholderData={hasPlaceholderData}
           onExitGuestMode={handleExitGuestMode}
           onToggleTheme={toggleTheme}
@@ -853,6 +1015,7 @@ export default function App() {
           onOpenSettings={() => openSettings('root')}
           onOpenShare={() => setIsShareOpen(true)}
           onOpenAdmin={() => setIsAdminOpen(true)}
+          onOpenTeacher={() => setIsTeacherOpen(true)}
           onLoadPlaceholderData={handleLoadPlaceholderData}
           onClearPlaceholderData={handleClearPlaceholderData}
           onSignIn={handleSignIn}
@@ -1112,6 +1275,60 @@ export default function App() {
               </div>
             )}
 
+          {/* Live Team Coach Broadcast Banner */}
+          {user &&
+            profile.teamCode &&
+            teamInviteBanner?.active &&
+            Boolean(teamInviteBanner.teamAnnouncementTitle || teamInviteBanner.teamAnnouncementMessage) &&
+            dismissedTeamAnnKey !== (teamInviteBanner.teamAnnouncementUpdatedAt || 'active') && (
+              <div
+                className={`px-4 py-3 rounded-xl border flex items-start justify-between gap-3 text-xs ${
+                  teamInviteBanner.teamAnnouncementSeverity === 'warning'
+                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-950 dark:text-amber-100'
+                    : teamInviteBanner.teamAnnouncementSeverity === 'success'
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-100'
+                    : 'bg-sky-500/10 border-sky-500/30 text-sky-950 dark:text-sky-100'
+                }`}
+              >
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <GraduationCap
+                    className={`w-4 h-4 shrink-0 mt-0.5 ${
+                      teamInviteBanner.teamAnnouncementSeverity === 'warning'
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : teamInviteBanner.teamAnnouncementSeverity === 'success'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-[#0593C6] dark:text-sky-400'
+                    }`}
+                  />
+                  <div className="min-w-0">
+                    <div className="font-bold text-slate-900 dark:text-white flex flex-wrap items-center gap-1.5">
+                      <span>{teamInviteBanner.teamAnnouncementTitle || teamInviteBanner.teamName}</span>
+                      <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                        · {teamInviteBanner.teamName} ({teamInviteBanner.coachName})
+                      </span>
+                    </div>
+                    {teamInviteBanner.teamAnnouncementMessage && (
+                      <p className="text-slate-700 dark:text-slate-200 mt-0.5 leading-relaxed">
+                        {teamInviteBanner.teamAnnouncementMessage}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const key = teamInviteBanner.teamAnnouncementUpdatedAt || 'active';
+                    localStorage.setItem('xc_dismissed_team_announcement', key);
+                    setDismissedTeamAnnKey(key);
+                  }}
+                  className="p-1 rounded-md opacity-70 hover:opacity-100 transition-opacity cursor-pointer shrink-0"
+                  aria-label="Dismiss team announcement"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
           {/* Dynamic Motivational Greeting with User's Name */}
           <MotivationalGreeting
             profile={profile}
@@ -1327,6 +1544,20 @@ export default function App() {
           onToggleTheme={toggleTheme}
           onOpenSetupWizard={() => setIsAccountSetupOpen(true)}
           onDeleteAccount={handleDeleteAccount}
+          userUid={user?.uid}
+          onTeamMembershipChange={(updatedProfile, updatedTeamCode) => {
+            setProfile(updatedProfile);
+            setRuns((prev) =>
+              prev.map((r) => {
+                if (updatedTeamCode) {
+                  return { ...r, teamCode: updatedTeamCode };
+                }
+                const next = { ...r };
+                delete next.teamCode;
+                return next;
+              })
+            );
+          }}
           isGuest={isGuest}
           userEmail={user?.email || profile.email || undefined}
           runsCount={runs.length}
@@ -1342,6 +1573,15 @@ export default function App() {
           best6kSec={best6kSec}
         />
 
+        {isTeacher && user && teacherRecord && (
+          <TeacherPanelModal
+            isOpen={isTeacherOpen}
+            onClose={() => setIsTeacherOpen(false)}
+            teacher={teacherRecord}
+            onTeacherUpdated={(next) => setTeacherRecord(next)}
+          />
+        )}
+
         {isAdmin && user && (
           <AdminPanelModal
             isOpen={isAdminOpen}
@@ -1350,6 +1590,103 @@ export default function App() {
             isUnlocked={isAdminUnlocked}
             onUnlockChange={setIsAdminUnlocked}
           />
+        )}
+
+        {/* Student Join Team Invite Confirmation Modal (?join=CODE) */}
+        {user && !isAccountSetupOpen && (joinInvitePreview || joinInviteError) && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/75"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isJoiningTeam) {
+                handleDismissPendingTeamJoin();
+              }
+            }}
+          >
+            <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-800 shadow-2xl p-5 sm:p-6 space-y-4 text-xs">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/12 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 flex items-center justify-center shrink-0">
+                    <GraduationCap className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                      {joinInvitePreview ? `Join ${joinInvitePreview.teamName}` : 'Team Invite Unavailable'}
+                    </h3>
+                    {joinInvitePreview && (
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Coach: {joinInvitePreview.coachName} · Code{' '}
+                        <code className="font-mono font-bold text-slate-700 dark:text-slate-200">
+                          {joinInvitePreview.id}
+                        </code>
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDismissPendingTeamJoin}
+                  disabled={isJoiningTeam}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
+                  aria-label="Close team invite"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {joinInviteError && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 font-medium">
+                  {joinInviteError}
+                </div>
+              )}
+
+              {joinInvitePreview && (
+                <>
+                  <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                    Accepting this invite connects your athlete account with{' '}
+                    <strong className="text-slate-900 dark:text-white">{joinInvitePreview.coachName}</strong>. Your coach will be able to monitor your logged workouts and adherence, edit training goals or workouts, and send team or direct coaching notes. You can leave the team anytime in Settings.
+                  </p>
+
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      disabled={isJoiningTeam}
+                      onClick={handleDismissPendingTeamJoin}
+                      className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold cursor-pointer disabled:opacity-50"
+                    >
+                      Decline
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isJoiningTeam}
+                      onClick={handleAcceptPendingTeamJoin}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer disabled:opacity-50"
+                    >
+                      {isJoiningTeam ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Joining Team...</span>
+                        </>
+                      ) : (
+                        <span>Join Team Roster</span>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {!joinInvitePreview && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleDismissPendingTeamJoin}
+                    className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold cursor-pointer"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
     </div>

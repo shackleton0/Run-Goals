@@ -32,6 +32,8 @@ export { firebaseConfig };
 import {
   RunRecord,
   UserProfile,
+  TeacherRecord,
+  TeamInvite,
   AppAnnouncement,
   AdminAuditLog,
   AdminAuditAction,
@@ -255,11 +257,16 @@ export function cleanObjectForFirestore<T extends Record<string, any>>(obj: T): 
 }
 
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
-  // Never allow regular user profile writes to touch admin-controlled governance or message fields
+  // Never allow regular user profile writes to touch admin/coach-controlled governance or team fields
   const {
     accountStatus: _accountStatus,
     suspensionReason: _suspensionReason,
     adminNotes: _adminNotes,
+    coachNotes: _coachNotes,
+    teamCode: _teamCode,
+    teamName: _teamName,
+    coachName: _coachName,
+    joinedTeamAt: _joinedTeamAt,
     directMessageTitle: _directMessageTitle,
     directMessageBody: _directMessageBody,
     directMessageSeverity: _directMessageSeverity,
@@ -376,14 +383,20 @@ export function subscribeUserRuns(
   );
 }
 
-export async function saveRunRecord(run: RunRecord): Promise<void> {
+export async function saveRunRecord(run: RunRecord, teamCode?: string): Promise<void> {
   const safeId = sanitizeDocId(run.id);
   const currentUid = auth.currentUser?.uid;
+  const normalizedTeamCode = (teamCode || run.teamCode || '').trim().toUpperCase();
+  const validTeamCode = /^[A-Z0-9]{6,16}$/.test(normalizedTeamCode) ? normalizedTeamCode : undefined;
   const cleanRun = cleanObjectForFirestore({
     ...run,
     id: safeId,
     userId: currentUid || run.userId,
+    ...(validTeamCode ? { teamCode: validTeamCode } : {}),
   });
+  if (!validTeamCode) {
+    delete (cleanRun as any).teamCode;
+  }
   const path = `runs/${safeId}`;
   try {
     const docRef = doc(db, 'runs', safeId);
@@ -404,7 +417,7 @@ export async function deleteRunRecord(runId: string): Promise<void> {
   }
 }
 
-export async function batchSaveRuns(runs: RunRecord[]): Promise<void> {
+export async function batchSaveRuns(runs: RunRecord[], teamCode?: string): Promise<void> {
   if (runs.length === 0) return;
   const currentUid = auth.currentUser?.uid;
   // Firestore batches support up to 500 writes
@@ -414,11 +427,17 @@ export async function batchSaveRuns(runs: RunRecord[]): Promise<void> {
     const batch = writeBatch(db);
     chunk.forEach((r) => {
       const safeId = sanitizeDocId(r.id);
+      const normalizedTeamCode = (teamCode || r.teamCode || '').trim().toUpperCase();
+      const validTeamCode = /^[A-Z0-9]{6,16}$/.test(normalizedTeamCode) ? normalizedTeamCode : undefined;
       const cleanRun = cleanObjectForFirestore({
         ...r,
         id: safeId,
         userId: currentUid || r.userId,
+        ...(validTeamCode ? { teamCode: validTeamCode } : {}),
       });
+      if (!validTeamCode) {
+        delete (cleanRun as any).teamCode;
+      }
       const docRef = doc(db, 'runs', safeId);
       batch.set(docRef, { ...cleanRun, updatedAt: new Date().toISOString() }, { merge: true });
     });
@@ -991,4 +1010,784 @@ export async function saveAppAnnouncement(
   });
 
   return payload;
+}
+
+// ============================================================
+// Teachers, Team Invites & Coach Team Monitoring
+// ============================================================
+
+export function normalizeTeacherEmail(email: string): string {
+  return email.trim().toLowerCase().slice(0, 254);
+}
+
+export function normalizeInviteCode(code: string): string {
+  return code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16);
+}
+
+export function generateInviteCode(length = 8): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
+}
+
+export async function fetchAllTeachers(): Promise<TeacherRecord[]> {
+  try {
+    const snap = await getDocs(collection(db, 'teachers'));
+    const list = snap.docs.map((d) => d.data() as TeacherRecord);
+    list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    return list;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'teachers');
+  }
+}
+
+export async function adminAddTeacher(
+  adminUser: User,
+  input: {
+    email: string;
+    displayName?: string;
+    teamName?: string;
+  }
+): Promise<TeacherRecord> {
+  if (!isAuthorizedAdmin(adminUser)) {
+    throw new Error('Unauthorized admin access attempt.');
+  }
+  const emailLower = normalizeTeacherEmail(input.email);
+  if (!/^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/.test(emailLower)) {
+    throw new Error('Enter a valid email address for the teacher.');
+  }
+
+  const existingSnap = await getDoc(doc(db, 'teachers', emailLower));
+  if (existingSnap.exists()) {
+    throw new Error(`${emailLower} is already in the teachers roster.`);
+  }
+
+  const fallbackName = emailLower.split('@')[0] || 'Coach';
+  const displayName = (input.displayName || '').trim().slice(0, 128) || fallbackName;
+  const teamName = (input.teamName || '').trim().slice(0, 120) || `${displayName}'s Team`;
+  const inviteCode = generateInviteCode(8);
+  const now = new Date().toISOString();
+
+  const teacherRecord: TeacherRecord = {
+    id: emailLower,
+    email: emailLower,
+    displayName,
+    teamName,
+    inviteCode,
+    status: 'active',
+    addedBy: (adminUser.email || ADMIN_EMAIL).slice(0, 256),
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const inviteRecord: TeamInvite = {
+    id: inviteCode,
+    teamName,
+    coachName: displayName,
+    active: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  try {
+    await setDoc(doc(db, 'teachers', emailLower), teacherRecord);
+    await setDoc(doc(db, 'teamInvites', inviteCode), inviteRecord);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, `teachers/${emailLower}`);
+  }
+
+  await recordAdminLog(adminUser, {
+    action: 'add_teacher',
+    targetId: emailLower.slice(0, 128),
+    targetLabel: `${displayName} (${emailLower})`,
+    details: `Authorized teacher ${emailLower} for team "${teamName}" (Invite code ${inviteCode}).`,
+  });
+
+  return teacherRecord;
+}
+
+export async function adminUpdateTeacher(
+  adminUser: User,
+  teacher: TeacherRecord,
+  updates: {
+    displayName?: string;
+    teamName?: string;
+    status?: 'active' | 'suspended';
+  }
+): Promise<TeacherRecord> {
+  if (!isAuthorizedAdmin(adminUser)) {
+    throw new Error('Unauthorized admin access attempt.');
+  }
+  const now = new Date().toISOString();
+  const nextStatus = updates.status ?? teacher.status;
+  const nextDisplayName = (updates.displayName ?? teacher.displayName).trim().slice(0, 128) || 'Coach';
+  const nextTeamName = (updates.teamName ?? teacher.teamName).trim().slice(0, 120) || `${nextDisplayName}'s Team`;
+
+  const updated: TeacherRecord = {
+    ...teacher,
+    displayName: nextDisplayName,
+    teamName: nextTeamName,
+    status: nextStatus,
+    updatedAt: now,
+  };
+
+  try {
+    await setDoc(doc(db, 'teachers', teacher.id), updated);
+    const inviteRef = doc(db, 'teamInvites', teacher.inviteCode);
+    const inviteSnap = await getDoc(inviteRef);
+    if (inviteSnap.exists()) {
+      await updateDoc(inviteRef, {
+        teamName: nextTeamName,
+        coachName: nextDisplayName,
+        active: nextStatus === 'active',
+        updatedAt: now,
+      });
+    } else {
+      await setDoc(inviteRef, {
+        id: teacher.inviteCode,
+        teamName: nextTeamName,
+        coachName: nextDisplayName,
+        active: nextStatus === 'active',
+        createdAt: now,
+        updatedAt: now,
+      } satisfies TeamInvite);
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `teachers/${teacher.id}`);
+  }
+
+  const action: AdminAuditAction =
+    updates.status && updates.status !== teacher.status
+      ? nextStatus === 'suspended'
+        ? 'suspend_teacher'
+        : 'restore_teacher'
+      : 'edit_teacher';
+
+  await recordAdminLog(adminUser, {
+    action,
+    targetId: teacher.id.slice(0, 128),
+    targetLabel: `${nextDisplayName} (${teacher.email})`,
+    details:
+      action === 'suspend_teacher'
+        ? `Suspended teacher access for ${teacher.email}.`
+        : action === 'restore_teacher'
+        ? `Restored teacher access for ${teacher.email}.`
+        : `Updated teacher profile/team to "${nextTeamName}".`,
+  });
+
+  return updated;
+}
+
+export async function adminRotateTeacherInviteCode(
+  adminUser: User,
+  teacher: TeacherRecord
+): Promise<TeacherRecord> {
+  if (!isAuthorizedAdmin(adminUser)) {
+    throw new Error('Unauthorized admin access attempt.');
+  }
+  const oldCode = teacher.inviteCode;
+  const newCode = generateInviteCode(8);
+  const now = new Date().toISOString();
+
+  const updatedTeacher: TeacherRecord = {
+    ...teacher,
+    inviteCode: newCode,
+    updatedAt: now,
+  };
+
+  try {
+    const oldInviteSnap = await getDoc(doc(db, 'teamInvites', oldCode));
+    const oldInviteData = oldInviteSnap.exists() ? (oldInviteSnap.data() as TeamInvite) : null;
+
+    const newInvite: TeamInvite = {
+      id: newCode,
+      teamName: teacher.teamName,
+      coachName: teacher.displayName,
+      active: teacher.status === 'active',
+      ...(oldInviteData?.teamAnnouncementTitle
+        ? { teamAnnouncementTitle: oldInviteData.teamAnnouncementTitle }
+        : {}),
+      ...(oldInviteData?.teamAnnouncementMessage
+        ? { teamAnnouncementMessage: oldInviteData.teamAnnouncementMessage }
+        : {}),
+      ...(oldInviteData?.teamAnnouncementSeverity
+        ? { teamAnnouncementSeverity: oldInviteData.teamAnnouncementSeverity }
+        : {}),
+      ...(oldInviteData?.teamAnnouncementUpdatedAt
+        ? { teamAnnouncementUpdatedAt: oldInviteData.teamAnnouncementUpdatedAt }
+        : {}),
+      createdAt: oldInviteData?.createdAt || now,
+      updatedAt: now,
+    };
+
+    await setDoc(doc(db, 'teamInvites', newCode), newInvite);
+    await setDoc(doc(db, 'teachers', teacher.id), updatedTeacher);
+
+    // Migrate existing team members & runs to the new inviteCode
+    const studentsSnap = await getDocs(
+      query(collection(db, 'users'), where('teamCode', '==', oldCode))
+    );
+    const studentDocs = studentsSnap.docs;
+    for (let i = 0; i < studentDocs.length; i += 400) {
+      const batch = writeBatch(db);
+      studentDocs.slice(i, i + 400).forEach((d) => {
+        batch.update(d.ref, { teamCode: newCode, updatedAt: now });
+      });
+      await batch.commit();
+    }
+
+    const runsSnap = await getDocs(
+      query(collection(db, 'runs'), where('teamCode', '==', oldCode))
+    );
+    const runDocs = runsSnap.docs;
+    for (let i = 0; i < runDocs.length; i += 400) {
+      const batch = writeBatch(db);
+      runDocs.slice(i, i + 400).forEach((d) => {
+        batch.update(d.ref, { teamCode: newCode, updatedAt: now });
+      });
+      await batch.commit();
+    }
+
+    if (oldInviteSnap.exists()) {
+      await deleteDoc(doc(db, 'teamInvites', oldCode));
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `teachers/${teacher.id}`);
+  }
+
+  await recordAdminLog(adminUser, {
+    action: 'rotate_teacher_code',
+    targetId: teacher.id.slice(0, 128),
+    targetLabel: `${teacher.displayName} (${teacher.email})`,
+    details: `Rotated invite code for "${teacher.teamName}" from ${oldCode} to ${newCode}.`,
+  });
+
+  return updatedTeacher;
+}
+
+export async function adminDeleteTeacher(
+  adminUser: User,
+  teacher: TeacherRecord,
+  unlinkStudents = true
+): Promise<void> {
+  if (!isAuthorizedAdmin(adminUser)) {
+    throw new Error('Unauthorized admin access attempt.');
+  }
+  const now = new Date().toISOString();
+
+  try {
+    if (unlinkStudents) {
+      const runsSnap = await getDocs(
+        query(collection(db, 'runs'), where('teamCode', '==', teacher.inviteCode))
+      );
+      for (let i = 0; i < runsSnap.docs.length; i += 400) {
+        const batch = writeBatch(db);
+        runsSnap.docs.slice(i, i + 400).forEach((d) => {
+          batch.update(d.ref, { teamCode: deleteField(), updatedAt: now });
+        });
+        await batch.commit();
+      }
+
+      const studentsSnap = await getDocs(
+        query(collection(db, 'users'), where('teamCode', '==', teacher.inviteCode))
+      );
+      for (let i = 0; i < studentsSnap.docs.length; i += 400) {
+        const batch = writeBatch(db);
+        studentsSnap.docs.slice(i, i + 400).forEach((d) => {
+          batch.update(d.ref, {
+            teamCode: deleteField(),
+            teamName: deleteField(),
+            coachName: deleteField(),
+            joinedTeamAt: deleteField(),
+            updatedAt: now,
+          });
+        });
+        await batch.commit();
+      }
+    }
+
+    await deleteDoc(doc(db, 'teamInvites', teacher.inviteCode));
+    await deleteDoc(doc(db, 'teachers', teacher.id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `teachers/${teacher.id}`);
+  }
+
+  await recordAdminLog(adminUser, {
+    action: 'delete_teacher',
+    targetId: teacher.id.slice(0, 128),
+    targetLabel: `${teacher.displayName} (${teacher.email})`,
+    details: `Removed teacher ${teacher.email} and deleted invite ${teacher.inviteCode}.`,
+  });
+}
+
+export function subscribeTeacherRecord(
+  user: User | null,
+  onTeacher: (teacher: TeacherRecord | null) => void
+): Unsubscribe {
+  if (!user || !user.email || user.emailVerified === false || user.isAnonymous) {
+    onTeacher(null);
+    return () => {};
+  }
+  const emailLower = normalizeTeacherEmail(user.email);
+  return onSnapshot(
+    doc(db, 'teachers', emailLower),
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        onTeacher(null);
+        return;
+      }
+      onTeacher(snapshot.data() as TeacherRecord);
+    },
+    (error) => {
+      console.warn('Teacher status subscription notice:', error);
+      onTeacher(null);
+    }
+  );
+}
+
+export async function fetchTeamDataForTeacher(teacher: TeacherRecord): Promise<{
+  students: UserProfile[];
+  runs: RunRecord[];
+  invite: TeamInvite | null;
+}> {
+  let students: UserProfile[] = [];
+  let runs: RunRecord[] = [];
+  let invite: TeamInvite | null = null;
+
+  try {
+    const usersSnap = await getDocs(
+      query(collection(db, 'users'), where('teamCode', '==', teacher.inviteCode))
+    );
+    students = usersSnap.docs.map((d) => d.data() as UserProfile);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'users (team)');
+  }
+
+  try {
+    const runsSnap = await getDocs(
+      query(collection(db, 'runs'), where('teamCode', '==', teacher.inviteCode))
+    );
+    runs = runsSnap.docs.map((d) => d.data() as RunRecord);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'runs (team)');
+  }
+
+  try {
+    const inviteSnap = await getDoc(doc(db, 'teamInvites', teacher.inviteCode));
+    invite = inviteSnap.exists() ? (inviteSnap.data() as TeamInvite) : null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, `teamInvites/${teacher.inviteCode}`);
+  }
+
+  return { students, runs, invite };
+}
+
+export async function teacherUpdateStudentProfile(
+  teacher: TeacherRecord,
+  updatedProfile: UserProfile
+): Promise<UserProfile> {
+  if (teacher.status !== 'active') {
+    throw new Error('Your teacher account is suspended.');
+  }
+  const now = new Date().toISOString();
+  const sanitized: UserProfile = {
+    ...updatedProfile,
+    displayName: (updatedProfile.displayName || '').slice(0, 128),
+    targetGoalName: updatedProfile.targetGoalName
+      ? updatedProfile.targetGoalName.slice(0, 128)
+      : undefined,
+    weeklyRunGoal: Math.min(14, Math.max(1, Math.round(updatedProfile.weeklyRunGoal || 3))),
+    weeklyDistanceGoalKm:
+      updatedProfile.weeklyDistanceGoalKm !== undefined && updatedProfile.weeklyDistanceGoalKm > 0
+        ? Math.min(500, Math.max(0, updatedProfile.weeklyDistanceGoalKm))
+        : undefined,
+    targetDistanceKm:
+      updatedProfile.targetDistanceKm !== undefined
+        ? Math.min(100, Math.max(0.1, updatedProfile.targetDistanceKm))
+        : undefined,
+    goalTimeframeWeeks:
+      updatedProfile.goalTimeframeWeeks !== undefined
+        ? Math.min(104, Math.max(1, Math.round(updatedProfile.goalTimeframeWeeks)))
+        : undefined,
+    suspensionReason: updatedProfile.suspensionReason
+      ? updatedProfile.suspensionReason.slice(0, 300)
+      : undefined,
+    coachNotes: updatedProfile.coachNotes ? updatedProfile.coachNotes.slice(0, 1000) : undefined,
+    directMessageTitle: updatedProfile.directMessageTitle
+      ? updatedProfile.directMessageTitle.slice(0, 120)
+      : undefined,
+    directMessageBody: updatedProfile.directMessageBody
+      ? updatedProfile.directMessageBody.slice(0, 1000)
+      : undefined,
+    updatedAt: now,
+  };
+
+  // Never alter adminNotes or email from teacher portal
+  const { adminNotes: _adminNotes, ...withoutAdminNotes } = sanitized;
+  const cleanProfile = cleanObjectForFirestore(withoutAdminNotes);
+  const payload: Record<string, unknown> = { ...cleanProfile };
+
+  if (!updatedProfile.targetGoalDate || !updatedProfile.targetGoalDate.trim()) {
+    payload.targetGoalDate = deleteField();
+  }
+  if (!updatedProfile.target6kTimeSeconds || updatedProfile.target6kTimeSeconds <= 0) {
+    payload.target6kTimeSeconds = deleteField();
+  }
+  if (!updatedProfile.weeklyDistanceGoalKm || updatedProfile.weeklyDistanceGoalKm <= 0) {
+    payload.weeklyDistanceGoalKm = deleteField();
+  }
+  if (!updatedProfile.maxHeartRate || updatedProfile.maxHeartRate < 100) {
+    payload.maxHeartRate = deleteField();
+  }
+  if (!updatedProfile.suspensionReason || !updatedProfile.suspensionReason.trim()) {
+    payload.suspensionReason = deleteField();
+  }
+  if (!updatedProfile.coachNotes || !updatedProfile.coachNotes.trim()) {
+    payload.coachNotes = deleteField();
+  }
+  if (!updatedProfile.directMessageTitle || !updatedProfile.directMessageTitle.trim()) {
+    payload.directMessageTitle = deleteField();
+  }
+  if (!updatedProfile.directMessageBody || !updatedProfile.directMessageBody.trim()) {
+    payload.directMessageBody = deleteField();
+  }
+  if (!updatedProfile.directMessageSeverity) {
+    payload.directMessageSeverity = deleteField();
+  }
+  if (!updatedProfile.directMessageSentAt) {
+    payload.directMessageSentAt = deleteField();
+  }
+  if (!updatedProfile.directMessageReadAt) {
+    payload.directMessageReadAt = deleteField();
+  }
+
+  const path = `users/${updatedProfile.id}`;
+  try {
+    await setDoc(doc(db, 'users', updatedProfile.id), payload, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+
+  return sanitized;
+}
+
+export async function teacherSendStudentMessage(
+  teacher: TeacherRecord,
+  studentProfile: UserProfile,
+  message: {
+    title?: string;
+    body: string;
+    severity: 'info' | 'warning' | 'success';
+  }
+): Promise<UserProfile> {
+  const trimmedBody = message.body.trim().slice(0, 1000);
+  if (!trimmedBody) {
+    throw new Error('Message body cannot be empty.');
+  }
+  const trimmedTitle = message.title ? message.title.trim().slice(0, 120) : '';
+  const now = new Date().toISOString();
+
+  return teacherUpdateStudentProfile(teacher, {
+    ...studentProfile,
+    directMessageTitle: trimmedTitle || undefined,
+    directMessageBody: trimmedBody,
+    directMessageSeverity: message.severity,
+    directMessageSentAt: now,
+    directMessageReadAt: undefined,
+  });
+}
+
+export async function teacherClearStudentMessage(
+  teacher: TeacherRecord,
+  studentProfile: UserProfile
+): Promise<UserProfile> {
+  return teacherUpdateStudentProfile(teacher, {
+    ...studentProfile,
+    directMessageTitle: undefined,
+    directMessageBody: undefined,
+    directMessageSeverity: undefined,
+    directMessageSentAt: undefined,
+    directMessageReadAt: undefined,
+  });
+}
+
+export async function teacherSaveRunForStudent(
+  teacher: TeacherRecord,
+  studentId: string,
+  run: RunRecord,
+  isNew: boolean
+): Promise<RunRecord> {
+  if (teacher.status !== 'active') {
+    throw new Error('Your teacher account is suspended.');
+  }
+  const safeId = sanitizeDocId(run.id);
+  const now = new Date().toISOString();
+  const normalizedRun: RunRecord = {
+    ...run,
+    id: safeId,
+    userId: studentId,
+    teamCode: teacher.inviteCode,
+    title: (run.title || 'Workout').slice(0, 150),
+    notes: run.notes ? run.notes.slice(0, 1000) : undefined,
+    createdAt: run.createdAt || now,
+    updatedAt: now,
+  };
+
+  const cleanRun = cleanObjectForFirestore(normalizedRun);
+  const payload: Record<string, unknown> = { ...cleanRun };
+  if (!normalizedRun.notes || !normalizedRun.notes.trim()) {
+    payload.notes = deleteField();
+  }
+
+  const path = `runs/${safeId}`;
+  try {
+    await setDoc(doc(db, 'runs', safeId), payload, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, isNew ? OperationType.CREATE : OperationType.UPDATE, path);
+  }
+  return normalizedRun;
+}
+
+export async function teacherDeleteSingleRun(run: RunRecord): Promise<void> {
+  const safeId = sanitizeDocId(run.id);
+  const path = `runs/${safeId}`;
+  try {
+    await deleteDoc(doc(db, 'runs', safeId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export async function teacherClearStudentRuns(
+  teacher: TeacherRecord,
+  studentId: string
+): Promise<number> {
+  const q = query(
+    collection(db, 'runs'),
+    where('teamCode', '==', teacher.inviteCode),
+    where('userId', '==', studentId)
+  );
+  let snap;
+  try {
+    snap = await getDocs(q);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'runs (teacher clear)');
+  }
+
+  for (let i = 0; i < snap.docs.length; i += 400) {
+    const batch = writeBatch(db);
+    snap.docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+    try {
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'runs (teacher batch delete)');
+    }
+  }
+  return snap.docs.length;
+}
+
+export async function teacherRemoveStudentFromTeam(
+  teacher: TeacherRecord,
+  studentId: string
+): Promise<void> {
+  const now = new Date().toISOString();
+  const q = query(
+    collection(db, 'runs'),
+    where('teamCode', '==', teacher.inviteCode),
+    where('userId', '==', studentId)
+  );
+  try {
+    const runsSnap = await getDocs(q);
+    for (let i = 0; i < runsSnap.docs.length; i += 400) {
+      const batch = writeBatch(db);
+      runsSnap.docs.slice(i, i + 400).forEach((d) => {
+        batch.update(d.ref, { teamCode: deleteField(), updatedAt: now });
+      });
+      await batch.commit();
+    }
+
+    await updateDoc(doc(db, 'users', studentId), {
+      teamCode: deleteField(),
+      teamName: deleteField(),
+      coachName: deleteField(),
+      joinedTeamAt: deleteField(),
+      updatedAt: now,
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `users/${studentId}`);
+  }
+}
+
+export async function teacherUpdateTeamSettings(
+  teacher: TeacherRecord,
+  updates: {
+    displayName: string;
+    teamName: string;
+    active: boolean;
+  }
+): Promise<{ teacher: TeacherRecord; invite: TeamInvite }> {
+  const now = new Date().toISOString();
+  const nextName = updates.displayName.trim().slice(0, 128) || teacher.displayName;
+  const nextTeamName = updates.teamName.trim().slice(0, 120) || teacher.teamName;
+
+  try {
+    await updateDoc(doc(db, 'teachers', teacher.id), {
+      displayName: nextName,
+      teamName: nextTeamName,
+      updatedAt: now,
+    });
+
+    await updateDoc(doc(db, 'teamInvites', teacher.inviteCode), {
+      teamName: nextTeamName,
+      coachName: nextName,
+      active: updates.active,
+      updatedAt: now,
+    });
+
+    const inviteSnap = await getDoc(doc(db, 'teamInvites', teacher.inviteCode));
+    return {
+      teacher: {
+        ...teacher,
+        displayName: nextName,
+        teamName: nextTeamName,
+        updatedAt: now,
+      },
+      invite: inviteSnap.data() as TeamInvite,
+    };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `teamInvites/${teacher.inviteCode}`);
+  }
+}
+
+export async function teacherSaveTeamAnnouncement(
+  teacher: TeacherRecord,
+  announcement: {
+    title: string;
+    message: string;
+    severity: 'info' | 'warning' | 'success';
+  } | null
+): Promise<TeamInvite> {
+  const now = new Date().toISOString();
+  const inviteRef = doc(db, 'teamInvites', teacher.inviteCode);
+  try {
+    if (!announcement || (!announcement.title.trim() && !announcement.message.trim())) {
+      await updateDoc(inviteRef, {
+        teamAnnouncementTitle: deleteField(),
+        teamAnnouncementMessage: deleteField(),
+        teamAnnouncementSeverity: deleteField(),
+        teamAnnouncementUpdatedAt: deleteField(),
+        updatedAt: now,
+      });
+    } else {
+      await updateDoc(inviteRef, {
+        teamAnnouncementTitle: announcement.title.trim().slice(0, 120),
+        teamAnnouncementMessage: announcement.message.trim().slice(0, 500),
+        teamAnnouncementSeverity: announcement.severity,
+        teamAnnouncementUpdatedAt: now,
+        updatedAt: now,
+      });
+    }
+    const snap = await getDoc(inviteRef);
+    return snap.data() as TeamInvite;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `teamInvites/${teacher.inviteCode}`);
+  }
+}
+
+export async function getTeamInvite(code: string): Promise<TeamInvite | null> {
+  const cleaned = normalizeInviteCode(code);
+  if (cleaned.length < 6) return null;
+  try {
+    const snap = await getDoc(doc(db, 'teamInvites', cleaned));
+    return snap.exists() ? (snap.data() as TeamInvite) : null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, `teamInvites/${cleaned}`);
+  }
+}
+
+export function subscribeTeamInvite(
+  teamCode: string | undefined,
+  onInvite: (invite: TeamInvite | null) => void
+): Unsubscribe {
+  const cleaned = normalizeInviteCode(teamCode || '');
+  if (!cleaned) {
+    onInvite(null);
+    return () => {};
+  }
+  return onSnapshot(
+    doc(db, 'teamInvites', cleaned),
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        onInvite(null);
+        return;
+      }
+      onInvite(snapshot.data() as TeamInvite);
+    },
+    (error) => {
+      console.warn('Could not subscribe to team invite/announcement:', error);
+    }
+  );
+}
+
+export async function joinTeamWithInvite(
+  userId: string,
+  invite: TeamInvite
+): Promise<{ teamCode: string; teamName: string; coachName: string; joinedTeamAt: string }> {
+  if (!invite.active) {
+    throw new Error('This team invite link is currently paused by the coach.');
+  }
+  const now = new Date().toISOString();
+  try {
+    await updateDoc(doc(db, 'users', userId), {
+      teamCode: invite.id,
+      teamName: invite.teamName.slice(0, 120),
+      coachName: invite.coachName.slice(0, 128),
+      joinedTeamAt: now,
+      updatedAt: now,
+    });
+
+    // Tag student's existing runs so their coach can immediately monitor their history
+    const runsSnap = await getDocs(query(collection(db, 'runs'), where('userId', '==', userId)));
+    for (let i = 0; i < runsSnap.docs.length; i += 400) {
+      const batch = writeBatch(db);
+      runsSnap.docs.slice(i, i + 400).forEach((d) => {
+        batch.update(d.ref, { teamCode: invite.id, updatedAt: now });
+      });
+      await batch.commit();
+    }
+
+    return {
+      teamCode: invite.id,
+      teamName: invite.teamName,
+      coachName: invite.coachName,
+      joinedTeamAt: now,
+    };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
+  }
+}
+
+export async function leaveCurrentTeam(userId: string): Promise<void> {
+  const now = new Date().toISOString();
+  try {
+    const runsSnap = await getDocs(query(collection(db, 'runs'), where('userId', '==', userId)));
+    for (let i = 0; i < runsSnap.docs.length; i += 400) {
+      const batch = writeBatch(db);
+      runsSnap.docs.slice(i, i + 400).forEach((d) => {
+        batch.update(d.ref, { teamCode: deleteField(), updatedAt: now });
+      });
+      await batch.commit();
+    }
+
+    await updateDoc(doc(db, 'users', userId), {
+      teamCode: deleteField(),
+      teamName: deleteField(),
+      coachName: deleteField(),
+      joinedTeamAt: deleteField(),
+      updatedAt: now,
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
+  }
 }

@@ -18,6 +18,7 @@ import {
   Trash2,
   Shield,
   Cloud,
+  GraduationCap,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -29,6 +30,8 @@ interface NavbarProps {
   theme: 'dark' | 'light';
   isGuest?: boolean;
   isAdmin?: boolean;
+  isTeacher?: boolean;
+  teamName?: string;
   hasPlaceholderData?: boolean;
   onExitGuestMode?: () => void;
   onToggleTheme: () => void;
@@ -38,6 +41,7 @@ interface NavbarProps {
   onOpenSettings: () => void;
   onOpenShare?: () => void;
   onOpenAdmin?: () => void;
+  onOpenTeacher?: () => void;
   onLoadPlaceholderData?: () => void;
   onClearPlaceholderData?: () => void;
   onSignIn: () => void;
@@ -53,6 +57,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   theme,
   isGuest,
   isAdmin = false,
+  isTeacher = false,
+  teamName,
   hasPlaceholderData = false,
   onExitGuestMode,
   onToggleTheme,
@@ -62,6 +68,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenSettings,
   onOpenShare,
   onOpenAdmin,
+  onOpenTeacher,
   onLoadPlaceholderData,
   onClearPlaceholderData,
   onSignIn,
@@ -138,6 +145,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Teacher / Coach Console Action (Desktop header only; moved to dropdown on mobile) */}
+            {isTeacher && onOpenTeacher && (
+              <button
+                type="button"
+                onClick={onOpenTeacher}
+                className="hidden sm:flex items-center space-x-1.5 px-3 py-2 min-h-[38px] rounded-xl text-xs font-bold bg-emerald-500/15 hover:bg-emerald-500/25 active:scale-[0.96] text-emerald-700 dark:text-emerald-300 border border-emerald-500/35 transition-all cursor-pointer shadow-xs whitespace-nowrap"
+                aria-label="Open Coach Console"
+                title={teamName ? `Coach Console · ${teamName}` : 'Coach Console'}
+              >
+                <GraduationCap className="w-3.5 h-3.5" />
+                <span>Coach</span>
+              </button>
+            )}
 
             {/* Admin Panel Action (Desktop header only; moved to dropdown on mobile, exclusively for eskin.adam@gmail.com) */}
             {isAdmin && onOpenAdmin && (
@@ -370,6 +391,28 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </button>
                     ) : null}
                   </div>
+
+                    {/* Mobile-only Coach Console Option */}
+                    {isTeacher && onOpenTeacher && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsDropdownOpen(false);
+                          onOpenTeacher();
+                        }}
+                        className="sm:hidden w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors text-left cursor-pointer"
+                      >
+                        <div className="w-6 h-6 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 flex items-center justify-center">
+                          <GraduationCap className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold">Coach Console</div>
+                          <div className="text-[10px] text-neutral-500 truncate">
+                            {teamName ? `Monitor ${teamName}` : 'Monitor team athletes & runs'}
+                          </div>
+                        </div>
+                      </button>
+                    )}
 
                     {/* Mobile-only Admin Console Option (exclusively for eskin.adam@gmail.com) */}
                     {isAdmin && onOpenAdmin && (

@@ -34,6 +34,11 @@
         "accountStatus": { "type": "string", "enum": ["active", "suspended"] },
         "suspensionReason": { "type": "string", "maxLength": 300 },
         "adminNotes": { "type": "string", "maxLength": 1000 },
+        "coachNotes": { "type": "string", "maxLength": 1000 },
+        "teamCode": { "type": "string", "maxLength": 16, "pattern": "^[A-Z0-9]+$" },
+        "teamName": { "type": "string", "maxLength": 120 },
+        "coachName": { "type": "string", "maxLength": 128 },
+        "joinedTeamAt": { "type": "string", "maxLength": 64 },
         "directMessageTitle": { "type": "string", "maxLength": 120 },
         "directMessageBody": { "type": "string", "maxLength": 1000 },
         "directMessageSeverity": { "type": "string", "enum": ["info", "warning", "success"] },
@@ -51,6 +56,7 @@
       "properties": {
         "id": { "type": "string", "maxLength": 128 },
         "userId": { "type": "string", "maxLength": 128 },
+        "teamCode": { "type": "string", "maxLength": 16, "pattern": "^[A-Z0-9]+$" },
         "date": { "type": "string", "maxLength": 32 },
         "title": { "type": "string", "maxLength": 150 },
         "distanceKm": { "type": "number" },
@@ -77,6 +83,41 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "userId", "date", "title", "distanceKm", "durationSeconds", "runType"]
+    },
+    "TeacherRecord": {
+      "title": "TeacherRecord",
+      "description": "Authorized teacher or coach allowed to manage a student running team",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 254 },
+        "email": { "type": "string", "maxLength": 254 },
+        "displayName": { "type": "string", "maxLength": 128 },
+        "teamName": { "type": "string", "maxLength": 120 },
+        "inviteCode": { "type": "string", "minLength": 6, "maxLength": 16, "pattern": "^[A-Z0-9]+$" },
+        "status": { "type": "string", "enum": ["active", "suspended"] },
+        "addedBy": { "type": "string", "maxLength": 256 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "email", "displayName", "teamName", "inviteCode", "status", "addedBy", "createdAt", "updatedAt"]
+    },
+    "TeamInvite": {
+      "title": "TeamInvite",
+      "description": "Non-PII public lookup document for team invite links and coach team announcements",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 6, "maxLength": 16, "pattern": "^[A-Z0-9]+$" },
+        "teamName": { "type": "string", "maxLength": 120 },
+        "coachName": { "type": "string", "maxLength": 128 },
+        "active": { "type": "boolean" },
+        "teamAnnouncementTitle": { "type": "string", "maxLength": 120 },
+        "teamAnnouncementMessage": { "type": "string", "maxLength": 500 },
+        "teamAnnouncementSeverity": { "type": "string", "enum": ["info", "warning", "success"] },
+        "teamAnnouncementUpdatedAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "teamName", "coachName", "active", "createdAt", "updatedAt"]
     },
     "AdminConfig": {
       "title": "AdminConfig",
@@ -131,6 +172,12 @@
             "update_announcement",
             "send_user_message",
             "clear_user_message",
+            "add_teacher",
+            "edit_teacher",
+            "suspend_teacher",
+            "restore_teacher",
+            "delete_teacher",
+            "rotate_teacher_code",
             "change_pin"
           ]
         },
@@ -150,6 +197,14 @@
     "/runs/{runId}": {
       "schema": "RunRecord",
       "description": "Cross country training runs, Garmin sync activities, and 6k trial performances"
+    },
+    "/teachers/{teacherId}": {
+      "schema": "TeacherRecord",
+      "description": "Authorized teachers/coaches whitelisted by email with their team invite code"
+    },
+    "/teamInvites/{inviteCode}": {
+      "schema": "TeamInvite",
+      "description": "Non-PII invite links and team announcement banners for joining a coach's team"
     },
     "/adminConfig/{userId}": {
       "schema": "AdminConfig",
