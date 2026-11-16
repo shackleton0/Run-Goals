@@ -255,11 +255,16 @@ export function cleanObjectForFirestore<T extends Record<string, any>>(obj: T): 
 }
 
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
-  // Never allow regular user profile writes to touch admin-controlled governance fields
+  // Never allow regular user profile writes to touch admin-controlled governance or message fields
   const {
     accountStatus: _accountStatus,
     suspensionReason: _suspensionReason,
     adminNotes: _adminNotes,
+    directMessageTitle: _directMessageTitle,
+    directMessageBody: _directMessageBody,
+    directMessageSeverity: _directMessageSeverity,
+    directMessageSentAt: _directMessageSentAt,
+    directMessageReadAt: _directMessageReadAt,
     ...userWritableProfile
   } = profile;
 
@@ -714,6 +719,12 @@ export async function adminUpdateUserProfile(
       ? updatedProfile.suspensionReason.slice(0, 300)
       : undefined,
     adminNotes: updatedProfile.adminNotes ? updatedProfile.adminNotes.slice(0, 1000) : undefined,
+    directMessageTitle: updatedProfile.directMessageTitle
+      ? updatedProfile.directMessageTitle.slice(0, 120)
+      : undefined,
+    directMessageBody: updatedProfile.directMessageBody
+      ? updatedProfile.directMessageBody.slice(0, 1000)
+      : undefined,
     updatedAt: now,
   };
 
@@ -738,6 +749,21 @@ export async function adminUpdateUserProfile(
   if (!updatedProfile.adminNotes || !updatedProfile.adminNotes.trim()) {
     payload.adminNotes = deleteField();
   }
+  if (!updatedProfile.directMessageTitle || !updatedProfile.directMessageTitle.trim()) {
+    payload.directMessageTitle = deleteField();
+  }
+  if (!updatedProfile.directMessageBody || !updatedProfile.directMessageBody.trim()) {
+    payload.directMessageBody = deleteField();
+  }
+  if (!updatedProfile.directMessageSeverity) {
+    payload.directMessageSeverity = deleteField();
+  }
+  if (!updatedProfile.directMessageSentAt) {
+    payload.directMessageSentAt = deleteField();
+  }
+  if (!updatedProfile.directMessageReadAt) {
+    payload.directMessageReadAt = deleteField();
+  }
 
   const path = `users/${updatedProfile.id}`;
   try {
@@ -754,6 +780,80 @@ export async function adminUpdateUserProfile(
   });
 
   return sanitized;
+}
+
+export async function adminSendUserMessage(
+  adminUser: User,
+  targetProfile: UserProfile,
+  message: {
+    title?: string;
+    body: string;
+    severity: 'info' | 'warning' | 'success';
+  }
+): Promise<UserProfile> {
+  if (!isAuthorizedAdmin(adminUser)) {
+    throw new Error('Unauthorized admin access attempt.');
+  }
+  const trimmedBody = message.body.trim().slice(0, 1000);
+  if (!trimmedBody) {
+    throw new Error('Message body cannot be empty.');
+  }
+  const trimmedTitle = message.title ? message.title.trim().slice(0, 120) : '';
+  const now = new Date().toISOString();
+
+  const updatedProfile: UserProfile = {
+    ...targetProfile,
+    directMessageTitle: trimmedTitle || undefined,
+    directMessageBody: trimmedBody,
+    directMessageSeverity: message.severity,
+    directMessageSentAt: now,
+    directMessageReadAt: undefined,
+  };
+
+  return adminUpdateUserProfile(
+    adminUser,
+    updatedProfile,
+    'send_user_message',
+    `Sent ${message.severity} message${trimmedTitle ? ` ("${trimmedTitle}")` : ''} to ${targetProfile.displayName || targetProfile.email || targetProfile.id}.`
+  );
+}
+
+export async function adminClearUserMessage(
+  adminUser: User,
+  targetProfile: UserProfile
+): Promise<UserProfile> {
+  if (!isAuthorizedAdmin(adminUser)) {
+    throw new Error('Unauthorized admin access attempt.');
+  }
+
+  const updatedProfile: UserProfile = {
+    ...targetProfile,
+    directMessageTitle: undefined,
+    directMessageBody: undefined,
+    directMessageSeverity: undefined,
+    directMessageSentAt: undefined,
+    directMessageReadAt: undefined,
+  };
+
+  return adminUpdateUserProfile(
+    adminUser,
+    updatedProfile,
+    'clear_user_message',
+    `Cleared direct message for ${targetProfile.displayName || targetProfile.email || targetProfile.id}.`
+  );
+}
+
+export async function markDirectMessageRead(userId: string): Promise<void> {
+  const path = `users/${userId}`;
+  const now = new Date().toISOString();
+  try {
+    await updateDoc(doc(db, 'users', userId), {
+      directMessageReadAt: now,
+      updatedAt: now,
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
 }
 
 export async function adminSaveRunForUser(

@@ -93,6 +93,11 @@ export interface UserProfile {
   accountStatus?: 'active' | 'suspended';
   suspensionReason?: string;
   adminNotes?: string;
+  directMessageTitle?: string;
+  directMessageBody?: string;
+  directMessageSeverity?: 'info' | 'warning' | 'success';
+  directMessageSentAt?: string;
+  directMessageReadAt?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -119,6 +124,8 @@ export type AdminAuditAction =
   | 'delete_run'
   | 'purge_orphan_runs'
   | 'update_announcement'
+  | 'send_user_message'
+  | 'clear_user_message'
   | 'change_pin';
 
 export interface AdminAuditLog {

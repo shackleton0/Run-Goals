@@ -15,6 +15,8 @@ import {
   adminSaveRunForUser,
   adminDeleteSingleRun,
   adminPurgeOrphanRuns,
+  adminSendUserMessage,
+  adminClearUserMessage,
   getAppAnnouncement,
   saveAppAnnouncement,
 } from '../lib/firebase';
@@ -71,6 +73,7 @@ import {
   Check,
   AlertTriangle,
   Sparkles,
+  MessageSquare,
 } from 'lucide-react';
 
 interface AdminPanelModalProps {
@@ -91,7 +94,7 @@ type PadMode =
 
 type AdminTab = 'users' | 'runs' | 'announcements' | 'audit';
 type UserFilter = 'all' | 'active' | 'suspended' | 'pending_setup' | 'orphaned';
-type UserActionPanel = 'none' | 'edit_profile' | 'suspend' | 'delete_user' | 'clear_runs' | 'add_run';
+type UserActionPanel = 'none' | 'message_user' | 'edit_profile' | 'suspend' | 'delete_user' | 'clear_runs' | 'add_run';
 
 interface EnrichedUserSummary {
   userId: string;
@@ -145,6 +148,8 @@ const AUDIT_ACTION_LABELS: Record<AdminAuditLog['action'], string> = {
   delete_run: 'Deleted Run',
   purge_orphan_runs: 'Purged Orphans',
   update_announcement: 'Announcement',
+  send_user_message: 'Messaged User',
+  clear_user_message: 'Cleared Message',
   change_pin: 'Changed PIN',
 };
 
@@ -191,6 +196,9 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [userActionPanel, setUserActionPanel] = useState<UserActionPanel>('none');
   const [deleteTypedConfirm, setDeleteTypedConfirm] = useState('');
   const [suspendReasonInput, setSuspendReasonInput] = useState('');
+  const [msgTitle, setMsgTitle] = useState('');
+  const [msgBody, setMsgBody] = useState('');
+  const [msgSeverity, setMsgSeverity] = useState<'info' | 'warning' | 'success'>('info');
 
   // Edit User Profile Draft
   const [editDisplayName, setEditDisplayName] = useState('');
@@ -685,6 +693,76 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     setEditOnboardingDone(Boolean(u.profile.onboardingCompleted));
     setEditAdminNotes(u.profile.adminNotes || '');
     setUserActionPanel((prev) => (prev === 'edit_profile' ? 'none' : 'edit_profile'));
+  };
+
+  const openMessageUserPanel = (u: EnrichedUserSummary) => {
+    if (!u.profile) return;
+    setMsgTitle(u.profile.directMessageTitle || '');
+    setMsgBody(u.profile.directMessageBody || '');
+    setMsgSeverity(u.profile.directMessageSeverity || 'info');
+    setUserActionPanel((prev) => (prev === 'message_user' ? 'none' : 'message_user'));
+  };
+
+  const handleSendUserMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUser?.profile || isMutating) return;
+    if (!msgBody.trim()) {
+      setActionFeedback({
+        type: 'error',
+        message: 'Enter a message before sending.',
+      });
+      return;
+    }
+
+    setIsMutating(true);
+    setActionFeedback(null);
+    try {
+      const saved = await adminSendUserMessage(user, selectedUser.profile, {
+        title: msgTitle,
+        body: msgBody,
+        severity: msgSeverity,
+      });
+      setAllUsers((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
+      setUserActionPanel('none');
+      setActionFeedback({
+        type: 'success',
+        message: `Direct message delivered to ${selectedUser.displayName}.`,
+      });
+      loadAuditLogs();
+    } catch (err) {
+      setActionFeedback({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to send message.',
+      });
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
+  const handleClearUserMessage = async () => {
+    if (!selectedUser?.profile || isMutating) return;
+    setIsMutating(true);
+    setActionFeedback(null);
+    try {
+      const saved = await adminClearUserMessage(user, selectedUser.profile);
+      setAllUsers((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
+      setMsgTitle('');
+      setMsgBody('');
+      setMsgSeverity('info');
+      setUserActionPanel('none');
+      setActionFeedback({
+        type: 'success',
+        message: `Cleared direct message for ${selectedUser.displayName}.`,
+      });
+      loadAuditLogs();
+    } catch (err) {
+      setActionFeedback({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to clear message.',
+      });
+    } finally {
+      setIsMutating(false);
+    }
   };
 
   const handleSaveEditedProfile = async (e: React.FormEvent) => {
@@ -1769,6 +1847,16 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                                       · Orphaned
                                     </span>
                                   )}
+                                  {u.profile?.directMessageBody && (
+                                    <span className="text-[11px] font-semibold text-[#0593C6] dark:text-sky-400 shrink-0">
+                                      ·{' '}
+                                      {!u.profile.directMessageReadAt ||
+                                      (u.profile.directMessageSentAt &&
+                                        u.profile.directMessageReadAt < u.profile.directMessageSentAt)
+                                        ? 'Unread msg'
+                                        : 'Msg read'}
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                                   {u.email}
@@ -1849,6 +1937,23 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
                           {/* Admin Action Toolbar */}
                           <div className="flex flex-wrap items-center gap-1.5">
+                            {!selectedUser.isOrphaned && (
+                              <button
+                                type="button"
+                                onClick={() => openMessageUserPanel(selectedUser)}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap ${
+                                  userActionPanel === 'message_user'
+                                    ? 'bg-[#0593C6] text-white border-[#0593C6]'
+                                    : 'bg-sky-500/10 hover:bg-sky-500/20 border-sky-500/30 text-sky-700 dark:text-sky-300'
+                                }`}
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                                <span>
+                                  {selectedUser.profile?.directMessageBody ? 'Edit Message' : 'Message User'}
+                                </span>
+                              </button>
+                            )}
+
                             {!selectedUser.isOrphaned && (
                               <button
                                 type="button"
@@ -1950,6 +2055,123 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                               </button>
                             )}
                           </div>
+
+                          {/* INLINE PANEL: WRITE DIRECT MESSAGE TO USER */}
+                          {userActionPanel === 'message_user' && selectedUser.profile && (
+                            <form
+                              onSubmit={handleSendUserMessage}
+                              className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#09121B] border border-sky-500/30 space-y-3 text-xs"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <MessageSquare className="w-4 h-4 text-[#0593C6]" />
+                                  <span className="font-bold text-slate-900 dark:text-white">
+                                    Direct Message to {selectedUser.displayName}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setUserActionPanel('none')}
+                                  className="text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                                Appears live at the top of {selectedUser.displayName}&apos;s dashboard until they mark it as read or you clear it.
+                              </p>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                <label className="space-y-1 sm:col-span-2">
+                                  <span className="text-[11px] font-semibold text-slate-500">
+                                    Subject / Title (optional)
+                                  </span>
+                                  <input
+                                    type="text"
+                                    value={msgTitle}
+                                    onChange={(e) => setMsgTitle(e.target.value)}
+                                    maxLength={120}
+                                    placeholder="e.g. Great work this week!"
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                                  />
+                                </label>
+
+                                <label className="space-y-1">
+                                  <span className="text-[11px] font-semibold text-slate-500">
+                                    Tone
+                                  </span>
+                                  <select
+                                    value={msgSeverity}
+                                    onChange={(e) =>
+                                      setMsgSeverity(e.target.value as 'info' | 'warning' | 'success')
+                                    }
+                                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                                  >
+                                    <option value="info">Coach Note (Blue)</option>
+                                    <option value="success">Praise / PR (Green)</option>
+                                    <option value="warning">Important Alert (Amber)</option>
+                                  </select>
+                                </label>
+                              </div>
+
+                              <label className="block space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[11px] font-semibold text-slate-500">
+                                    Message Body
+                                  </span>
+                                  <span className="text-[11px] text-slate-400 tabular-nums">
+                                    {msgBody.length}/1000
+                                  </span>
+                                </div>
+                                <textarea
+                                  rows={3}
+                                  required
+                                  maxLength={1000}
+                                  value={msgBody}
+                                  onChange={(e) => setMsgBody(e.target.value)}
+                                  placeholder={`Write a personal note to ${selectedUser.displayName}...`}
+                                  className="w-full px-2.5 py-2 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white leading-relaxed"
+                                />
+                              </label>
+
+                              <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                                {selectedUser.profile.directMessageBody ? (
+                                  <button
+                                    type="button"
+                                    disabled={isMutating}
+                                    onClick={handleClearUserMessage}
+                                    className="px-2.5 py-1.5 rounded-lg text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 font-semibold cursor-pointer disabled:opacity-50"
+                                  >
+                                    Clear Existing Message
+                                  </button>
+                                ) : (
+                                  <span />
+                                )}
+
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setUserActionPanel('none')}
+                                    className="px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800 cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="submit"
+                                    disabled={isMutating || !msgBody.trim()}
+                                    className="px-3.5 py-1.5 rounded-lg bg-[#0593C6] hover:bg-[#047ea8] text-white font-bold cursor-pointer disabled:opacity-50"
+                                  >
+                                    {isMutating
+                                      ? 'Sending...'
+                                      : selectedUser.profile.directMessageBody
+                                      ? 'Update & Resend'
+                                      : 'Send Message'}
+                                  </button>
+                                </div>
+                              </div>
+                            </form>
+                          )}
 
                           {/* INLINE PANEL: DELETE ACCOUNT */}
                           {userActionPanel === 'delete_user' && (
@@ -2478,10 +2700,54 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                             </div>
                           </div>
 
-                          {/* Suspension / Admin Notes Summary */}
-                          {(selectedUser.profile?.suspensionReason ||
+                          {/* Direct Message, Suspension & Admin Notes Summary */}
+                          {(selectedUser.profile?.directMessageBody ||
+                            selectedUser.profile?.suspensionReason ||
                             selectedUser.profile?.adminNotes) && (
-                            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#09121B] border border-slate-200 dark:border-slate-800 text-xs space-y-1">
+                            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#09121B] border border-slate-200 dark:border-slate-800 text-xs space-y-1.5">
+                              {selectedUser.profile?.directMessageBody && (
+                                <div className="flex flex-wrap items-start justify-between gap-2 text-sky-900 dark:text-sky-100">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <MessageSquare className="w-3.5 h-3.5 text-[#0593C6] shrink-0" />
+                                      <strong className="font-semibold">
+                                        {selectedUser.profile.directMessageTitle || 'Active Direct Message'}
+                                      </strong>
+                                      <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                                        ·{' '}
+                                        {!selectedUser.profile.directMessageReadAt ||
+                                        (selectedUser.profile.directMessageSentAt &&
+                                          selectedUser.profile.directMessageReadAt <
+                                            selectedUser.profile.directMessageSentAt)
+                                          ? 'Unread by user'
+                                          : `Read ${new Date(
+                                              selectedUser.profile.directMessageReadAt
+                                            ).toLocaleDateString()}`}
+                                      </span>
+                                    </div>
+                                    <p className="mt-0.5 text-slate-600 dark:text-slate-300 leading-relaxed">
+                                      {selectedUser.profile.directMessageBody}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => openMessageUserPanel(selectedUser)}
+                                      className="px-2 py-1 rounded-md bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={isMutating}
+                                      onClick={handleClearUserMessage}
+                                      className="px-2 py-1 rounded-md text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 cursor-pointer disabled:opacity-50"
+                                    >
+                                      Clear
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                               {selectedUser.profile?.suspensionReason && (
                                 <div className="text-rose-700 dark:text-rose-300">
                                   <strong className="font-semibold">Suspension reason:</strong>{' '}

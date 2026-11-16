@@ -67,6 +67,11 @@ service cloud.firestore {
         && (!('accountStatus' in data) || (data.accountStatus in ['active', 'suspended']))
         && (!('suspensionReason' in data) || (data.suspensionReason is string && data.suspensionReason.size() <= 300))
         && (!('adminNotes' in data) || (data.adminNotes is string && data.adminNotes.size() <= 1000))
+        && (!('directMessageTitle' in data) || (data.directMessageTitle is string && data.directMessageTitle.size() <= 120))
+        && (!('directMessageBody' in data) || (data.directMessageBody is string && data.directMessageBody.size() <= 1000))
+        && (!('directMessageSeverity' in data) || (data.directMessageSeverity in ['info', 'warning', 'success']))
+        && (!('directMessageSentAt' in data) || (data.directMessageSentAt is string && data.directMessageSentAt.size() <= 64))
+        && (!('directMessageReadAt' in data) || (data.directMessageReadAt is string && data.directMessageReadAt.size() <= 64))
         && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64))
         && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
     }
@@ -131,6 +136,8 @@ service cloud.firestore {
           'delete_run',
           'purge_orphan_runs',
           'update_announcement',
+          'send_user_message',
+          'clear_user_message',
           'change_pin'
         ]
         && (!('targetId' in data) || (data.targetId is string && data.targetId.size() <= 128))
@@ -150,7 +157,12 @@ service cloud.firestore {
         && isValidUserProfile(incoming())
         && (!('accountStatus' in incoming()) || incoming().accountStatus == 'active')
         && !('suspensionReason' in incoming())
-        && !('adminNotes' in incoming());
+        && !('adminNotes' in incoming())
+        && !('directMessageTitle' in incoming())
+        && !('directMessageBody' in incoming())
+        && !('directMessageSeverity' in incoming())
+        && !('directMessageSentAt' in incoming())
+        && !('directMessageReadAt' in incoming());
       allow update: if isValidId(userId)
         && isValidUserProfile(incoming())
         && incoming().id == existing().id
@@ -160,7 +172,15 @@ service cloud.firestore {
             isSignedIn()
             && request.auth.uid == userId
             && (!('accountStatus' in existing()) || existing().accountStatus != 'suspended')
-            && !incoming().diff(existing()).affectedKeys().hasAny(['accountStatus', 'suspensionReason', 'adminNotes'])
+            && !incoming().diff(existing()).affectedKeys().hasAny([
+              'accountStatus',
+              'suspensionReason',
+              'adminNotes',
+              'directMessageTitle',
+              'directMessageBody',
+              'directMessageSeverity',
+              'directMessageSentAt'
+            ])
           )
         );
       allow delete: if isValidId(userId)

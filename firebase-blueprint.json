@@ -34,6 +34,11 @@
         "accountStatus": { "type": "string", "enum": ["active", "suspended"] },
         "suspensionReason": { "type": "string", "maxLength": 300 },
         "adminNotes": { "type": "string", "maxLength": 1000 },
+        "directMessageTitle": { "type": "string", "maxLength": 120 },
+        "directMessageBody": { "type": "string", "maxLength": 1000 },
+        "directMessageSeverity": { "type": "string", "enum": ["info", "warning", "success"] },
+        "directMessageSentAt": { "type": "string", "maxLength": 64 },
+        "directMessageReadAt": { "type": "string", "maxLength": 64 },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
@@ -124,6 +129,8 @@
             "delete_run",
             "purge_orphan_runs",
             "update_announcement",
+            "send_user_message",
+            "clear_user_message",
             "change_pin"
           ]
         },

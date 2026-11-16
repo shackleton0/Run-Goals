@@ -19,6 +19,7 @@ import {
   saveRunRecord,
   deleteRunRecord,
   batchSaveRuns,
+  markDirectMessageRead,
   firebaseConfig,
   isAuthorizedAdmin,
 } from './lib/firebase';
@@ -62,6 +63,7 @@ import {
   Copy,
   ExternalLink,
   ShieldAlert,
+  MessageSquare,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -79,6 +81,7 @@ export default function App() {
   const [dismissedAnnouncementKey, setDismissedAnnouncementKey] = useState<string | null>(() =>
     localStorage.getItem('xc_dismissed_announcement')
   );
+  const [dismissedDirectMsgSentAt, setDismissedDirectMsgSentAt] = useState<string | null>(null);
 
   // Guest Testing Mode
   const [isGuest, setIsGuest] = useState<boolean>(() => {
@@ -94,6 +97,7 @@ export default function App() {
     setPendingIncomingRuns([]);
     setPendingUniqueRuns([]);
     setIsDuplicateModalOpen(false);
+    setDismissedDirectMsgSentAt(null);
     localStorage.removeItem(LOCAL_STORAGE_RUNS_KEY);
     localStorage.removeItem(LOCAL_STORAGE_PROFILE_KEY);
     localStorage.removeItem(LOCAL_STORAGE_OWNER_KEY);
@@ -996,6 +1000,68 @@ export default function App() {
 
         {/* Main Dashboard */}
         <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-5">
+          {/* Personal Direct Message from Admin / Coach */}
+          {user &&
+            profile.directMessageBody &&
+            (!profile.directMessageReadAt ||
+              (profile.directMessageSentAt &&
+                profile.directMessageReadAt < profile.directMessageSentAt)) &&
+            dismissedDirectMsgSentAt !== (profile.directMessageSentAt || 'active') && (
+              <div
+                className={`px-4 py-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-start justify-between gap-3 text-xs ${
+                  profile.directMessageSeverity === 'warning'
+                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-950 dark:text-amber-100'
+                    : profile.directMessageSeverity === 'success'
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-100'
+                    : 'bg-sky-500/10 border-sky-500/30 text-sky-950 dark:text-sky-100'
+                }`}
+              >
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <MessageSquare
+                    className={`w-4 h-4 shrink-0 mt-0.5 ${
+                      profile.directMessageSeverity === 'warning'
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : profile.directMessageSeverity === 'success'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-[#0593C6] dark:text-sky-400'
+                    }`}
+                  />
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="font-bold text-slate-900 dark:text-white">
+                        {profile.directMessageTitle || 'Message from Coach / Admin'}
+                      </span>
+                      {profile.directMessageSentAt && (
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                          · {new Date(profile.directMessageSentAt).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
+                      {profile.directMessageBody}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const sentMarker = profile.directMessageSentAt || 'active';
+                    setDismissedDirectMsgSentAt(sentMarker);
+                    setProfile((prev) => ({
+                      ...prev,
+                      directMessageReadAt: new Date().toISOString(),
+                    }));
+                    markDirectMessageRead(user.uid).catch((err) => {
+                      console.warn('Could not persist direct message read status:', err);
+                    });
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 font-semibold text-[11px] shrink-0 cursor-pointer self-start sm:self-center transition-colors"
+                >
+                  Mark as Read
+                </button>
+              </div>
+            )}
+
           {/* Global Admin Announcement Banner */}
           {appAnnouncement?.enabled &&
             (appAnnouncement.title || appAnnouncement.message) &&
