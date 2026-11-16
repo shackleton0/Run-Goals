@@ -82,7 +82,12 @@ import {
   MessageSquare,
   GraduationCap,
   Link2,
+  Wrench,
+  Eye,
+  FlaskConical,
+  ArrowRight,
 } from 'lucide-react';
+import { DEV_SANDBOX_TEACHER } from '../data/devTeacherSandbox';
 
 interface AdminPanelModalProps {
   isOpen: boolean;
@@ -90,6 +95,11 @@ interface AdminPanelModalProps {
   user: User;
   isUnlocked: boolean;
   onUnlockChange: (unlocked: boolean) => void;
+  onPreviewTeacherConsole?: (teacher: TeacherRecord, mode: 'live' | 'sandbox') => void;
+  devEmulatedTeacher?: TeacherRecord | null;
+  onToggleDevEmulateTeacher?: (teacher: TeacherRecord | null) => void;
+  onPreviewJoinModal?: (inviteCode: string) => void;
+  onOpenSetupWizard?: () => void;
 }
 
 type PadMode =
@@ -100,7 +110,7 @@ type PadMode =
   | 'change_new'
   | 'change_confirm';
 
-type AdminTab = 'users' | 'runs' | 'teachers' | 'announcements' | 'audit';
+type AdminTab = 'users' | 'runs' | 'teachers' | 'announcements' | 'audit' | 'devtools';
 type UserFilter = 'all' | 'active' | 'suspended' | 'pending_setup' | 'orphaned';
 type UserActionPanel = 'none' | 'message_user' | 'edit_profile' | 'suspend' | 'delete_user' | 'clear_runs' | 'add_run';
 
@@ -173,6 +183,11 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   user,
   isUnlocked,
   onUnlockChange,
+  onPreviewTeacherConsole,
+  devEmulatedTeacher,
+  onToggleDevEmulateTeacher,
+  onPreviewJoinModal,
+  onOpenSetupWizard,
 }) => {
   const [adminConfig, setAdminConfig] = useState<AdminConfigRecord | null>(null);
   const [padMode, setPadMode] = useState<PadMode>('checking');
@@ -272,6 +287,10 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [confirmDeleteTeacherId, setConfirmDeleteTeacherId] = useState<string | null>(null);
   const [copiedInviteCode, setCopiedInviteCode] = useState<string | null>(null);
 
+  // Dev Tools State
+  const [selectedDevLiveTeacherId, setSelectedDevLiveTeacherId] = useState<string>('');
+  const [devInviteCodeInput, setDevInviteCodeInput] = useState<string>(DEV_SANDBOX_TEACHER.inviteCode);
+
   const authorized = isAuthorizedAdmin(user);
 
   const loadAllData = useCallback(async () => {
@@ -286,6 +305,11 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       setAllUsers(users);
       setAllRuns(runs);
       setAllTeachers(teachers);
+      if (teachers.length > 0) {
+        setSelectedDevLiveTeacherId((prev) =>
+          prev && teachers.some((t) => t.id === prev) ? prev : teachers[0].id
+        );
+      }
     } catch (err) {
       setDataError(
         err instanceof Error ? err.message : 'Unable to load cross-user Firestore records.'
@@ -1362,6 +1386,34 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     window.setTimeout(() => setCopiedInviteCode(null), 1800);
   };
 
+  const handleAddSelfAsTestCoach = async () => {
+    if (!user.email || isMutating) return;
+    setIsMutating(true);
+    setActionFeedback(null);
+    try {
+      const created = await adminAddTeacher(user, {
+        email: user.email,
+        displayName: user.displayName || 'Coach Admin',
+        teamName: 'Admin Varsity XC (Test)',
+      });
+      setAllTeachers((prev) => [created, ...prev.filter((t) => t.id !== created.id)]);
+      setSelectedDevLiveTeacherId(created.id);
+      setDevInviteCodeInput(created.inviteCode);
+      setActionFeedback({
+        type: 'success',
+        message: `Added ${created.email} as Coach for "${created.teamName}" (Code ${created.inviteCode}).`,
+      });
+      loadAuditLogs();
+    } catch (err) {
+      setActionFeedback({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to add self as coach.',
+      });
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
   const handleExportAllUsersCsv = () => {
     const headers = [
       'User_ID',
@@ -1867,6 +1919,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                     { id: 'teachers', label: `Teachers & Teams (${allTeachers.length})`, icon: GraduationCap },
                     { id: 'announcements', label: 'Announcements', icon: Megaphone },
                     { id: 'audit', label: 'Audit Log', icon: History },
+                    { id: 'devtools', label: 'Dev Tools', icon: Wrench },
                   ] as const
                 ).map((tab) => {
                   const Icon = tab.icon;
@@ -3428,6 +3481,18 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                               </div>
 
                               <div className="flex items-center flex-wrap gap-1.5 shrink-0">
+                                {onPreviewTeacherConsole && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onPreviewTeacherConsole(teacher, 'live')}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-bold cursor-pointer whitespace-nowrap"
+                                    title="Open Coach Console as this teacher"
+                                  >
+                                    <Eye className="w-3 h-3" />
+                                    <span>View Console</span>
+                                  </button>
+                                )}
+
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -3805,6 +3870,306 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                 </div>
               </div>
             )}
+
+            {/* TAB 5: DEV TOOLS & COACH PREVIEW SANDBOX */}
+            {activeTab === 'devtools' && (() => {
+              const selectedLiveTeacher =
+                allTeachers.find((t) => t.id === selectedDevLiveTeacherId) || allTeachers[0] || null;
+              const adminEmailLower = (user.email || '').trim().toLowerCase();
+              const isSelfRegisteredTeacher = allTeachers.some(
+                (t) => t.email.trim().toLowerCase() === adminEmailLower
+              );
+              const currentUserProfile = allUsers.find((u) => u.id === user.uid);
+
+              return (
+                <div className="space-y-4 text-xs">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Card 1: Coach Console Sandbox & Live Preview */}
+                    <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-[#09121B] space-y-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-emerald-500/12 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                            <FlaskConical className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                              Coach UI Preview &amp; Sandbox
+                            </h3>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                              Inspect the exact Coach Console experience without leaving Admin.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Sandbox Launcher */}
+                      <div className="p-3.5 rounded-xl bg-white dark:bg-[#0B1520] border border-slate-200 dark:border-slate-800 space-y-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-900 dark:text-white">
+                            Interactive 4-Athlete Sandbox
+                          </span>
+                          <span className="text-[11px] font-mono text-violet-600 dark:text-violet-400">
+                            Zero Firestore Writes
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                          Opens Coach Console with Maya Lin, Liam Okafor, Elena Patel (7d+ check-in), and Noah Brooks (suspended) so you can test messaging, editing goals, logging runs, leaderboards, and broadcasts safely.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => onPreviewTeacherConsole?.(DEV_SANDBOX_TEACHER, 'sandbox')}
+                          className="w-full py-2.5 px-3.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Launch Coach UI Sandbox</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Live Teacher Inspector */}
+                      <div className="p-3.5 rounded-xl bg-white dark:bg-[#0B1520] border border-slate-200 dark:border-slate-800 space-y-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-900 dark:text-white">
+                            Inspect Live Teacher Team
+                          </span>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                            {allTeachers.length} authorized
+                          </span>
+                        </div>
+
+                        {allTeachers.length > 0 ? (
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <select
+                              value={selectedLiveTeacher?.id || ''}
+                              onChange={(e) => setSelectedDevLiveTeacherId(e.target.value)}
+                              className="flex-1 min-w-0 px-2.5 py-2 rounded-lg bg-slate-50 dark:bg-[#09121B] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-semibold"
+                            >
+                              {allTeachers.map((t) => (
+                                <option key={t.id} value={t.id}>
+                                  {t.teamName} — {t.displayName} ({t.inviteCode})
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              disabled={!selectedLiveTeacher}
+                              onClick={() =>
+                                selectedLiveTeacher &&
+                                onPreviewTeacherConsole?.(selectedLiveTeacher, 'live')
+                              }
+                              className="px-3.5 py-2 rounded-lg bg-[#0593C6] hover:bg-[#047ea8] text-white font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-45 whitespace-nowrap shrink-0"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Open Live Console</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            No live teachers added yet. Add a teacher in the Teachers tab or register yourself below.
+                          </p>
+                        )}
+
+                        {!isSelfRegisteredTeacher && user.email && (
+                          <button
+                            type="button"
+                            disabled={isMutating}
+                            onClick={handleAddSelfAsTestCoach}
+                            className="w-full py-2 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-45"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add Myself ({user.email}) as Live Coach</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Card 2: Navbar Emulation & Flow Testers */}
+                    <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-[#09121B] space-y-4">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-violet-500/12 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0">
+                          <Wrench className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                            Header Role Emulation &amp; Flow Testers
+                          </h3>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            Simulate coach header navigation, student invite links, and onboarding.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Simulate Coach Header Button */}
+                      <div className="p-3.5 rounded-xl bg-white dark:bg-[#0B1520] border border-slate-200 dark:border-slate-800 space-y-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-900 dark:text-white">
+                            Simulate Coach Button in Header
+                          </span>
+                          <span
+                            className={`text-[11px] font-semibold ${
+                              devEmulatedTeacher
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : 'text-slate-400'
+                            }`}
+                          >
+                            {devEmulatedTeacher
+                              ? `Active · ${devEmulatedTeacher.teamName}`
+                              : 'Inactive'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                          Temporarily displays the green Coach button in the desktop &amp; mobile navigation menu so you can test the exact teacher entry flow.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onToggleDevEmulateTeacher?.(
+                                devEmulatedTeacher?.id === DEV_SANDBOX_TEACHER.id
+                                  ? null
+                                  : DEV_SANDBOX_TEACHER
+                              )
+                            }
+                            className={`flex-1 py-2 px-3 rounded-lg font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap ${
+                              devEmulatedTeacher?.id === DEV_SANDBOX_TEACHER.id
+                                ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                                : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                            }`}
+                          >
+                            <GraduationCap className="w-3.5 h-3.5" />
+                            <span>
+                              {devEmulatedTeacher?.id === DEV_SANDBOX_TEACHER.id
+                                ? 'Stop Sandbox Emulation'
+                                : 'Simulate Sandbox Coach'}
+                            </span>
+                          </button>
+
+                          {selectedLiveTeacher && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onToggleDevEmulateTeacher?.(
+                                  devEmulatedTeacher?.id === selectedLiveTeacher.id
+                                    ? null
+                                    : selectedLiveTeacher
+                                )
+                              }
+                              className={`py-2 px-3 rounded-lg font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap ${
+                                devEmulatedTeacher?.id === selectedLiveTeacher.id
+                                  ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200'
+                              }`}
+                            >
+                              <span>
+                                {devEmulatedTeacher?.id === selectedLiveTeacher.id
+                                  ? 'Stop Live Emulation'
+                                  : `Simulate ${selectedLiveTeacher.inviteCode}`}
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Invite Link & Onboarding Flow Testers */}
+                      <div className="p-3.5 rounded-xl bg-white dark:bg-[#0B1520] border border-slate-200 dark:border-slate-800 space-y-2.5">
+                        <span className="font-bold text-slate-900 dark:text-white block">
+                          Student Invite &amp; Setup Testers
+                        </span>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <input
+                            type="text"
+                            value={devInviteCodeInput}
+                            onChange={(e) => setDevInviteCodeInput(e.target.value.toUpperCase())}
+                            maxLength={16}
+                            placeholder="TEAMCODE"
+                            className="sm:w-36 px-2.5 py-2 rounded-lg bg-slate-50 dark:bg-[#09121B] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono uppercase tabular-nums"
+                          />
+                          <button
+                            type="button"
+                            disabled={!devInviteCodeInput.trim()}
+                            onClick={() => onPreviewJoinModal?.(devInviteCodeInput.trim())}
+                            className="flex-1 py-2 px-3 rounded-lg bg-[#0593C6] hover:bg-[#047ea8] text-white font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-45 whitespace-nowrap"
+                          >
+                            <Link2 className="w-3.5 h-3.5" />
+                            <span>Preview Student Join Modal</span>
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onOpenSetupWizard?.()}
+                          className="w-full py-2 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-violet-500" />
+                          <span>Open Account Setup Wizard</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 3: Active Session Context Grid */}
+                  <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0B1520] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-900 dark:text-white">
+                        Active Session &amp; Workspace Context
+                      </span>
+                      <span className="text-[11px] font-mono text-slate-400">
+                        Admin Gate: Authorized
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 tabular-nums">
+                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#09121B] border border-slate-200/80 dark:border-slate-800">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          Signed-In Email
+                        </div>
+                        <div className="font-semibold text-slate-900 dark:text-white truncate mt-0.5">
+                          {user.email || 'None'}
+                        </div>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#09121B] border border-slate-200/80 dark:border-slate-800">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          Auth UID
+                        </div>
+                        <div className="font-mono text-slate-900 dark:text-white truncate mt-0.5">
+                          {user.uid.slice(0, 12)}...
+                        </div>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#09121B] border border-slate-200/80 dark:border-slate-800">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          Profile Team
+                        </div>
+                        <div className="font-mono text-slate-900 dark:text-white truncate mt-0.5">
+                          {currentUserProfile?.teamCode || 'None'}
+                        </div>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#09121B] border border-slate-200/80 dark:border-slate-800">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          Teachers
+                        </div>
+                        <div className="font-extrabold text-slate-900 dark:text-white mt-0.5">
+                          {allTeachers.length}
+                        </div>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#09121B] border border-slate-200/80 dark:border-slate-800">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          Athletes
+                        </div>
+                        <div className="font-extrabold text-slate-900 dark:text-white mt-0.5">
+                          {allUsers.length}
+                        </div>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#09121B] border border-slate-200/80 dark:border-slate-800">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          Workouts
+                        </div>
+                        <div className="font-extrabold text-slate-900 dark:text-white mt-0.5">
+                          {allRuns.length}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>

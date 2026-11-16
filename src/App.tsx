@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import {
   auth,
@@ -72,7 +72,9 @@ import {
   MessageSquare,
   GraduationCap,
   Loader2,
+  Wrench,
 } from 'lucide-react';
+import { DEV_SANDBOX_TEACHER, createSandboxTeacherBundle } from './data/devTeacherSandbox';
 import confetti from 'canvas-confetti';
 
 const LOCAL_STORAGE_RUNS_KEY = 'xc_6k_user_runs_data';
@@ -245,15 +247,33 @@ export default function App() {
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
   const [isTeacherOpen, setIsTeacherOpen] = useState(false);
+  const [devTeacherPreview, setDevTeacherPreview] = useState<{
+    teacher: TeacherRecord;
+    mode: 'live' | 'sandbox';
+  } | null>(null);
+  const [devEmulatedTeacher, setDevEmulatedTeacher] = useState<TeacherRecord | null>(null);
+  const [devJoinPreviewInvite, setDevJoinPreviewInvite] = useState<TeamInvite | null>(null);
+  const [devJoinPreviewError, setDevJoinPreviewError] = useState<string | null>(null);
+
+  const sandboxBundle = useMemo(() => createSandboxTeacherBundle(), []);
 
   const isAdmin = isAuthorizedAdmin(user);
-  const isTeacher = Boolean(teacherRecord && teacherRecord.status === 'active');
+  const realIsTeacher = Boolean(teacherRecord && teacherRecord.status === 'active');
+  const activeTeacherRecord =
+    isAdmin && devEmulatedTeacher ? devEmulatedTeacher : realIsTeacher ? teacherRecord : null;
+  const isTeacher = Boolean(
+    activeTeacherRecord && (activeTeacherRecord.status === 'active' || (isAdmin && devEmulatedTeacher))
+  );
 
-  // Lock and close admin panel whenever user signs out or switches accounts
+  // Lock and close admin panel + dev tools whenever user signs out or switches accounts
   useEffect(() => {
     if (!isAdmin) {
       setIsAdminOpen(false);
       setIsAdminUnlocked(false);
+      setDevTeacherPreview(null);
+      setDevEmulatedTeacher(null);
+      setDevJoinPreviewInvite(null);
+      setDevJoinPreviewError(null);
     }
   }, [isAdmin, user?.uid]);
 
@@ -602,6 +622,31 @@ export default function App() {
     setPendingTeamCode(null);
     setJoinInvitePreview(null);
     setJoinInviteError(null);
+  };
+
+  const handleOpenDevJoinPreview = async (rawCode: string) => {
+    if (!isAdmin) return;
+    const normalized = normalizeInviteCode(rawCode);
+    setIsAdminOpen(false);
+    setDevJoinPreviewError(null);
+    if (normalized === DEV_SANDBOX_TEACHER.inviteCode) {
+      setDevJoinPreviewInvite(sandboxBundle.invite);
+      return;
+    }
+    try {
+      const invite = await getTeamInvite(normalized);
+      if (!invite || !invite.active) {
+        setDevJoinPreviewInvite(null);
+        setDevJoinPreviewError(`Invite code "${normalized}" was not found or is paused.`);
+      } else {
+        setDevJoinPreviewInvite(invite);
+      }
+    } catch (err) {
+      setDevJoinPreviewInvite(null);
+      setDevJoinPreviewError(
+        err instanceof Error ? err.message : 'Could not fetch team invite preview.'
+      );
+    }
   };
 
   // Always keep localStorage updated as immediate local cache for the active session
@@ -1005,7 +1050,7 @@ export default function App() {
           isGuest={isGuest}
           isAdmin={isAdmin}
           isTeacher={isTeacher}
-          teamName={teacherRecord?.teamName}
+          teamName={activeTeacherRecord?.teamName}
           hasPlaceholderData={hasPlaceholderData}
           onExitGuestMode={handleExitGuestMode}
           onToggleTheme={toggleTheme}
@@ -1163,6 +1208,38 @@ export default function App() {
 
         {/* Main Dashboard */}
         <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-5">
+          {/* Admin Dev Role Emulation Bar */}
+          {isAdmin && devEmulatedTeacher && (
+            <div className="px-4 py-2.5 rounded-xl bg-violet-500/10 border border-violet-500/30 flex flex-wrap items-center justify-between gap-2 text-xs text-violet-950 dark:text-violet-100">
+              <div className="flex items-center gap-2 min-w-0">
+                <Wrench className="w-4 h-4 text-violet-600 dark:text-violet-400 shrink-0" />
+                <span className="truncate sm:whitespace-normal">
+                  <strong className="font-bold">Dev Preview Active</strong> · Simulating Coach navigation button for{' '}
+                  <span className="font-semibold">{devEmulatedTeacher.teamName}</span>
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsTeacherOpen(true)}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer whitespace-nowrap"
+                >
+                  Open Coach Console
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDevEmulatedTeacher(null);
+                    setIsTeacherOpen(false);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 whitespace-nowrap"
+                >
+                  Exit Preview
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Personal Direct Message from Admin / Coach */}
           {user &&
             profile.directMessageBody &&
@@ -1573,13 +1650,54 @@ export default function App() {
           best6kSec={best6kSec}
         />
 
-        {isTeacher && user && teacherRecord && (
+        {isAdmin && devTeacherPreview ? (
           <TeacherPanelModal
-            isOpen={isTeacherOpen}
-            onClose={() => setIsTeacherOpen(false)}
-            teacher={teacherRecord}
-            onTeacherUpdated={(next) => setTeacherRecord(next)}
+            isOpen={true}
+            onClose={() => setDevTeacherPreview(null)}
+            teacher={devTeacherPreview.teacher}
+            previewMode={devTeacherPreview.mode === 'sandbox'}
+            previewStudents={devTeacherPreview.mode === 'sandbox' ? sandboxBundle.students : undefined}
+            previewRuns={devTeacherPreview.mode === 'sandbox' ? sandboxBundle.runs : undefined}
+            previewInvite={devTeacherPreview.mode === 'sandbox' ? sandboxBundle.invite : undefined}
+            onBackToAdmin={() => {
+              setDevTeacherPreview(null);
+              setIsAdminOpen(true);
+            }}
+            onTeacherUpdated={(next) =>
+              setDevTeacherPreview((prev) => (prev ? { ...prev, teacher: next } : null))
+            }
           />
+        ) : (
+          isTeacher &&
+          user &&
+          activeTeacherRecord && (
+            <TeacherPanelModal
+              isOpen={isTeacherOpen}
+              onClose={() => setIsTeacherOpen(false)}
+              teacher={activeTeacherRecord}
+              previewMode={activeTeacherRecord.id === DEV_SANDBOX_TEACHER.id}
+              previewStudents={
+                activeTeacherRecord.id === DEV_SANDBOX_TEACHER.id
+                  ? sandboxBundle.students
+                  : undefined
+              }
+              previewRuns={
+                activeTeacherRecord.id === DEV_SANDBOX_TEACHER.id ? sandboxBundle.runs : undefined
+              }
+              previewInvite={
+                activeTeacherRecord.id === DEV_SANDBOX_TEACHER.id
+                  ? sandboxBundle.invite
+                  : undefined
+              }
+              onTeacherUpdated={(next) => {
+                if (isAdmin && devEmulatedTeacher && next.id === devEmulatedTeacher.id) {
+                  setDevEmulatedTeacher(next);
+                } else {
+                  setTeacherRecord(next);
+                }
+              }}
+            />
+          )
         )}
 
         {isAdmin && user && (
@@ -1589,7 +1707,114 @@ export default function App() {
             user={user}
             isUnlocked={isAdminUnlocked}
             onUnlockChange={setIsAdminUnlocked}
+            onPreviewTeacherConsole={(teacher, mode) => {
+              setIsAdminOpen(false);
+              setDevTeacherPreview({ teacher, mode });
+            }}
+            devEmulatedTeacher={devEmulatedTeacher}
+            onToggleDevEmulateTeacher={(teacher) => setDevEmulatedTeacher(teacher)}
+            onPreviewJoinModal={handleOpenDevJoinPreview}
+            onOpenSetupWizard={() => {
+              setIsAdminOpen(false);
+              setIsAccountSetupOpen(true);
+            }}
           />
+        )}
+
+        {/* Dev Tools Preview of Student Join Team Modal */}
+        {isAdmin && (devJoinPreviewInvite || devJoinPreviewError) && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/75"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setDevJoinPreviewInvite(null);
+                setDevJoinPreviewError(null);
+              }
+            }}
+          >
+            <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-800 shadow-2xl p-5 sm:p-6 space-y-4 text-xs">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/12 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 flex items-center justify-center shrink-0">
+                    <GraduationCap className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-violet-600 dark:text-violet-400">
+                      Dev Tools Preview
+                    </div>
+                    <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                      {devJoinPreviewInvite
+                        ? `Join ${devJoinPreviewInvite.teamName}`
+                        : 'Team Invite Unavailable'}
+                    </h3>
+                    {devJoinPreviewInvite && (
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Coach: {devJoinPreviewInvite.coachName} · Code{' '}
+                        <code className="font-mono font-bold text-slate-700 dark:text-slate-200">
+                          {devJoinPreviewInvite.id}
+                        </code>
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDevJoinPreviewInvite(null);
+                    setDevJoinPreviewError(null);
+                  }}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
+                  aria-label="Close invite preview"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {devJoinPreviewError && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 font-medium">
+                  {devJoinPreviewError}
+                </div>
+              )}
+
+              {devJoinPreviewInvite && (
+                <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                  Accepting this invite connects your athlete account with{' '}
+                  <strong className="text-slate-900 dark:text-white">
+                    {devJoinPreviewInvite.coachName}
+                  </strong>
+                  . Your coach will be able to monitor your logged workouts and adherence, edit
+                  training goals or workouts, and send team or direct coaching notes. You can leave
+                  the team anytime in Settings.
+                </p>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDevJoinPreviewInvite(null);
+                    setDevJoinPreviewError(null);
+                    setIsAdminOpen(true);
+                  }}
+                  className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold cursor-pointer"
+                >
+                  Back to Admin
+                </button>
+                {devJoinPreviewInvite && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDevJoinPreviewInvite(null);
+                      setDevJoinPreviewError(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer"
+                  >
+                    Done Previewing
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Student Join Team Invite Confirmation Modal (?join=CODE) */}

@@ -62,6 +62,8 @@ import {
   CheckCircle2,
   Loader2,
   AlertTriangle,
+  ArrowLeft,
+  FlaskConical,
 } from 'lucide-react';
 
 interface TeacherPanelModalProps {
@@ -69,6 +71,11 @@ interface TeacherPanelModalProps {
   onClose: () => void;
   teacher: TeacherRecord;
   onTeacherUpdated?: (next: TeacherRecord) => void;
+  previewMode?: boolean;
+  previewStudents?: UserProfile[];
+  previewRuns?: RunRecord[];
+  previewInvite?: TeamInvite | null;
+  onBackToAdmin?: () => void;
 }
 
 type TeacherTab = 'roster' | 'activity' | 'team';
@@ -130,6 +137,11 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
   onClose,
   teacher,
   onTeacherUpdated,
+  previewMode = false,
+  previewStudents,
+  previewRuns,
+  previewInvite,
+  onBackToAdmin,
 }) => {
   const [activeTab, setActiveTab] = useState<TeacherTab>('roster');
   const [students, setStudents] = useState<UserProfile[]>([]);
@@ -214,8 +226,34 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
       : `?join=${teacher.inviteCode}`;
 
   const loadTeamData = useCallback(async () => {
-    setIsLoading(true);
     setFeedback(null);
+    if (previewMode) {
+      const st = previewStudents ? previewStudents.map((s) => ({ ...s })) : [];
+      const runs = previewRuns ? previewRuns.map((r) => ({ ...r })) : [];
+      const invite = previewInvite ? { ...previewInvite } : null;
+      setStudents(st);
+      setTeamRuns(runs);
+      setTeamInvite(invite);
+      if (invite) {
+        setDraftTeamName(invite.teamName);
+        setDraftCoachName(invite.coachName);
+        setDraftInviteActive(invite.active);
+        setAnnTitle(invite.teamAnnouncementTitle || '');
+        setAnnMessage(invite.teamAnnouncementMessage || '');
+        setAnnSeverity(invite.teamAnnouncementSeverity || 'info');
+      } else {
+        setDraftTeamName(teacher.teamName);
+        setDraftCoachName(teacher.displayName);
+        setDraftInviteActive(true);
+        setAnnTitle('');
+        setAnnMessage('');
+        setAnnSeverity('info');
+      }
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
     try {
       const { students: st, runs, invite } = await fetchTeamDataForTeacher(teacher);
       setStudents(st);
@@ -240,7 +278,7 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [teacher]);
+  }, [teacher, previewMode, previewStudents, previewRuns, previewInvite]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -418,6 +456,24 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
       setFeedback({ type: 'error', message: 'Enter a message before sending.' });
       return;
     }
+    if (previewMode) {
+      const saved: UserProfile = {
+        ...selectedStudent.profile,
+        directMessageTitle: msgTitle.trim() || undefined,
+        directMessageBody: msgBody.trim(),
+        directMessageSeverity: msgSeverity,
+        directMessageSentAt: new Date().toISOString(),
+        directMessageReadAt: undefined,
+      };
+      setStudents((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
+      setActionPanel('none');
+      setFeedback({
+        type: 'success',
+        message: `Message sent to ${selectedStudent.displayName} (Dev sandbox — no database writes).`,
+      });
+      return;
+    }
+
     setIsMutating(true);
     setFeedback(null);
     try {
@@ -444,6 +500,26 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
 
   const handleClearMessage = async () => {
     if (!selectedStudent || isMutating) return;
+    if (previewMode) {
+      const saved: UserProfile = {
+        ...selectedStudent.profile,
+        directMessageTitle: undefined,
+        directMessageBody: undefined,
+        directMessageSeverity: undefined,
+        directMessageSentAt: undefined,
+        directMessageReadAt: undefined,
+      };
+      setStudents((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
+      setMsgTitle('');
+      setMsgBody('');
+      setActionPanel('none');
+      setFeedback({
+        type: 'success',
+        message: `Cleared direct message for ${selectedStudent.displayName} (Dev sandbox — no database writes).`,
+      });
+      return;
+    }
+
     setIsMutating(true);
     setFeedback(null);
     try {
@@ -512,6 +588,16 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
       coachNotes: editCoachNotes.trim() || undefined,
     };
 
+    if (previewMode) {
+      setStudents((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      setActionPanel('none');
+      setFeedback({
+        type: 'success',
+        message: `Updated goals & profile for ${updated.displayName} (Dev sandbox — no database writes).`,
+      });
+      return;
+    }
+
     setIsMutating(true);
     setFeedback(null);
     try {
@@ -537,6 +623,26 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
     const currentlySuspended = selectedStudent.accountStatus === 'suspended';
     const nextStatus = currentlySuspended ? 'active' : 'suspended';
     const reason = currentlySuspended ? undefined : suspendReasonInput.trim() || undefined;
+
+    if (previewMode) {
+      const saved: UserProfile = {
+        ...selectedStudent.profile,
+        accountStatus: nextStatus,
+        suspensionReason: reason,
+      };
+      setStudents((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
+      setActionPanel('none');
+      setSuspendReasonInput('');
+      setFeedback({
+        type: 'success',
+        message: `${
+          currentlySuspended
+            ? `Restored access for ${selectedStudent.displayName}`
+            : `Suspended ${selectedStudent.displayName}`
+        } (Dev sandbox — no database writes).`,
+      });
+      return;
+    }
 
     setIsMutating(true);
     setFeedback(null);
@@ -567,6 +673,19 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
 
   const handleResetStudentSetup = async (s: EnrichedStudentSummary) => {
     if (isMutating) return;
+    if (previewMode) {
+      const saved: UserProfile = {
+        ...s.profile,
+        onboardingCompleted: false,
+      };
+      setStudents((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
+      setFeedback({
+        type: 'success',
+        message: `Setup wizard reset for ${s.displayName} (Dev sandbox — no database writes).`,
+      });
+      return;
+    }
+
     setIsMutating(true);
     setFeedback(null);
     try {
@@ -591,6 +710,17 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
 
   const handleClearStudentRuns = async () => {
     if (!selectedStudent || isMutating) return;
+    if (previewMode) {
+      const count = selectedStudent.runs.length;
+      setTeamRuns((prev) => prev.filter((r) => r.userId !== selectedStudent.userId));
+      setActionPanel('none');
+      setFeedback({
+        type: 'success',
+        message: `Cleared ${count} workout${count === 1 ? '' : 's'} for ${selectedStudent.displayName} (Dev sandbox — no database writes).`,
+      });
+      return;
+    }
+
     setIsMutating(true);
     setFeedback(null);
     try {
@@ -613,6 +743,19 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
 
   const handleRemoveStudentFromTeam = async () => {
     if (!selectedStudent || isMutating) return;
+    if (previewMode) {
+      const targetId = selectedStudent.userId;
+      const targetName = selectedStudent.displayName;
+      setStudents((prev) => prev.filter((p) => p.id !== targetId));
+      setTeamRuns((prev) => prev.filter((r) => r.userId !== targetId));
+      setActionPanel('none');
+      setFeedback({
+        type: 'success',
+        message: `Removed ${targetName} from ${teacher.teamName} (Dev sandbox — no database writes).`,
+      });
+      return;
+    }
+
     setIsMutating(true);
     setFeedback(null);
     try {
@@ -667,6 +810,19 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
       avgHeartRate: avgHr && !isNaN(avgHr) && avgHr > 40 ? avgHr : undefined,
       notes: newRunNotes.trim() || undefined,
     };
+
+    if (previewMode) {
+      setTeamRuns((prev) => [run, ...prev]);
+      setActionPanel('none');
+      setNewRunTitle('');
+      setNewRunNotes('');
+      setNewRunAvgHr('');
+      setFeedback({
+        type: 'success',
+        message: `Logged "${run.title}" for ${selectedStudent.displayName} (Dev sandbox — no database writes).`,
+      });
+      return;
+    }
 
     setIsMutating(true);
     setFeedback(null);
@@ -726,6 +882,16 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
       notes: editRunNotes.trim() || undefined,
     };
 
+    if (previewMode) {
+      setTeamRuns((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      setEditingRunId(null);
+      setFeedback({
+        type: 'success',
+        message: `Updated workout "${updated.title}" (Dev sandbox — no database writes).`,
+      });
+      return;
+    }
+
     setIsMutating(true);
     setFeedback(null);
     try {
@@ -745,6 +911,16 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
 
   const handleDeleteSingleRun = async (run: RunRecord) => {
     if (isMutating) return;
+    if (previewMode) {
+      setTeamRuns((prev) => prev.filter((r) => r.id !== run.id));
+      setConfirmDeleteRunId(null);
+      setFeedback({
+        type: 'success',
+        message: `Deleted workout "${run.title}" (Dev sandbox — no database writes).`,
+      });
+      return;
+    }
+
     setIsMutating(true);
     setFeedback(null);
     try {
@@ -765,6 +941,37 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
   const handleSaveTeamSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isMutating) return;
+    if (previewMode) {
+      const now = new Date().toISOString();
+      const nextTeacher: TeacherRecord = {
+        ...teacher,
+        displayName: draftCoachName.trim() || teacher.displayName,
+        teamName: draftTeamName.trim() || teacher.teamName,
+        updatedAt: now,
+      };
+      const nextInvite: TeamInvite = {
+        ...(teamInvite || {
+          id: teacher.inviteCode,
+          teamName: nextTeacher.teamName,
+          coachName: nextTeacher.displayName,
+          active: draftInviteActive,
+          createdAt: now,
+          updatedAt: now,
+        }),
+        teamName: nextTeacher.teamName,
+        coachName: nextTeacher.displayName,
+        active: draftInviteActive,
+        updatedAt: now,
+      };
+      setTeamInvite(nextInvite);
+      onTeacherUpdated?.(nextTeacher);
+      setFeedback({
+        type: 'success',
+        message: 'Saved team settings and invite status (Dev sandbox — no database writes).',
+      });
+      return;
+    }
+
     setIsMutating(true);
     setFeedback(null);
     try {
@@ -792,6 +999,37 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
   const handleSaveTeamAnnouncement = async (e: React.FormEvent, clear = false) => {
     e.preventDefault();
     if (isMutating) return;
+    if (previewMode) {
+      const now = new Date().toISOString();
+      const savedInvite: TeamInvite = {
+        ...(teamInvite || {
+          id: teacher.inviteCode,
+          teamName: teacher.teamName,
+          coachName: teacher.displayName,
+          active: true,
+          createdAt: now,
+          updatedAt: now,
+        }),
+        teamAnnouncementTitle: clear ? undefined : annTitle.trim() || undefined,
+        teamAnnouncementMessage: clear ? undefined : annMessage.trim() || undefined,
+        teamAnnouncementSeverity: clear ? undefined : annSeverity,
+        teamAnnouncementUpdatedAt: now,
+        updatedAt: now,
+      };
+      setTeamInvite(savedInvite);
+      if (clear) {
+        setAnnTitle('');
+        setAnnMessage('');
+      }
+      setFeedback({
+        type: 'success',
+        message: `${
+          clear ? 'Team broadcast cleared' : 'Team broadcast published'
+        } (Dev sandbox — no database writes).`,
+      });
+      return;
+    }
+
     setIsMutating(true);
     setFeedback(null);
     try {
@@ -906,7 +1144,11 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
                 </h2>
                 <span aria-hidden="true">·</span>
                 <span className="font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                  Coach Console
+                  {previewMode
+                    ? 'Dev Sandbox · Coach Console'
+                    : onBackToAdmin
+                    ? 'Admin Preview · Coach Console'
+                    : 'Coach Console'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate font-mono tabular-nums">
@@ -915,7 +1157,17 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center flex-wrap gap-1.5 shrink-0">
+            {onBackToAdmin && (
+              <button
+                type="button"
+                onClick={onBackToAdmin}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-violet-500/15 hover:bg-violet-500/25 text-violet-700 dark:text-violet-300 border border-violet-500/30 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Admin</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={handleCopyInviteLink}
@@ -931,7 +1183,7 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
               className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">Refresh</span>
+              <span className="hidden sm:inline">{previewMode ? 'Reset Sandbox' : 'Refresh'}</span>
             </button>
             <button
               type="button"
@@ -945,6 +1197,26 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
         </div>
 
         <div className="p-4 sm:p-5 space-y-4 max-h-[84vh] overflow-y-auto">
+          {/* Interactive Dev Sandbox Banner */}
+          {previewMode && (
+            <div className="p-3 rounded-xl border border-violet-500/30 bg-violet-500/10 text-xs flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-start sm:items-center gap-2 text-violet-900 dark:text-violet-100 min-w-0">
+                <FlaskConical className="w-4 h-4 text-violet-600 dark:text-violet-400 shrink-0 mt-0.5 sm:mt-0" />
+                <p className="leading-snug">
+                  <strong className="font-bold">Interactive Coach UI Sandbox</strong> — Test roster filters, edits, direct messages, workout logs, and broadcasts with 4 sample athletes. All edits stay in local memory.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={loadTeamData}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white dark:bg-[#0D1620] border border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300 font-semibold hover:bg-violet-50 dark:hover:bg-violet-950/40 cursor-pointer whitespace-nowrap shrink-0"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset Sample Data</span>
+              </button>
+            </div>
+          )}
+
           {/* Action Feedback Banner */}
           {feedback && (
             <div
