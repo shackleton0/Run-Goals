@@ -31,6 +31,9 @@
         "goalTimeframeWeeks": { "type": "number" },
         "targetGoalDate": { "type": "string", "maxLength": 32 },
         "onboardingCompleted": { "type": "boolean" },
+        "accountStatus": { "type": "string", "enum": ["active", "suspended"] },
+        "suspensionReason": { "type": "string", "maxLength": 300 },
+        "adminNotes": { "type": "string", "maxLength": 1000 },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
@@ -83,6 +86,53 @@
         "updatedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "pinHash", "pinSalt"]
+    },
+    "AppAnnouncement": {
+      "title": "AppAnnouncement",
+      "description": "Global coach or admin announcement banner displayed across user dashboards",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "enabled": { "type": "boolean" },
+        "title": { "type": "string", "maxLength": 120 },
+        "message": { "type": "string", "maxLength": 500 },
+        "severity": { "type": "string", "enum": ["info", "warning", "success"] },
+        "updatedAt": { "type": "string", "maxLength": 64 },
+        "updatedBy": { "type": "string", "maxLength": 256 }
+      },
+      "required": ["id", "enabled", "title", "message", "severity", "updatedAt"]
+    },
+    "AdminAuditLog": {
+      "title": "AdminAuditLog",
+      "description": "Immutable audit trail of admin actions performed in the Admin Console",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "adminUid": { "type": "string", "maxLength": 128 },
+        "adminEmail": { "type": "string", "maxLength": 256 },
+        "action": {
+          "type": "string",
+          "enum": [
+            "delete_user",
+            "suspend_user",
+            "restore_user",
+            "edit_user",
+            "reset_user_runs",
+            "reset_onboarding",
+            "add_run",
+            "edit_run",
+            "delete_run",
+            "purge_orphan_runs",
+            "update_announcement",
+            "change_pin"
+          ]
+        },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "targetLabel": { "type": "string", "maxLength": 256 },
+        "details": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "adminUid", "adminEmail", "action", "details", "createdAt"]
     }
   },
   "firestore": {
@@ -97,6 +147,14 @@
     "/adminConfig/{userId}": {
       "schema": "AdminConfig",
       "description": "Admin numeric passcode hash and salt restricted to the verified admin account"
+    },
+    "/appConfig/{configId}": {
+      "schema": "AppAnnouncement",
+      "description": "Global application announcement banner configured by admin"
+    },
+    "/adminLogs/{logId}": {
+      "schema": "AdminAuditLog",
+      "description": "Admin console action audit history"
     }
   }
 }

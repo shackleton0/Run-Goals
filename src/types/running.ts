@@ -90,8 +90,46 @@ export interface UserProfile {
   goalTimeframeWeeks?: number;
   targetGoalDate?: string;
   onboardingCompleted?: boolean;
+  accountStatus?: 'active' | 'suspended';
+  suspensionReason?: string;
+  adminNotes?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface AppAnnouncement {
+  id: 'announcement';
+  enabled: boolean;
+  title: string;
+  message: string;
+  severity: 'info' | 'warning' | 'success';
+  updatedAt: string;
+  updatedBy?: string;
+}
+
+export type AdminAuditAction =
+  | 'delete_user'
+  | 'suspend_user'
+  | 'restore_user'
+  | 'edit_user'
+  | 'reset_user_runs'
+  | 'reset_onboarding'
+  | 'add_run'
+  | 'edit_run'
+  | 'delete_run'
+  | 'purge_orphan_runs'
+  | 'update_announcement'
+  | 'change_pin';
+
+export interface AdminAuditLog {
+  id: string;
+  adminUid: string;
+  adminEmail: string;
+  action: AdminAuditAction;
+  targetId?: string;
+  targetLabel?: string;
+  details: string;
+  createdAt: string;
 }
 
 export interface WeeklyStat {

@@ -64,6 +64,9 @@ service cloud.firestore {
         && (!('goalTimeframeWeeks' in data) || (data.goalTimeframeWeeks is number && data.goalTimeframeWeeks >= 1 && data.goalTimeframeWeeks <= 104))
         && (!('targetGoalDate' in data) || (data.targetGoalDate is string && data.targetGoalDate.size() <= 32))
         && (!('onboardingCompleted' in data) || (data.onboardingCompleted is bool))
+        && (!('accountStatus' in data) || (data.accountStatus in ['active', 'suspended']))
+        && (!('suspensionReason' in data) || (data.suspensionReason is string && data.suspensionReason.size() <= 300))
+        && (!('adminNotes' in data) || (data.adminNotes is string && data.adminNotes.size() <= 1000))
         && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64))
         && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
     }
@@ -98,6 +101,44 @@ service cloud.firestore {
         && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
     }
 
+    function isValidAppAnnouncement(data) {
+      return data.keys().hasAll(['id', 'enabled', 'title', 'message', 'severity', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'enabled', 'title', 'message', 'severity', 'updatedAt', 'updatedBy'])
+        && data.id == 'announcement'
+        && data.enabled is bool
+        && data.title is string && data.title.size() <= 120
+        && data.message is string && data.message.size() <= 500
+        && data.severity in ['info', 'warning', 'success']
+        && data.updatedAt is string && data.updatedAt.size() <= 64
+        && (!('updatedBy' in data) || (data.updatedBy is string && data.updatedBy.size() <= 256));
+    }
+
+    function isValidAdminLog(data) {
+      return data.keys().hasAll(['id', 'adminUid', 'adminEmail', 'action', 'details', 'createdAt'])
+        && data.keys().hasOnly(['id', 'adminUid', 'adminEmail', 'action', 'targetId', 'targetLabel', 'details', 'createdAt'])
+        && data.id is string && data.id.size() > 0 && data.id.size() <= 128
+        && data.adminUid is string && data.adminUid == request.auth.uid
+        && data.adminEmail is string && data.adminEmail.size() <= 256
+        && data.action in [
+          'delete_user',
+          'suspend_user',
+          'restore_user',
+          'edit_user',
+          'reset_user_runs',
+          'reset_onboarding',
+          'add_run',
+          'edit_run',
+          'delete_run',
+          'purge_orphan_runs',
+          'update_announcement',
+          'change_pin'
+        ]
+        && (!('targetId' in data) || (data.targetId is string && data.targetId.size() <= 128))
+        && (!('targetLabel' in data) || (data.targetLabel is string && data.targetLabel.size() <= 256))
+        && data.details is string && data.details.size() <= 500
+        && data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
     // User Profile: /users/{userId}
     match /users/{userId} {
       allow get: if isValidId(userId) && (isAdmin() || (isSignedIn() && request.auth.uid == userId));
@@ -106,33 +147,46 @@ service cloud.firestore {
         && isValidId(userId)
         && request.auth.uid == userId
         && incoming().id == userId
-        && isValidUserProfile(incoming());
-      allow update: if isSignedIn()
-        && isValidId(userId)
-        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && (!('accountStatus' in incoming()) || incoming().accountStatus == 'active')
+        && !('suspensionReason' in incoming())
+        && !('adminNotes' in incoming());
+      allow update: if isValidId(userId)
+        && isValidUserProfile(incoming())
         && incoming().id == existing().id
-        && isValidUserProfile(incoming());
-      allow delete: if isSignedIn()
-        && isValidId(userId)
-        && request.auth.uid == userId;
+        && (
+          isAdmin()
+          || (
+            isSignedIn()
+            && request.auth.uid == userId
+            && (!('accountStatus' in existing()) || existing().accountStatus != 'suspended')
+            && !incoming().diff(existing()).affectedKeys().hasAny(['accountStatus', 'suspensionReason', 'adminNotes'])
+          )
+        );
+      allow delete: if isValidId(userId)
+        && (isAdmin() || (isSignedIn() && request.auth.uid == userId));
     }
 
     // Runs Collection: /runs/{runId}
     match /runs/{runId} {
       allow get: if isValidId(runId) && (isAdmin() || (isSignedIn() && existing().userId == request.auth.uid));
       allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow create: if isSignedIn()
-        && isValidId(runId)
-        && incoming().userId == request.auth.uid
-        && isValidRunRecord(incoming());
-      allow update: if isSignedIn()
-        && isValidId(runId)
-        && existing().userId == request.auth.uid
-        && incoming().userId == existing().userId
-        && isValidRunRecord(incoming());
-      allow delete: if isSignedIn()
-        && isValidId(runId)
-        && existing().userId == request.auth.uid;
+      allow create: if isValidId(runId)
+        && incoming().id == runId
+        && isValidRunRecord(incoming())
+        && (
+          isAdmin()
+          || (isSignedIn() && incoming().userId == request.auth.uid)
+        );
+      allow update: if isValidId(runId)
+        && isValidRunRecord(incoming())
+        && incoming().id == existing().id
+        && (
+          isAdmin()
+          || (isSignedIn() && existing().userId == request.auth.uid && incoming().userId == existing().userId)
+        );
+      allow delete: if isValidId(runId)
+        && (isAdmin() || (isSignedIn() && existing().userId == request.auth.uid));
     }
 
     // Admin Passcode Config: /adminConfig/{userId}
@@ -150,6 +204,29 @@ service cloud.firestore {
         && incoming().id == existing().id
         && isValidAdminConfig(incoming());
       allow delete: if false;
+    }
+
+    // Global App Announcement: /appConfig/announcement
+    match /appConfig/{configId} {
+      allow get: if isValidId(configId) && configId == 'announcement' && isSignedIn();
+      allow list: if false;
+      allow create, update: if isAdmin()
+        && isValidId(configId)
+        && configId == 'announcement'
+        && isValidAppAnnouncement(incoming());
+      allow delete: if isAdmin() && isValidId(configId) && configId == 'announcement';
+    }
+
+    // Admin Audit Logs: /adminLogs/{logId}
+    match /adminLogs/{logId} {
+      allow get: if isAdmin() && isValidId(logId);
+      allow list: if isAdmin();
+      allow create: if isAdmin()
+        && isValidId(logId)
+        && incoming().id == logId
+        && isValidAdminLog(incoming());
+      allow update: if false;
+      allow delete: if isAdmin() && isValidId(logId);
     }
   }
 }

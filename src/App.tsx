@@ -13,6 +13,8 @@ import {
   deleteCurrentUserAccount,
   getOrCreateUserProfile,
   saveUserProfile,
+  subscribeUserProfile,
+  subscribeAppAnnouncement,
   subscribeUserRuns,
   saveRunRecord,
   deleteRunRecord,
@@ -20,7 +22,7 @@ import {
   firebaseConfig,
   isAuthorizedAdmin,
 } from './lib/firebase';
-import { RunRecord, UserProfile, DuplicateRunMatch, RunType } from './types/running';
+import { RunRecord, UserProfile, DuplicateRunMatch, RunType, AppAnnouncement } from './types/running';
 import { DEFAULT_RUNNER_PROFILE, createPlaceholderRuns, isPlaceholderRun } from './data/sampleRuns';
 import {
   groupRunsByWeek,
@@ -73,6 +75,10 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [showBetaBanner, setShowBetaBanner] = useState(true);
+  const [appAnnouncement, setAppAnnouncement] = useState<AppAnnouncement | null>(null);
+  const [dismissedAnnouncementKey, setDismissedAnnouncementKey] = useState<string | null>(() =>
+    localStorage.getItem('xc_dismissed_announcement')
+  );
 
   // Guest Testing Mode
   const [isGuest, setIsGuest] = useState<boolean>(() => {
@@ -260,17 +266,27 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
     let unsubscribeRuns: (() => void) | null = null;
+    let unsubscribeProfile: (() => void) | null = null;
+    let unsubscribeAnnouncement: (() => void) | null = null;
     let activeUid: string | null = null;
 
-    const cleanupRunsSub = () => {
+    const cleanupCloudSubs = () => {
       if (unsubscribeRuns) {
         unsubscribeRuns();
         unsubscribeRuns = null;
       }
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+        unsubscribeProfile = null;
+      }
+      if (unsubscribeAnnouncement) {
+        unsubscribeAnnouncement();
+        unsubscribeAnnouncement = null;
+      }
     };
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
-      cleanupRunsSub();
+      cleanupCloudSubs();
 
       if (!currentUser) {
         const guestActive = sessionStorage.getItem('xc_6k_guest_mode') === 'true';
@@ -281,6 +297,7 @@ export default function App() {
         activeUid = null;
         if (isMounted) {
           setUser(null);
+          setAppAnnouncement(null);
           setAuthLoading(false);
         }
         return;
@@ -403,6 +420,26 @@ export default function App() {
           }
         );
 
+        unsubscribeProfile = subscribeUserProfile(
+          currentUser.uid,
+          (liveProfile) => {
+            if (!isMounted || auth.currentUser?.uid !== currentUser.uid || !liveProfile) return;
+            setProfile((prev) => ({
+              ...prev,
+              ...liveProfile,
+            }));
+            localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(liveProfile));
+          },
+          (error) => {
+            console.warn('Could not subscribe to cloud profile:', error);
+          }
+        );
+
+        unsubscribeAnnouncement = subscribeAppAnnouncement((announcement) => {
+          if (!isMounted) return;
+          setAppAnnouncement(announcement);
+        });
+
         if (isMounted) {
           setAuthLoading(false);
         }
@@ -416,7 +453,7 @@ export default function App() {
 
     return () => {
       isMounted = false;
-      cleanupRunsSub();
+      cleanupCloudSubs();
       unsubscribeAuth();
     };
   }, []);
@@ -754,6 +791,42 @@ export default function App() {
     );
   }
 
+  // 2b. Suspended Account Gate (non-admin accounts suspended by Admin Console)
+  if (user && !isAdmin && profile.accountStatus === 'suspended') {
+    return (
+      <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
+        <div className="min-h-screen bg-[#ECF3F8] dark:bg-[#070E16] text-slate-900 dark:text-white flex items-center justify-center p-4 font-sans">
+          <div className="max-w-md w-full rounded-2xl bg-white dark:bg-[#0D1620] border border-rose-200 dark:border-rose-900/60 p-6 shadow-xl space-y-4 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/12 text-rose-600 dark:text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto">
+              <ShieldAlert className="w-6 h-6" />
+            </div>
+            <div className="space-y-1.5">
+              <h1 className="text-lg font-extrabold text-slate-900 dark:text-white">
+                Account Suspended
+              </h1>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                Access for <span className="font-semibold">{user.email || user.uid}</span> has been suspended by an administrator.
+              </p>
+              {profile.suspensionReason && (
+                <div className="mt-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-xs text-rose-700 dark:text-rose-300 text-left">
+                  <span className="font-bold block mb-0.5">Reason:</span>
+                  {profile.suspensionReason}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="w-full py-2.5 px-4 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold text-xs hover:opacity-90 transition-opacity cursor-pointer"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'dark' : ''}`}>
       <div className="relative min-h-screen overflow-x-hidden bg-[#ECF3F8] dark:bg-[#070E16] text-slate-900 dark:text-white flex flex-col font-sans transition-colors selection:bg-[#0EA5E9] selection:text-white">
@@ -923,6 +996,56 @@ export default function App() {
 
         {/* Main Dashboard */}
         <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-5">
+          {/* Global Admin Announcement Banner */}
+          {appAnnouncement?.enabled &&
+            (appAnnouncement.title || appAnnouncement.message) &&
+            dismissedAnnouncementKey !== appAnnouncement.updatedAt && (
+              <div
+                className={`px-4 py-3 rounded-xl border flex items-start justify-between gap-3 text-xs ${
+                  appAnnouncement.severity === 'warning'
+                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-950 dark:text-amber-100'
+                    : appAnnouncement.severity === 'success'
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-100'
+                    : 'bg-sky-500/10 border-sky-500/30 text-sky-950 dark:text-sky-100'
+                }`}
+              >
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <AlertCircle
+                    className={`w-4 h-4 shrink-0 mt-0.5 ${
+                      appAnnouncement.severity === 'warning'
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : appAnnouncement.severity === 'success'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-sky-600 dark:text-sky-400'
+                    }`}
+                  />
+                  <div className="min-w-0">
+                    {appAnnouncement.title && (
+                      <div className="font-bold text-slate-900 dark:text-white">
+                        {appAnnouncement.title}
+                      </div>
+                    )}
+                    {appAnnouncement.message && (
+                      <p className="text-slate-700 dark:text-slate-200 mt-0.5 leading-relaxed">
+                        {appAnnouncement.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    localStorage.setItem('xc_dismissed_announcement', appAnnouncement.updatedAt);
+                    setDismissedAnnouncementKey(appAnnouncement.updatedAt);
+                  }}
+                  className="p-1 rounded-md opacity-70 hover:opacity-100 transition-opacity cursor-pointer shrink-0"
+                  aria-label="Dismiss announcement"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
           {/* Dynamic Motivational Greeting with User's Name */}
           <MotivationalGreeting
             profile={profile}

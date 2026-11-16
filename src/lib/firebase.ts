@@ -29,7 +29,13 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 export { firebaseConfig };
-import { RunRecord, UserProfile } from '../types/running';
+import {
+  RunRecord,
+  UserProfile,
+  AppAnnouncement,
+  AdminAuditLog,
+  AdminAuditAction,
+} from '../types/running';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -249,8 +255,16 @@ export function cleanObjectForFirestore<T extends Record<string, any>>(obj: T): 
 }
 
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
+  // Never allow regular user profile writes to touch admin-controlled governance fields
+  const {
+    accountStatus: _accountStatus,
+    suspensionReason: _suspensionReason,
+    adminNotes: _adminNotes,
+    ...userWritableProfile
+  } = profile;
+
   const sanitized: UserProfile = {
-    ...profile,
+    ...userWritableProfile,
     email: (profile.email || '').slice(0, 256),
     displayName: profile.displayName ? profile.displayName.slice(0, 128) : profile.displayName,
     targetGoalName: profile.targetGoalName ? profile.targetGoalName.slice(0, 128) : profile.targetGoalName,
@@ -283,6 +297,51 @@ export async function saveUserProfile(profile: UserProfile): Promise<void> {
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
+}
+
+export function subscribeUserProfile(
+  userId: string,
+  onProfile: (profile: UserProfile | null) => void,
+  onError?: (err: unknown) => void
+): Unsubscribe {
+  const path = `users/${userId}`;
+  return onSnapshot(
+    doc(db, 'users', userId),
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        onProfile(null);
+        return;
+      }
+      const data = snapshot.data() as UserProfile;
+      if (data.target6kTimeSeconds === 1260 && !(data as any).hasCustomTarget) {
+        delete data.target6kTimeSeconds;
+      }
+      onProfile(data);
+    },
+    (error) => {
+      if (onError) onError(error);
+      handleFirestoreError(error, OperationType.GET, path);
+    }
+  );
+}
+
+export function subscribeAppAnnouncement(
+  onAnnouncement: (announcement: AppAnnouncement | null) => void
+): Unsubscribe {
+  const path = 'appConfig/announcement';
+  return onSnapshot(
+    doc(db, 'appConfig', 'announcement'),
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        onAnnouncement(null);
+        return;
+      }
+      onAnnouncement(snapshot.data() as AppAnnouncement);
+    },
+    (error) => {
+      console.warn('Could not subscribe to app announcement:', error);
+    }
+  );
 }
 
 // Runs management
@@ -443,6 +502,14 @@ export async function saveAdminPasscode(user: User, pin: string): Promise<AdminC
 
   try {
     await setDoc(docRef, payload);
+    if (existing) {
+      recordAdminLog(user, {
+        action: 'change_pin',
+        targetId: user.uid,
+        targetLabel: user.email || ADMIN_EMAIL,
+        details: `Updated admin passcode (${cleanedPin.length} digits).`,
+      }).catch(() => {});
+    }
     return payload;
   } catch (error) {
     handleFirestoreError(error, existing ? OperationType.UPDATE : OperationType.CREATE, path);
@@ -481,4 +548,347 @@ export async function fetchAllAdminData(): Promise<{
   }
 
   return { users, runs };
+}
+
+export async function recordAdminLog(
+  adminUser: User,
+  entry: {
+    action: AdminAuditAction;
+    targetId?: string;
+    targetLabel?: string;
+    details: string;
+  }
+): Promise<AdminAuditLog> {
+  if (!isAuthorizedAdmin(adminUser)) {
+    throw new Error('Unauthorized admin access attempt.');
+  }
+  const id = sanitizeDocId(`log_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+  const logDoc: AdminAuditLog = {
+    id,
+    adminUid: adminUser.uid,
+    adminEmail: (adminUser.email || ADMIN_EMAIL).slice(0, 256),
+    action: entry.action,
+    ...(entry.targetId ? { targetId: sanitizeDocId(entry.targetId) } : {}),
+    ...(entry.targetLabel ? { targetLabel: entry.targetLabel.slice(0, 256) } : {}),
+    details: entry.details.slice(0, 500),
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    await setDoc(doc(db, 'adminLogs', id), logDoc);
+    return logDoc;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, `adminLogs/${id}`);
+  }
+}
+
+export async function fetchAdminLogs(): Promise<AdminAuditLog[]> {
+  try {
+    const snap = await getDocs(collection(db, 'adminLogs'));
+    const logs = snap.docs.map((d) => d.data() as AdminAuditLog);
+    logs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return logs;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'adminLogs');
+  }
+}
+
+export async function clearAdminLogs(adminUser: User, logIds: string[]): Promise<void> {
+  if (!isAuthorizedAdmin(adminUser)) {
+    throw new Error('Unauthorized admin access attempt.');
+  }
+  for (let i = 0; i < logIds.length; i += 400) {
+    const chunk = logIds.slice(i, i + 400);
+    const batch = writeBatch(db);
+    chunk.forEach((id) => batch.delete(doc(db, 'adminLogs', sanitizeDocId(id))));
+    try {
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'adminLogs (batch)');
+    }
+  }
+}
+
+export async function adminDeleteUserRuns(
+  adminUser: User,
+  targetUserId: string,
+  targetLabel?: string,
+  skipAuditLog = false
+): Promise<number> {
+  if (!isAuthorizedAdmin(adminUser)) {
+    throw new Error('Unauthorized admin access attempt.');
+  }
+  const runsQuery = query(collection(db, 'runs'), where('userId', '==', targetUserId));
+  let runsSnap;
+  try {
+    runsSnap = await getDocs(runsQuery);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'runs');
+  }
+
+  const runDocs = runsSnap.docs;
+  for (let i = 0; i < runDocs.length; i += 400) {
+    const chunk = runDocs.slice(i, i + 400);
+    const batch = writeBatch(db);
+    chunk.forEach((docSnap) => batch.delete(docSnap.ref));
+    try {
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'runs (batch)');
+    }
+  }
+
+  if (!skipAuditLog) {
+    await recordAdminLog(adminUser, {
+      action: 'reset_user_runs',
+      targetId: targetUserId,
+      targetLabel: targetLabel || targetUserId,
+      details: `Deleted ${runDocs.length} workout record${runDocs.length === 1 ? '' : 's'}.`,
+    });
+  }
+
+  return runDocs.length;
+}
+
+export async function adminDeleteUserAccount(
+  adminUser: User,
+  targetUserId: string,
+  targetLabel?: string
+): Promise<{ deletedRunsCount: number }> {
+  if (!isAuthorizedAdmin(adminUser)) {
+    throw new Error('Unauthorized admin access attempt.');
+  }
+  if (targetUserId === adminUser.uid) {
+    throw new Error('Cannot delete the active admin account from the Admin Console.');
+  }
+
+  const deletedRunsCount = await adminDeleteUserRuns(adminUser, targetUserId, targetLabel, true);
+
+  const userPath = `users/${targetUserId}`;
+  try {
+    await deleteDoc(doc(db, 'users', targetUserId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, userPath);
+  }
+
+  await recordAdminLog(adminUser, {
+    action: 'delete_user',
+    targetId: targetUserId,
+    targetLabel: targetLabel || targetUserId,
+    details: `Deleted user profile and ${deletedRunsCount} workout record${deletedRunsCount === 1 ? '' : 's'}.`,
+  });
+
+  return { deletedRunsCount };
+}
+
+export async function adminUpdateUserProfile(
+  adminUser: User,
+  updatedProfile: UserProfile,
+  actionType: AdminAuditAction = 'edit_user',
+  details?: string
+): Promise<UserProfile> {
+  if (!isAuthorizedAdmin(adminUser)) {
+    throw new Error('Unauthorized admin access attempt.');
+  }
+  const now = new Date().toISOString();
+  const sanitized: UserProfile = {
+    ...updatedProfile,
+    email: (updatedProfile.email || '').slice(0, 256),
+    displayName: (updatedProfile.displayName || '').slice(0, 128),
+    targetGoalName: updatedProfile.targetGoalName
+      ? updatedProfile.targetGoalName.slice(0, 128)
+      : undefined,
+    weeklyRunGoal: Math.min(14, Math.max(1, Math.round(updatedProfile.weeklyRunGoal || 3))),
+    weeklyDistanceGoalKm:
+      updatedProfile.weeklyDistanceGoalKm !== undefined && updatedProfile.weeklyDistanceGoalKm > 0
+        ? Math.min(500, Math.max(0, updatedProfile.weeklyDistanceGoalKm))
+        : undefined,
+    targetDistanceKm:
+      updatedProfile.targetDistanceKm !== undefined
+        ? Math.min(100, Math.max(0.1, updatedProfile.targetDistanceKm))
+        : undefined,
+    goalTimeframeWeeks:
+      updatedProfile.goalTimeframeWeeks !== undefined
+        ? Math.min(104, Math.max(1, Math.round(updatedProfile.goalTimeframeWeeks)))
+        : undefined,
+    suspensionReason: updatedProfile.suspensionReason
+      ? updatedProfile.suspensionReason.slice(0, 300)
+      : undefined,
+    adminNotes: updatedProfile.adminNotes ? updatedProfile.adminNotes.slice(0, 1000) : undefined,
+    updatedAt: now,
+  };
+
+  const cleanProfile = cleanObjectForFirestore(sanitized);
+  const payload: Record<string, unknown> = { ...cleanProfile };
+
+  if (!updatedProfile.targetGoalDate || !updatedProfile.targetGoalDate.trim()) {
+    payload.targetGoalDate = deleteField();
+  }
+  if (!updatedProfile.target6kTimeSeconds || updatedProfile.target6kTimeSeconds <= 0) {
+    payload.target6kTimeSeconds = deleteField();
+  }
+  if (!updatedProfile.weeklyDistanceGoalKm || updatedProfile.weeklyDistanceGoalKm <= 0) {
+    payload.weeklyDistanceGoalKm = deleteField();
+  }
+  if (!updatedProfile.maxHeartRate || updatedProfile.maxHeartRate < 100) {
+    payload.maxHeartRate = deleteField();
+  }
+  if (!updatedProfile.suspensionReason || !updatedProfile.suspensionReason.trim()) {
+    payload.suspensionReason = deleteField();
+  }
+  if (!updatedProfile.adminNotes || !updatedProfile.adminNotes.trim()) {
+    payload.adminNotes = deleteField();
+  }
+
+  const path = `users/${updatedProfile.id}`;
+  try {
+    await setDoc(doc(db, 'users', updatedProfile.id), payload, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+
+  await recordAdminLog(adminUser, {
+    action: actionType,
+    targetId: updatedProfile.id,
+    targetLabel: updatedProfile.displayName || updatedProfile.email || updatedProfile.id,
+    details: details || 'Updated user profile and training settings.',
+  });
+
+  return sanitized;
+}
+
+export async function adminSaveRunForUser(
+  adminUser: User,
+  targetUserId: string,
+  run: RunRecord,
+  isNew: boolean
+): Promise<RunRecord> {
+  if (!isAuthorizedAdmin(adminUser)) {
+    throw new Error('Unauthorized admin access attempt.');
+  }
+  const safeId = sanitizeDocId(run.id);
+  const now = new Date().toISOString();
+  const normalizedRun: RunRecord = {
+    ...run,
+    id: safeId,
+    userId: targetUserId,
+    title: (run.title || 'Workout').slice(0, 150),
+    notes: run.notes ? run.notes.slice(0, 1000) : undefined,
+    createdAt: run.createdAt || now,
+    updatedAt: now,
+  };
+
+  const cleanRun = cleanObjectForFirestore(normalizedRun);
+  const payload: Record<string, unknown> = { ...cleanRun };
+  if (!normalizedRun.notes || !normalizedRun.notes.trim()) {
+    payload.notes = deleteField();
+  }
+
+  const path = `runs/${safeId}`;
+  try {
+    await setDoc(doc(db, 'runs', safeId), payload, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, isNew ? OperationType.CREATE : OperationType.UPDATE, path);
+  }
+
+  await recordAdminLog(adminUser, {
+    action: isNew ? 'add_run' : 'edit_run',
+    targetId: targetUserId,
+    targetLabel: normalizedRun.title,
+    details: `${isNew ? 'Added' : 'Updated'} ${normalizedRun.distanceKm.toFixed(2)} km (${normalizedRun.runType}) on ${normalizedRun.date}.`,
+  });
+
+  return normalizedRun;
+}
+
+export async function adminDeleteSingleRun(
+  adminUser: User,
+  run: RunRecord
+): Promise<void> {
+  if (!isAuthorizedAdmin(adminUser)) {
+    throw new Error('Unauthorized admin access attempt.');
+  }
+  const safeId = sanitizeDocId(run.id);
+  const path = `runs/${safeId}`;
+  try {
+    await deleteDoc(doc(db, 'runs', safeId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+
+  await recordAdminLog(adminUser, {
+    action: 'delete_run',
+    targetId: run.userId,
+    targetLabel: run.title,
+    details: `Deleted run "${run.title}" (${run.distanceKm.toFixed(2)} km on ${run.date}).`,
+  });
+}
+
+export async function adminPurgeOrphanRuns(
+  adminUser: User,
+  orphanRunIds: string[]
+): Promise<number> {
+  if (!isAuthorizedAdmin(adminUser)) {
+    throw new Error('Unauthorized admin access attempt.');
+  }
+  if (orphanRunIds.length === 0) return 0;
+
+  for (let i = 0; i < orphanRunIds.length; i += 400) {
+    const chunk = orphanRunIds.slice(i, i + 400);
+    const batch = writeBatch(db);
+    chunk.forEach((id) => batch.delete(doc(db, 'runs', sanitizeDocId(id))));
+    try {
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'runs (orphan batch)');
+    }
+  }
+
+  await recordAdminLog(adminUser, {
+    action: 'purge_orphan_runs',
+    details: `Purged ${orphanRunIds.length} orphaned workout record${orphanRunIds.length === 1 ? '' : 's'} with no user profile.`,
+  });
+
+  return orphanRunIds.length;
+}
+
+export async function getAppAnnouncement(): Promise<AppAnnouncement | null> {
+  try {
+    const snap = await getDoc(doc(db, 'appConfig', 'announcement'));
+    return snap.exists() ? (snap.data() as AppAnnouncement) : null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, 'appConfig/announcement');
+  }
+}
+
+export async function saveAppAnnouncement(
+  adminUser: User,
+  announcement: Omit<AppAnnouncement, 'id' | 'updatedAt' | 'updatedBy'>
+): Promise<AppAnnouncement> {
+  if (!isAuthorizedAdmin(adminUser)) {
+    throw new Error('Unauthorized admin access attempt.');
+  }
+  const payload: AppAnnouncement = {
+    id: 'announcement',
+    enabled: announcement.enabled,
+    title: announcement.title.trim().slice(0, 120),
+    message: announcement.message.trim().slice(0, 500),
+    severity: announcement.severity,
+    updatedAt: new Date().toISOString(),
+    updatedBy: (adminUser.email || ADMIN_EMAIL).slice(0, 256),
+  };
+
+  try {
+    await setDoc(doc(db, 'appConfig', 'announcement'), payload);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'appConfig/announcement');
+  }
+
+  await recordAdminLog(adminUser, {
+    action: 'update_announcement',
+    targetId: 'announcement',
+    targetLabel: payload.title || 'Global Banner',
+    details: `${payload.enabled ? 'Enabled' : 'Disabled'} ${payload.severity} announcement banner.`,
+  });
+
+  return payload;
 }
