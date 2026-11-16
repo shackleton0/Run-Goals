@@ -24,11 +24,12 @@ import {
   isAuthorizedAdmin,
   subscribeTeacherRecord,
   subscribeTeamInvite,
+  subscribeTeamWorkouts,
   getTeamInvite,
   joinTeamWithInvite,
   normalizeInviteCode,
 } from './lib/firebase';
-import { RunRecord, UserProfile, DuplicateRunMatch, RunType, AppAnnouncement, TeacherRecord, TeamInvite } from './types/running';
+import { RunRecord, UserProfile, DuplicateRunMatch, RunType, AppAnnouncement, TeacherRecord, TeamInvite, PlannedTeamWorkout } from './types/running';
 import { DEFAULT_RUNNER_PROFILE, createPlaceholderRuns, isPlaceholderRun } from './data/sampleRuns';
 import {
   groupRunsByWeek,
@@ -59,6 +60,7 @@ import { WatchTelemetrySection } from './components/WatchTelemetrySection';
 import { LoginPage } from './components/LoginPage';
 import { AdminPanelModal } from './components/AdminPanelModal';
 import { TeacherPanelModal } from './components/TeacherPanelModal';
+import { TeamWorkoutsCard } from './components/TeamWorkoutsCard';
 import {
   Cloud,
   CloudOff,
@@ -113,6 +115,7 @@ export default function App() {
   });
   const [teacherRecord, setTeacherRecord] = useState<TeacherRecord | null>(null);
   const [teamInviteBanner, setTeamInviteBanner] = useState<TeamInvite | null>(null);
+  const [teamWorkouts, setTeamWorkouts] = useState<PlannedTeamWorkout[]>([]);
   const [dismissedTeamAnnKey, setDismissedTeamAnnKey] = useState<string | null>(() =>
     localStorage.getItem('xc_dismissed_team_announcement')
   );
@@ -537,16 +540,23 @@ export default function App() {
     };
   }, []);
 
-  // Subscribe to team broadcast banner whenever student belongs to a team
+  // Subscribe to team broadcast banner and planned workouts whenever student belongs to a team
   useEffect(() => {
     if (!user || !profile.teamCode) {
       setTeamInviteBanner(null);
+      setTeamWorkouts([]);
       return;
     }
-    const unsub = subscribeTeamInvite(profile.teamCode, (inv) => {
+    const unsubInvite = subscribeTeamInvite(profile.teamCode, (inv) => {
       setTeamInviteBanner(inv);
     });
-    return () => unsub();
+    const unsubWorkouts = subscribeTeamWorkouts(profile.teamCode, (list) => {
+      setTeamWorkouts(list);
+    });
+    return () => {
+      unsubInvite();
+      unsubWorkouts();
+    };
   }, [user, profile.teamCode]);
 
   // Resolve pending invite link (?join=CODE) once athlete signs in and finishes initial setup
@@ -1434,6 +1444,28 @@ export default function App() {
             </div>
           )}
 
+          {/* Coach Planned Team Workouts */}
+          {user && profile.teamCode && teamWorkouts.length > 0 && (
+            <TeamWorkoutsCard
+              workouts={teamWorkouts}
+              runs={runs}
+              profile={profile}
+              userId={user.uid}
+              onCompleteWorkout={handleSaveRun}
+              onCustomizeWorkout={(w) =>
+                handleOpenAddRunWithPrefill({
+                  plannedWorkoutId: w.id,
+                  title: w.title,
+                  date: w.date,
+                  distanceKm: w.distanceKm,
+                  durationSeconds: w.durationSeconds,
+                  runType: w.runType,
+                  notes: [w.targetPaceHint, w.notes].filter(Boolean).join(' · ') || undefined,
+                })
+              }
+            />
+          )}
+
           {runs.length === 0 ? (
             <div className="space-y-4 sm:space-y-5">
               <WeeklyAdherenceCard
@@ -1659,6 +1691,7 @@ export default function App() {
             previewStudents={devTeacherPreview.mode === 'sandbox' ? sandboxBundle.students : undefined}
             previewRuns={devTeacherPreview.mode === 'sandbox' ? sandboxBundle.runs : undefined}
             previewInvite={devTeacherPreview.mode === 'sandbox' ? sandboxBundle.invite : undefined}
+            previewTeamWorkouts={devTeacherPreview.mode === 'sandbox' ? sandboxBundle.workouts : undefined}
             onBackToAdmin={() => {
               setDevTeacherPreview(null);
               setIsAdminOpen(true);
@@ -1687,6 +1720,11 @@ export default function App() {
               previewInvite={
                 activeTeacherRecord.id === DEV_SANDBOX_TEACHER.id
                   ? sandboxBundle.invite
+                  : undefined
+              }
+              previewTeamWorkouts={
+                activeTeacherRecord.id === DEV_SANDBOX_TEACHER.id
+                  ? sandboxBundle.workouts
                   : undefined
               }
               onTeacherUpdated={(next) => {

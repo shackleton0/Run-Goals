@@ -1,4 +1,4 @@
-import { TeacherRecord, TeamInvite, UserProfile, RunRecord } from '../types/running';
+import { TeacherRecord, TeamInvite, UserProfile, RunRecord, PlannedTeamWorkout } from '../types/running';
 
 export const DEV_SANDBOX_TEACHER: TeacherRecord = {
   id: 'dev_sandbox_coach@example.com',
@@ -29,6 +29,7 @@ export function createSandboxTeacherBundle(): {
   invite: TeamInvite;
   students: UserProfile[];
   runs: RunRecord[];
+  workouts: PlannedTeamWorkout[];
 } {
   const now = new Date().toISOString();
   const teamCode = DEV_SANDBOX_TEACHER.inviteCode;
@@ -269,10 +270,59 @@ export function createSandboxTeacherBundle(): {
     },
   ];
 
+  const workouts: PlannedTeamWorkout[] = [
+    {
+      id: 'sandbox_tw_today',
+      teamCode,
+      coachEmail: DEV_SANDBOX_TEACHER.email,
+      date: daysAgoIsoDate(0),
+      title: '4x1K Track Intervals',
+      runType: 'Interval Training',
+      distanceKm: 6.0,
+      durationSeconds: 1440,
+      targetPaceHint: '3:45–4:00 /km reps · 90s jog',
+      notes: '1.5 km warmup + strides, 4x1000m @ 5K effort, 1 km cooldown.',
+      completedUserIds: [],
+      createdAt: daysAgoIsoDate(2) + 'T14:00:00.000Z',
+      updatedAt: now,
+    },
+    {
+      id: 'sandbox_tw_tempo',
+      teamCode,
+      coachEmail: DEV_SANDBOX_TEACHER.email,
+      date: daysAgoIsoDate(1),
+      title: 'Meadow 5K Threshold Tempo',
+      runType: 'Tempo',
+      distanceKm: 5.0,
+      durationSeconds: 1290,
+      targetPaceHint: '4:15–4:25 /km continuous',
+      notes: 'Held even splits across the lower grass loop.',
+      completedUserIds: ['sandbox_student_maya', 'sandbox_student_liam'],
+      createdAt: daysAgoIsoDate(3) + 'T14:00:00.000Z',
+      updatedAt: now,
+    },
+    {
+      id: 'sandbox_tw_long',
+      teamCode,
+      coachEmail: DEV_SANDBOX_TEACHER.email,
+      date: futureIsoDate(2),
+      title: 'Sunday Aerobic Long Run',
+      runType: 'Long Run',
+      distanceKm: 10.0,
+      durationSeconds: 3120,
+      targetPaceHint: '5:05–5:20 /km conversational',
+      notes: 'Focus on relaxed cadence and steady aerobic breathing.',
+      completedUserIds: [],
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+
   return {
     teacher: DEV_SANDBOX_TEACHER,
     invite,
     students,
     runs,
+    workouts,
   };
 }

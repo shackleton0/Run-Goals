@@ -65,8 +65,25 @@ export interface RunRecord {
   repDistanceMeters?: number;
   restDurationSeconds?: number;
   totalRestSeconds?: number;
+  plannedWorkoutId?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface PlannedTeamWorkout {
+  id: string;
+  teamCode: string;
+  coachEmail: string;
+  date: string; // YYYY-MM-DD
+  title: string;
+  runType: RunType;
+  distanceKm: number;
+  durationSeconds: number;
+  targetPaceHint?: string;
+  notes?: string;
+  completedUserIds: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface UserProfile {

@@ -5,9 +5,11 @@ import {
   UserProfile,
   RunRecord,
   RunType,
+  PlannedTeamWorkout,
 } from '../types/running';
 import {
   fetchTeamDataForTeacher,
+  fetchTeamWorkoutsForTeacher,
   teacherUpdateStudentProfile,
   teacherSendStudentMessage,
   teacherClearStudentMessage,
@@ -17,6 +19,10 @@ import {
   teacherRemoveStudentFromTeam,
   teacherUpdateTeamSettings,
   teacherSaveTeamAnnouncement,
+  teacherSaveTeamWorkout,
+  teacherDeleteTeamWorkout,
+  teacherBulkCompleteWorkout,
+  teacherBatchUpdateStudentGoals,
 } from '../lib/firebase';
 import {
   YRAA_DIVISION_LIST,
@@ -31,6 +37,10 @@ import {
   calculateTargetDistanceEquivalent,
   selectBestTargetEquivalent,
   groupRunsByWeek,
+  buildBulkTeamWorkoutRuns,
+  applyBatchGoalPresetToProfiles,
+  buildTeamRunDocId,
+  formatLocalDateString,
   KM_TO_MILES,
 } from '../utils/runningCalculations';
 import {
@@ -64,6 +74,10 @@ import {
   AlertTriangle,
   ArrowLeft,
   FlaskConical,
+  ClipboardList,
+  Target,
+  UsersRound,
+  Save,
 } from 'lucide-react';
 
 interface TeacherPanelModalProps {
@@ -75,10 +89,11 @@ interface TeacherPanelModalProps {
   previewStudents?: UserProfile[];
   previewRuns?: RunRecord[];
   previewInvite?: TeamInvite | null;
+  previewTeamWorkouts?: PlannedTeamWorkout[];
   onBackToAdmin?: () => void;
 }
 
-type TeacherTab = 'roster' | 'activity' | 'team';
+type TeacherTab = 'roster' | 'workouts' | 'goals' | 'activity' | 'team';
 type StudentFilter = 'all' | 'active' | 'inactive_7d' | 'suspended' | 'pending_setup';
 type StudentActionPanel =
   | 'none'
@@ -132,6 +147,87 @@ const TARGET_DISTANCE_OPTIONS = [
   { label: 'Marathon', km: 42.195 },
 ];
 
+const WORKOUT_PRESETS: Array<{
+  label: string;
+  title: string;
+  runType: RunType;
+  distanceKm: number;
+  durationSeconds: number;
+  targetPaceHint: string;
+  notes: string;
+}> = [
+  {
+    label: 'Track 4x1K',
+    title: '4x1K Track Intervals',
+    runType: 'Interval Training',
+    distanceKm: 6.0,
+    durationSeconds: 1440,
+    targetPaceHint: '3:45–4:00 /km reps · 90s jog',
+    notes: '1.5 km warmup + strides, 4x1000m @ 5K effort, 1 km cooldown.',
+  },
+  {
+    label: 'Tempo 5K',
+    title: '5K Threshold Tempo',
+    runType: 'Tempo',
+    distanceKm: 5.0,
+    durationSeconds: 1290,
+    targetPaceHint: '4:15–4:25 /km continuous',
+    notes: 'Sustained comfortably hard pace on grass/path loop.',
+  },
+  {
+    label: 'Hill Repeats',
+    title: '6x200m Hill Repeats',
+    runType: 'Hill Repeats',
+    distanceKm: 5.5,
+    durationSeconds: 1560,
+    targetPaceHint: 'Strong uphill drive · jog down rest',
+    notes: 'Warmup 2 km, 6x200m hill surges with full jog recovery, 1.5 km easy.',
+  },
+  {
+    label: 'Long Run 10K',
+    title: 'Sunday Aerobic Long Run',
+    runType: 'Long Run',
+    distanceKm: 10.0,
+    durationSeconds: 3120,
+    targetPaceHint: '5:05–5:25 /km conversational',
+    notes: 'Relaxed rhythm and steady aerobic effort.',
+  },
+  {
+    label: 'Easy Shakeout',
+    title: 'Team Recovery Shakeout 4K',
+    runType: 'Recovery',
+    distanceKm: 4.0,
+    durationSeconds: 1290,
+    targetPaceHint: '5:15–5:35 /km relaxed',
+    notes: 'Easy flush run before race day.',
+  },
+];
+
+interface GoalDraftRow {
+  targetDistanceKm: string;
+  targetGoalName: string;
+  targetTimeStr: string;
+  weeklyRunGoal: string;
+  weeklyDistKm: string;
+  targetGoalDate: string;
+  yraaDivision: YraaDivisionId;
+  coachNotes: string;
+}
+
+function buildGoalDraftRow(p: UserProfile): GoalDraftRow {
+  const distKm = p.targetDistanceKm || 6.0;
+  return {
+    targetDistanceKm: distKm.toString(),
+    targetGoalName: p.targetGoalName || `${distKm}K Race`,
+    targetTimeStr: p.target6kTimeSeconds ? formatDuration(p.target6kTimeSeconds) : '',
+    weeklyRunGoal: String(p.weeklyRunGoal || 3),
+    weeklyDistKm: p.weeklyDistanceGoalKm ? String(p.weeklyDistanceGoalKm) : '',
+    targetGoalDate: p.targetGoalDate || '',
+    yraaDivision: p.yraaDivision || 'senior_men',
+    coachNotes: p.coachNotes || '',
+  };
+}
+
 export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
   isOpen,
   onClose,
@@ -141,12 +237,14 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
   previewStudents,
   previewRuns,
   previewInvite,
+  previewTeamWorkouts,
   onBackToAdmin,
 }) => {
   const [activeTab, setActiveTab] = useState<TeacherTab>('roster');
   const [students, setStudents] = useState<UserProfile[]>([]);
   const [teamRuns, setTeamRuns] = useState<RunRecord[]>([]);
   const [teamInvite, setTeamInvite] = useState<TeamInvite | null>(null);
+  const [teamWorkouts, setTeamWorkouts] = useState<PlannedTeamWorkout[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isMutating, setIsMutating] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
@@ -220,10 +318,42 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
   const [annMessage, setAnnMessage] = useState('');
   const [annSeverity, setAnnSeverity] = useState<'info' | 'warning' | 'success'>('info');
 
+  // Team Workout Planner Drafts & Bulk Attendance
+  const [editingWorkoutId, setEditingWorkoutId] = useState<string | null>(null);
+  const [woTitle, setWoTitle] = useState('');
+  const [woDate, setWoDate] = useState(() => formatLocalDateString(new Date()));
+  const [woRunType, setWoRunType] = useState<RunType>('Interval Training');
+  const [woDistKm, setWoDistKm] = useState('6.0');
+  const [woDurationStr, setWoDurationStr] = useState('24:00');
+  const [woPaceHint, setWoPaceHint] = useState('');
+  const [woNotes, setWoNotes] = useState('');
+  const [pickingAthletesWorkoutId, setPickingAthletesWorkoutId] = useState<string | null>(null);
+  const [pickedAthleteIds, setPickedAthleteIds] = useState<Set<string>>(new Set());
+  const [confirmDeleteWorkoutId, setConfirmDeleteWorkoutId] = useState<string | null>(null);
+
+  // Multi-Athlete Goal Manager Drafts
+  const [goalDrafts, setGoalDrafts] = useState<Record<string, GoalDraftRow>>({});
+  const [selectedGoalStudentIds, setSelectedGoalStudentIds] = useState<Set<string>>(new Set());
+  const [batchScope, setBatchScope] = useState<'active' | 'selected' | 'all'>('active');
+  const [batchDistKm, setBatchDistKm] = useState<string>('');
+  const [batchTargetTimeStr, setBatchTargetTimeStr] = useState<string>('');
+  const [batchWeeklyRuns, setBatchWeeklyRuns] = useState<string>('');
+  const [batchWeeklyDistKm, setBatchWeeklyDistKm] = useState<string>('');
+  const [batchGoalDate, setBatchGoalDate] = useState<string>('');
+  const [batchDivision, setBatchDivision] = useState<string>('');
+
   const inviteUrl =
     typeof window !== 'undefined'
       ? `${window.location.origin}/?join=${teacher.inviteCode}`
       : `?join=${teacher.inviteCode}`;
+
+  const syncGoalDraftsFromStudents = useCallback((studentList: UserProfile[]) => {
+    const next: Record<string, GoalDraftRow> = {};
+    studentList.forEach((s) => {
+      next[s.id] = buildGoalDraftRow(s);
+    });
+    setGoalDrafts(next);
+  }, []);
 
   const loadTeamData = useCallback(async () => {
     setFeedback(null);
@@ -231,9 +361,14 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
       const st = previewStudents ? previewStudents.map((s) => ({ ...s })) : [];
       const runs = previewRuns ? previewRuns.map((r) => ({ ...r })) : [];
       const invite = previewInvite ? { ...previewInvite } : null;
+      const workouts = previewTeamWorkouts
+        ? previewTeamWorkouts.map((w) => ({ ...w, completedUserIds: [...(w.completedUserIds || [])] }))
+        : [];
       setStudents(st);
       setTeamRuns(runs);
       setTeamInvite(invite);
+      setTeamWorkouts(workouts);
+      syncGoalDraftsFromStudents(st);
       if (invite) {
         setDraftTeamName(invite.teamName);
         setDraftCoachName(invite.coachName);
@@ -255,10 +390,15 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
 
     setIsLoading(true);
     try {
-      const { students: st, runs, invite } = await fetchTeamDataForTeacher(teacher);
+      const [{ students: st, runs, invite }, workouts] = await Promise.all([
+        fetchTeamDataForTeacher(teacher),
+        fetchTeamWorkoutsForTeacher(teacher),
+      ]);
       setStudents(st);
       setTeamRuns(runs);
       setTeamInvite(invite);
+      setTeamWorkouts(workouts);
+      syncGoalDraftsFromStudents(st);
       if (invite) {
         setDraftTeamName(invite.teamName);
         setDraftCoachName(invite.coachName);
@@ -278,7 +418,15 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [teacher, previewMode, previewStudents, previewRuns, previewInvite]);
+  }, [
+    teacher,
+    previewMode,
+    previewStudents,
+    previewRuns,
+    previewInvite,
+    previewTeamWorkouts,
+    syncGoalDraftsFromStudents,
+  ]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1121,6 +1269,481 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  // ============================================================
+  // Coach Tools: Team Workout Planner & Bulk Attendance Handlers
+  // ============================================================
+
+  const activeStudentsList = useMemo(
+    () => students.filter((s) => s.accountStatus !== 'suspended'),
+    [students]
+  );
+
+  const resetWorkoutForm = () => {
+    setEditingWorkoutId(null);
+    setWoTitle('');
+    setWoDate(formatLocalDateString(new Date()));
+    setWoRunType('Interval Training');
+    setWoDistKm('6.0');
+    setWoDurationStr('24:00');
+    setWoPaceHint('');
+    setWoNotes('');
+  };
+
+  const applyWorkoutPreset = (preset: (typeof WORKOUT_PRESETS)[number]) => {
+    setWoTitle(preset.title);
+    setWoRunType(preset.runType);
+    setWoDistKm(preset.distanceKm.toString());
+    setWoDurationStr(formatDuration(preset.durationSeconds));
+    setWoPaceHint(preset.targetPaceHint);
+    setWoNotes(preset.notes);
+  };
+
+  const startEditingTeamWorkout = (w: PlannedTeamWorkout) => {
+    setEditingWorkoutId(w.id);
+    setWoTitle(w.title);
+    setWoDate(w.date);
+    setWoRunType(w.runType);
+    setWoDistKm(w.distanceKm.toString());
+    setWoDurationStr(w.durationSeconds > 0 ? formatDuration(w.durationSeconds) : '24:00');
+    setWoPaceHint(w.targetPaceHint || '');
+    setWoNotes(w.notes || '');
+  };
+
+  const getCompletedIdsForWorkout = useCallback(
+    (w: PlannedTeamWorkout): Set<string> => {
+      const set = new Set<string>(w.completedUserIds || []);
+      students.forEach((s) => {
+        const detId = buildTeamRunDocId(w.id, s.id);
+        if (
+          teamRuns.some(
+            (r) => r.userId === s.id && (r.plannedWorkoutId === w.id || r.id === detId)
+          )
+        ) {
+          set.add(s.id);
+        }
+      });
+      return set;
+    },
+    [students, teamRuns]
+  );
+
+  const handleSavePlannedWorkout = async (alsoMarkEveryoneCompleted = false) => {
+    if (isMutating) return;
+    const distKm = parseFloat(woDistKm);
+    const durSec = woDurationStr.trim() ? parseDuration(woDurationStr) : 0;
+    if (!woTitle.trim() || isNaN(distKm) || distKm <= 0) {
+      setFeedback({
+        type: 'error',
+        message: 'Enter a workout title and distance greater than 0 km.',
+      });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const existing = editingWorkoutId
+      ? teamWorkouts.find((w) => w.id === editingWorkoutId)
+      : undefined;
+    const workoutObj: PlannedTeamWorkout = {
+      id:
+        existing?.id ||
+        `tw_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      teamCode: teacher.inviteCode,
+      coachEmail: teacher.email,
+      date: woDate || formatLocalDateString(new Date()),
+      title: woTitle.trim().slice(0, 150),
+      runType: woRunType,
+      distanceKm: Number(Math.min(500, Math.max(0.1, distKm)).toFixed(2)),
+      durationSeconds: Math.min(86400, Math.max(0, durSec)),
+      targetPaceHint: woPaceHint.trim() ? woPaceHint.trim().slice(0, 80) : undefined,
+      notes: woNotes.trim() ? woNotes.trim().slice(0, 1000) : undefined,
+      completedUserIds: existing?.completedUserIds || [],
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    };
+
+    if (previewMode) {
+      let nextWorkout = workoutObj;
+      let addedCount = 0;
+      if (alsoMarkEveryoneCompleted && activeStudentsList.length > 0) {
+        const res = buildBulkTeamWorkoutRuns(workoutObj, activeStudentsList, teamRuns);
+        nextWorkout = res.updatedWorkout;
+        addedCount = res.createdRuns.length;
+        if (res.createdRuns.length > 0) {
+          setTeamRuns((prev) => [...res.createdRuns, ...prev]);
+        }
+      }
+      setTeamWorkouts((prev) => {
+        const filtered = prev.filter((w) => w.id !== nextWorkout.id);
+        return [nextWorkout, ...filtered].sort((a, b) =>
+          (b.date || '').localeCompare(a.date || '')
+        );
+      });
+      resetWorkoutForm();
+      setFeedback({
+        type: 'success',
+        message: alsoMarkEveryoneCompleted
+          ? `Saved "${nextWorkout.title}" and logged completion for ${addedCount} athlete${
+              addedCount === 1 ? '' : 's'
+            } (Dev sandbox — no database writes).`
+          : `${existing ? 'Updated' : 'Planned'} team workout "${nextWorkout.title}" (Dev sandbox — no database writes).`,
+      });
+      return;
+    }
+
+    setIsMutating(true);
+    setFeedback(null);
+    try {
+      const saved = await teacherSaveTeamWorkout(teacher, workoutObj, !existing);
+      let finalWorkout = saved;
+      let addedCount = 0;
+      if (alsoMarkEveryoneCompleted && activeStudentsList.length > 0) {
+        const bulkRes = await teacherBulkCompleteWorkout(
+          teacher,
+          saved,
+          activeStudentsList,
+          teamRuns
+        );
+        finalWorkout = bulkRes.updatedWorkout;
+        addedCount = bulkRes.createdRuns.length;
+        if (bulkRes.createdRuns.length > 0) {
+          setTeamRuns((prev) => [...bulkRes.createdRuns, ...prev]);
+        }
+      }
+      setTeamWorkouts((prev) => {
+        const filtered = prev.filter((w) => w.id !== finalWorkout.id);
+        return [finalWorkout, ...filtered].sort((a, b) =>
+          (b.date || '').localeCompare(a.date || '')
+        );
+      });
+      resetWorkoutForm();
+      setFeedback({
+        type: 'success',
+        message: alsoMarkEveryoneCompleted
+          ? `Saved "${finalWorkout.title}" and logged completion for ${addedCount} athlete${
+              addedCount === 1 ? '' : 's'
+            }.`
+          : `${existing ? 'Updated' : 'Planned'} team workout "${finalWorkout.title}".`,
+      });
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to save planned team workout.',
+      });
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
+  const handleBulkCompleteWorkout = async (
+    workout: PlannedTeamWorkout,
+    targetStudents: UserProfile[]
+  ) => {
+    if (isMutating) return;
+    if (targetStudents.length === 0) {
+      setFeedback({
+        type: 'error',
+        message: 'Select at least one athlete to mark completed.',
+      });
+      return;
+    }
+
+    if (previewMode) {
+      const res = buildBulkTeamWorkoutRuns(workout, targetStudents, teamRuns);
+      if (res.createdRuns.length > 0) {
+        setTeamRuns((prev) => [...res.createdRuns, ...prev]);
+      }
+      setTeamWorkouts((prev) =>
+        prev.map((w) => (w.id === res.updatedWorkout.id ? res.updatedWorkout : w))
+      );
+      setPickingAthletesWorkoutId(null);
+      setFeedback({
+        type: 'success',
+        message:
+          res.createdRuns.length > 0
+            ? `Logged "${workout.title}" for ${res.createdRuns.length} athlete${
+                res.createdRuns.length === 1 ? '' : 's'
+              }${
+                res.skippedUserIds.length > 0
+                  ? ` (${res.skippedUserIds.length} already logged)`
+                  : ''
+              } (Dev sandbox — no database writes).`
+            : `All selected athletes already completed "${workout.title}" (Dev sandbox).`,
+      });
+      return;
+    }
+
+    setIsMutating(true);
+    setFeedback(null);
+    try {
+      const res = await teacherBulkCompleteWorkout(
+        teacher,
+        workout,
+        targetStudents,
+        teamRuns
+      );
+      if (res.createdRuns.length > 0) {
+        setTeamRuns((prev) => [...res.createdRuns, ...prev]);
+      }
+      setTeamWorkouts((prev) =>
+        prev.map((w) => (w.id === res.updatedWorkout.id ? res.updatedWorkout : w))
+      );
+      setPickingAthletesWorkoutId(null);
+      setFeedback({
+        type: 'success',
+        message:
+          res.createdRuns.length > 0
+            ? `Logged "${workout.title}" for ${res.createdRuns.length} athlete${
+                res.createdRuns.length === 1 ? '' : 's'
+              }${
+                res.skippedCount > 0 ? ` (${res.skippedCount} already logged)` : ''
+              }.`
+            : `All selected athletes already completed "${workout.title}".`,
+      });
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to log workout for team.',
+      });
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
+  const handleDeletePlannedWorkout = async (workout: PlannedTeamWorkout) => {
+    if (isMutating) return;
+    if (previewMode) {
+      setTeamWorkouts((prev) => prev.filter((w) => w.id !== workout.id));
+      setConfirmDeleteWorkoutId(null);
+      if (editingWorkoutId === workout.id) resetWorkoutForm();
+      setFeedback({
+        type: 'success',
+        message: `Deleted team workout "${workout.title}" (Dev sandbox — no database writes).`,
+      });
+      return;
+    }
+
+    setIsMutating(true);
+    setFeedback(null);
+    try {
+      await teacherDeleteTeamWorkout(workout);
+      setTeamWorkouts((prev) => prev.filter((w) => w.id !== workout.id));
+      setConfirmDeleteWorkoutId(null);
+      if (editingWorkoutId === workout.id) resetWorkoutForm();
+      setFeedback({
+        type: 'success',
+        message: `Deleted team workout "${workout.title}".`,
+      });
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to delete team workout.',
+      });
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
+  // ============================================================
+  // Coach Tools: Multi-Athlete Goal Manager Handlers
+  // ============================================================
+
+  const updateGoalDraftField = (
+    studentId: string,
+    patch: Partial<GoalDraftRow>
+  ) => {
+    setGoalDrafts((prev) => {
+      const base =
+        prev[studentId] ||
+        buildGoalDraftRow(
+          students.find((s) => s.id === studentId) || {
+            id: studentId,
+            email: '',
+            displayName: '',
+            weeklyRunGoal: 3,
+            unitPreference: 'km',
+          }
+        );
+      return {
+        ...prev,
+        [studentId]: { ...base, ...patch },
+      };
+    });
+  };
+
+  const isGoalRowModified = useCallback(
+    (p: UserProfile): boolean => {
+      const draft = goalDrafts[p.id];
+      if (!draft) return false;
+      const base = buildGoalDraftRow(p);
+      return (
+        draft.targetDistanceKm !== base.targetDistanceKm ||
+        draft.targetGoalName !== base.targetGoalName ||
+        draft.targetTimeStr !== base.targetTimeStr ||
+        draft.weeklyRunGoal !== base.weeklyRunGoal ||
+        draft.weeklyDistKm !== base.weeklyDistKm ||
+        draft.targetGoalDate !== base.targetGoalDate ||
+        draft.yraaDivision !== base.yraaDivision ||
+        draft.coachNotes !== base.coachNotes
+      );
+    },
+    [goalDrafts]
+  );
+
+  const modifiedGoalStudents = useMemo(
+    () => students.filter(isGoalRowModified),
+    [students, isGoalRowModified]
+  );
+
+  const handleApplyBatchGoalPreset = () => {
+    const scopeIds = new Set<string>();
+    students.forEach((s) => {
+      if (batchScope === 'all') scopeIds.add(s.id);
+      else if (batchScope === 'active' && s.accountStatus !== 'suspended') scopeIds.add(s.id);
+      else if (batchScope === 'selected' && selectedGoalStudentIds.has(s.id)) scopeIds.add(s.id);
+    });
+
+    if (scopeIds.size === 0) {
+      setFeedback({
+        type: 'error',
+        message: 'No athletes match the selected scope. Check athletes or pick All Active.',
+      });
+      return;
+    }
+
+    const parsedDist = batchDistKm ? parseFloat(batchDistKm) : undefined;
+    const foundPreset = batchDistKm
+      ? TARGET_DISTANCE_OPTIONS.find((o) => o.km.toString() === batchDistKm)
+      : undefined;
+    const parsedTimeSec = batchTargetTimeStr.trim()
+      ? parseDuration(batchTargetTimeStr)
+      : undefined;
+    const parsedWeeklyRuns = batchWeeklyRuns.trim()
+      ? Math.min(14, Math.max(1, parseInt(batchWeeklyRuns, 10) || 3))
+      : undefined;
+    const parsedWeeklyDist = batchWeeklyDistKm.trim()
+      ? Math.min(500, Math.max(0, parseFloat(batchWeeklyDistKm) || 0))
+      : undefined;
+
+    if (
+      parsedDist === undefined &&
+      (!parsedTimeSec || parsedTimeSec <= 0) &&
+      parsedWeeklyRuns === undefined &&
+      parsedWeeklyDist === undefined &&
+      !batchGoalDate.trim() &&
+      !batchDivision
+    ) {
+      setFeedback({
+        type: 'error',
+        message: 'Fill at least one goal field in the Batch Preset bar before applying.',
+      });
+      return;
+    }
+
+    const baseList = students.map((s) => {
+      const d = goalDrafts[s.id] || buildGoalDraftRow(s);
+      const tSec = d.targetTimeStr.trim() ? parseDuration(d.targetTimeStr) : undefined;
+      return {
+        ...s,
+        targetDistanceKm: parseFloat(d.targetDistanceKm) || 6.0,
+        targetGoalName: d.targetGoalName,
+        target6kTimeSeconds: tSec && tSec > 0 ? tSec : undefined,
+        weeklyRunGoal: parseInt(d.weeklyRunGoal, 10) || 3,
+        weeklyDistanceGoalKm: d.weeklyDistKm.trim() ? parseFloat(d.weeklyDistKm) : undefined,
+        targetGoalDate: d.targetGoalDate.trim() || undefined,
+        yraaDivision: d.yraaDivision,
+        coachNotes: d.coachNotes.trim() || undefined,
+      };
+    });
+
+    const applied = applyBatchGoalPresetToProfiles(baseList, scopeIds, {
+      ...(parsedDist !== undefined
+        ? {
+            targetDistanceKm: parsedDist,
+            targetGoalName: foundPreset ? foundPreset.label : `${parsedDist}K Race`,
+          }
+        : {}),
+      ...(parsedTimeSec && parsedTimeSec > 0 ? { target6kTimeSeconds: parsedTimeSec } : {}),
+      ...(parsedWeeklyRuns !== undefined ? { weeklyRunGoal: parsedWeeklyRuns } : {}),
+      ...(parsedWeeklyDist !== undefined ? { weeklyDistanceGoalKm: parsedWeeklyDist } : {}),
+      ...(batchGoalDate.trim() ? { targetGoalDate: batchGoalDate.trim() } : {}),
+      ...(batchDivision ? { yraaDivision: batchDivision as YraaDivisionId } : {}),
+    });
+
+    const nextDrafts: Record<string, GoalDraftRow> = {};
+    applied.forEach((p) => {
+      nextDrafts[p.id] = buildGoalDraftRow(p);
+    });
+    setGoalDrafts(nextDrafts);
+    setFeedback({
+      type: 'success',
+      message: `Applied goal preset to ${scopeIds.size} athlete${
+        scopeIds.size === 1 ? '' : 's'
+      }. Review the table and click "Save Goal Changes" to persist.`,
+    });
+  };
+
+  const handleSaveAllGoalChanges = async () => {
+    if (isMutating || modifiedGoalStudents.length === 0) return;
+
+    const updatedProfiles: UserProfile[] = modifiedGoalStudents.map((orig) => {
+      const d = goalDrafts[orig.id] || buildGoalDraftRow(orig);
+      const distKm = Math.min(100, Math.max(0.1, parseFloat(d.targetDistanceKm) || 6));
+      const parsedTime = d.targetTimeStr.trim() ? parseDuration(d.targetTimeStr) : undefined;
+      const weeklyRuns = Math.min(14, Math.max(1, parseInt(d.weeklyRunGoal, 10) || 3));
+      const weeklyDist = d.weeklyDistKm.trim() ? parseFloat(d.weeklyDistKm) : undefined;
+
+      return {
+        ...orig,
+        targetDistanceKm: distKm,
+        targetGoalName: d.targetGoalName.trim() || `${distKm}K Race`,
+        target6kTimeSeconds: parsedTime && parsedTime > 0 ? parsedTime : undefined,
+        hasCustomTarget: Boolean(parsedTime && parsedTime > 0),
+        weeklyRunGoal: weeklyRuns,
+        weeklyDistanceGoalKm: weeklyDist && weeklyDist > 0 ? weeklyDist : undefined,
+        targetGoalDate: d.targetGoalDate.trim() || undefined,
+        yraaDivision: d.yraaDivision,
+        coachNotes: d.coachNotes.trim() || undefined,
+      };
+    });
+
+    if (previewMode) {
+      const updatedMap = new Map(updatedProfiles.map((p) => [p.id, p]));
+      const nextStudents = students.map((s) => updatedMap.get(s.id) || s);
+      setStudents(nextStudents);
+      syncGoalDraftsFromStudents(nextStudents);
+      setFeedback({
+        type: 'success',
+        message: `Saved goal updates for ${updatedProfiles.length} athlete${
+          updatedProfiles.length === 1 ? '' : 's'
+        } (Dev sandbox — no database writes).`,
+      });
+      return;
+    }
+
+    setIsMutating(true);
+    setFeedback(null);
+    try {
+      const savedList = await teacherBatchUpdateStudentGoals(teacher, updatedProfiles);
+      const savedMap = new Map(savedList.map((p) => [p.id, p]));
+      const nextStudents = students.map((s) => savedMap.get(s.id) || s);
+      setStudents(nextStudents);
+      syncGoalDraftsFromStudents(nextStudents);
+      setFeedback({
+        type: 'success',
+        message: `Saved goal updates for ${savedList.length} athlete${
+          savedList.length === 1 ? '' : 's'
+        }.`,
+      });
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to save athlete goals.',
+      });
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -1306,8 +1929,10 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
               {(
                 [
                   { id: 'roster', label: 'Roster & Student Control', icon: Users },
-                  { id: 'activity', label: 'Team Monitoring & Leaderboard', icon: Activity },
-                  { id: 'team', label: 'Invite Link & Team Broadcast', icon: Megaphone },
+                  { id: 'workouts', label: 'Team Workouts', icon: ClipboardList },
+                  { id: 'goals', label: 'Goal Manager', icon: Target },
+                  { id: 'activity', label: 'Leaderboard & Feed', icon: Activity },
+                  { id: 'team', label: 'Invite & Broadcast', icon: Megaphone },
                 ] as const
               ).map((tab) => {
                 const Icon = tab.icon;
@@ -2467,6 +3092,781 @@ export const TeacherPanelModal: React.FC<TeacherPanelModalProps> = ({
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* TAB 1B: TEAM WORKOUT PLANNER & BULK ATTENDANCE */}
+          {activeTab === 'workouts' && (
+            <div className="space-y-4">
+              {/* Plan Workout Form */}
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#09121B] border border-slate-200 dark:border-slate-800 space-y-3 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                      {editingWorkoutId ? 'Edit Planned Team Workout' : 'Plan Team Workout'}
+                    </h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Publish a workout to your team and log completion for everyone at once.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {WORKOUT_PRESETS.map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => applyWorkoutPreset(preset)}
+                        className="px-2.5 py-1 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 hover:border-emerald-500/50 text-[11px] font-semibold text-slate-700 dark:text-slate-200 cursor-pointer whitespace-nowrap"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5">
+                  <label className="space-y-1 lg:col-span-2">
+                    <span className="text-[11px] font-semibold text-slate-500">Workout Title</span>
+                    <input
+                      type="text"
+                      value={woTitle}
+                      onChange={(e) => setWoTitle(e.target.value)}
+                      maxLength={150}
+                      placeholder="e.g. 4x1K Track Intervals"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[11px] font-semibold text-slate-500">Date</span>
+                    <input
+                      type="date"
+                      value={woDate}
+                      onChange={(e) => setWoDate(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[11px] font-semibold text-slate-500">Category</span>
+                    <select
+                      value={woRunType}
+                      onChange={(e) => setWoRunType(e.target.value as RunType)}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                    >
+                      {RUN_TYPE_OPTIONS.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[11px] font-semibold text-slate-500">Distance (km)</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      max="500"
+                      value={woDistKm}
+                      onChange={(e) => setWoDistKm(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white tabular-nums"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[11px] font-semibold text-slate-500">
+                      Est. Duration (mm:ss)
+                    </span>
+                    <input
+                      type="text"
+                      value={woDurationStr}
+                      onChange={(e) => setWoDurationStr(e.target.value)}
+                      placeholder="24:00"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono"
+                    />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <label className="space-y-1">
+                    <span className="text-[11px] font-semibold text-slate-500">
+                      Target Pace / Splits Hint (optional)
+                    </span>
+                    <input
+                      type="text"
+                      value={woPaceHint}
+                      onChange={(e) => setWoPaceHint(e.target.value)}
+                      maxLength={80}
+                      placeholder="e.g. 4:00 /km reps · 90s rest"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                    />
+                  </label>
+                  <label className="space-y-1 sm:col-span-2">
+                    <span className="text-[11px] font-semibold text-slate-500">
+                      Workout Instructions / Notes
+                    </span>
+                    <input
+                      type="text"
+                      value={woNotes}
+                      onChange={(e) => setWoNotes(e.target.value)}
+                      maxLength={1000}
+                      placeholder="Warmup, rep structure, cooldown details..."
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                    />
+                  </label>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                  {editingWorkoutId && (
+                    <button
+                      type="button"
+                      onClick={resetWorkoutForm}
+                      className="px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer"
+                    >
+                      Cancel Edit
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={isMutating}
+                    onClick={() => handleSavePlannedWorkout(false)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{editingWorkoutId ? 'Save Workout Edits' : 'Save Planned Workout'}</span>
+                  </button>
+                  {!editingWorkoutId && (
+                    <button
+                      type="button"
+                      disabled={isMutating || activeStudentsList.length === 0}
+                      onClick={() => handleSavePlannedWorkout(true)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                    >
+                      <UsersRound className="w-3.5 h-3.5" />
+                      <span>
+                        Plan &amp; Mark Everyone Completed ({activeStudentsList.length})
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Scheduled Workouts List & Bulk Attendance */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-white">
+                  <span>Scheduled &amp; Recent Team Workouts ({teamWorkouts.length})</span>
+                  <span className="text-[11px] font-normal text-slate-500 tabular-nums">
+                    {activeStudentsList.length} active athletes on roster
+                  </span>
+                </div>
+
+                {teamWorkouts.length === 0 ? (
+                  <div className="p-8 rounded-xl bg-slate-50 dark:bg-[#09121B] border border-slate-200 dark:border-slate-800 text-center text-xs text-slate-500">
+                    No team workouts planned yet. Use the planner above or click a preset to create one.
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {teamWorkouts.map((w) => {
+                      const completedSet = getCompletedIdsForWorkout(w);
+                      const completedActiveCount = activeStudentsList.filter((s) =>
+                        completedSet.has(s.id)
+                      ).length;
+                      const remainingActiveCount = Math.max(
+                        0,
+                        activeStudentsList.length - completedActiveCount
+                      );
+                      const allActiveDone =
+                        activeStudentsList.length > 0 && remainingActiveCount === 0;
+                      const isPicking = pickingAthletesWorkoutId === w.id;
+
+                      return (
+                        <div
+                          key={w.id}
+                          className="p-3.5 rounded-xl bg-white dark:bg-[#0B1520] border border-slate-200 dark:border-slate-800 space-y-2.5 text-xs"
+                        >
+                          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+                            <div className="min-w-0 space-y-0.5">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                <span className="font-bold text-sm text-slate-900 dark:text-white">
+                                  {w.title}
+                                </span>
+                                <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                                  · {w.date} · {w.runType}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] font-mono tabular-nums text-slate-600 dark:text-slate-300">
+                                <span className="font-bold text-slate-900 dark:text-white">
+                                  {w.distanceKm.toFixed(1)} km
+                                </span>
+                                {w.durationSeconds > 0 && (
+                                  <span>{formatDuration(w.durationSeconds)}</span>
+                                )}
+                                {w.durationSeconds > 0 && (
+                                  <span className="text-[#0593C6] font-semibold">
+                                    {formatPace(
+                                      calculatePaceSecPerKm(w.distanceKm, w.durationSeconds),
+                                      'km'
+                                    )}
+                                  </span>
+                                )}
+                                <span
+                                  className={`font-sans font-bold ${
+                                    allActiveDone
+                                      ? 'text-emerald-600 dark:text-emerald-400'
+                                      : 'text-slate-600 dark:text-slate-300'
+                                  }`}
+                                >
+                                  · {completedActiveCount}/{activeStudentsList.length} active completed
+                                </span>
+                              </div>
+                              {(w.targetPaceHint || w.notes) && (
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug pt-0.5">
+                                  {[w.targetPaceHint, w.notes].filter(Boolean).join(' · ')}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                disabled={
+                                  isMutating || activeStudentsList.length === 0 || allActiveDone
+                                }
+                                onClick={() => handleBulkCompleteWorkout(w, activeStudentsList)}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold cursor-pointer whitespace-nowrap transition-colors ${
+                                  allActiveDone
+                                    ? 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 cursor-default'
+                                    : 'bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50'
+                                }`}
+                              >
+                                {allActiveDone ? (
+                                  <>
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Everyone Completed</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <UsersRound className="w-3.5 h-3.5" />
+                                    <span>Everyone Did It ({remainingActiveCount} left)</span>
+                                  </>
+                                )}
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={students.length === 0}
+                                onClick={() => {
+                                  if (isPicking) {
+                                    setPickingAthletesWorkoutId(null);
+                                  } else {
+                                    setPickingAthletesWorkoutId(w.id);
+                                    setPickedAthleteIds(
+                                      new Set(activeStudentsList.map((s) => s.id))
+                                    );
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold cursor-pointer whitespace-nowrap"
+                              >
+                                <Users className="w-3.5 h-3.5" />
+                                <span>{isPicking ? 'Hide List' : 'Pick Athletes'}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => startEditingTeamWorkout(w)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-[#0593C6] hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                                title="Edit team workout"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+
+                              {confirmDeleteWorkoutId === w.id ? (
+                                <button
+                                  type="button"
+                                  disabled={isMutating}
+                                  onClick={() => handleDeletePlannedWorkout(w)}
+                                  className="px-2.5 py-1 rounded-lg bg-rose-600 text-white text-[11px] font-bold cursor-pointer"
+                                >
+                                  Delete?
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteWorkoutId(w.id)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-500/10 cursor-pointer"
+                                  title="Delete team workout"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Expandable Athlete Attendance Checklist */}
+                          {isPicking && (
+                            <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#09121B] border border-slate-200 dark:border-slate-800 space-y-2.5">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-semibold text-slate-700 dark:text-slate-200">
+                                  Select athletes to mark completed ({pickedAthleteIds.size} selected)
+                                </span>
+                                <div className="flex items-center gap-2 text-[11px]">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setPickedAthleteIds(
+                                        new Set(activeStudentsList.map((s) => s.id))
+                                      )
+                                    }
+                                    className="font-semibold text-[#0593C6] hover:underline cursor-pointer"
+                                  >
+                                    All Active
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setPickedAthleteIds(new Set(students.map((s) => s.id)))
+                                    }
+                                    className="font-semibold text-[#0593C6] hover:underline cursor-pointer"
+                                  >
+                                    Entire Roster
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPickedAthleteIds(new Set())}
+                                    className="font-semibold text-slate-500 hover:underline cursor-pointer"
+                                  >
+                                    Clear
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                                {students.map((s) => {
+                                  const alreadyDone = completedSet.has(s.id);
+                                  const checked = pickedAthleteIds.has(s.id);
+                                  return (
+                                    <label
+                                      key={s.id}
+                                      className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-800 cursor-pointer"
+                                    >
+                                      <span className="flex items-center gap-2 min-w-0">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => {
+                                            setPickedAthleteIds((prev) => {
+                                              const next = new Set(prev);
+                                              if (next.has(s.id)) next.delete(s.id);
+                                              else next.add(s.id);
+                                              return next;
+                                            });
+                                          }}
+                                          className="rounded border-slate-300 text-emerald-600"
+                                        />
+                                        <span className="truncate font-semibold text-slate-900 dark:text-white">
+                                          {s.displayName || 'Unnamed Athlete'}
+                                        </span>
+                                      </span>
+                                      <span className="text-[11px] shrink-0">
+                                        {alreadyDone ? (
+                                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                                            Done
+                                          </span>
+                                        ) : s.accountStatus === 'suspended' ? (
+                                          <span className="text-rose-500">Suspended</span>
+                                        ) : (
+                                          <span className="text-slate-400">Pending</span>
+                                        )}
+                                      </span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="flex justify-end gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setPickingAthletesWorkoutId(null)}
+                                  className="px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isMutating || pickedAthleteIds.size === 0}
+                                  onClick={() => {
+                                    const targets = students.filter((s) =>
+                                      pickedAthleteIds.has(s.id)
+                                    );
+                                    handleBulkCompleteWorkout(w, targets);
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer disabled:opacity-50"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>
+                                    Log Completion for Selected ({pickedAthleteIds.size})
+                                  </span>
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 1C: MULTI-ATHLETE GOAL MANAGER */}
+          {activeTab === 'goals' && (
+            <div className="space-y-4">
+              {/* Batch Preset Assigner */}
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#09121B] border border-slate-200 dark:border-slate-800 space-y-3 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                      Batch Assign &amp; Customize Athletes&apos; Goals
+                    </h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Push a race distance, target time, weekly goal, or race day to multiple athletes at once, or edit each athlete individually below.
+                    </p>
+                  </div>
+                  <select
+                    value={batchScope}
+                    onChange={(e) =>
+                      setBatchScope(e.target.value as 'active' | 'selected' | 'all')
+                    }
+                    className="px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 font-semibold text-slate-800 dark:text-slate-100"
+                  >
+                    <option value="active">
+                      Apply to: All Active Athletes ({activeStudentsList.length})
+                    </option>
+                    <option value="selected">
+                      Apply to: Checked Athletes ({selectedGoalStudentIds.size})
+                    </option>
+                    <option value="all">Apply to: Entire Roster ({students.length})</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2">
+                  <label className="space-y-1">
+                    <span className="text-[11px] font-semibold text-slate-500">Race Distance</span>
+                    <select
+                      value={batchDistKm}
+                      onChange={(e) => setBatchDistKm(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                    >
+                      <option value="">No change</option>
+                      {TARGET_DISTANCE_OPTIONS.map((opt) => (
+                        <option key={opt.label} value={opt.km.toString()}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[11px] font-semibold text-slate-500">
+                      Target Time (mm:ss)
+                    </span>
+                    <input
+                      type="text"
+                      value={batchTargetTimeStr}
+                      onChange={(e) => setBatchTargetTimeStr(e.target.value)}
+                      placeholder="Keep current"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[11px] font-semibold text-slate-500">Runs / Wk</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={14}
+                      value={batchWeeklyRuns}
+                      onChange={(e) => setBatchWeeklyRuns(e.target.value)}
+                      placeholder="Keep"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white tabular-nums"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[11px] font-semibold text-slate-500">Weekly km</span>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min={0}
+                      max={500}
+                      value={batchWeeklyDistKm}
+                      onChange={(e) => setBatchWeeklyDistKm(e.target.value)}
+                      placeholder="Keep"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white tabular-nums"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[11px] font-semibold text-slate-500">Race Day</span>
+                    <input
+                      type="date"
+                      value={batchGoalDate}
+                      onChange={(e) => setBatchGoalDate(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[11px] font-semibold text-slate-500">Division</span>
+                    <select
+                      value={batchDivision}
+                      onChange={(e) => setBatchDivision(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
+                    >
+                      <option value="">No change</option>
+                      {YRAA_DIVISION_LIST.map((div) => (
+                        <option key={div.id} value={div.id}>
+                          {div.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                    <span>
+                      Select rows below to target specific athletes, or apply across Active / Entire Roster.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleApplyBatchGoalPreset}
+                    disabled={students.length === 0}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#0593C6] hover:bg-[#047ea8] text-white font-bold cursor-pointer disabled:opacity-45 whitespace-nowrap"
+                  >
+                    <Target className="w-3.5 h-3.5" />
+                    <span>Apply Preset to Table</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Save Bar + Editable Multi-Athlete Goal Table */}
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-white dark:bg-[#0B1520]">
+                <div className="px-4 py-2.5 bg-slate-50 dark:bg-[#09121B] border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="font-bold text-slate-800 dark:text-white tabular-nums">
+                    Individual Athlete Goals ({students.length})
+                    {modifiedGoalStudents.length > 0 && (
+                      <span className="ml-2 text-amber-600 dark:text-amber-400 font-semibold">
+                        · {modifiedGoalStudents.length} unsaved
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {modifiedGoalStudents.length > 0 && (
+                      <button
+                        type="button"
+                        disabled={isMutating}
+                        onClick={() => syncGoalDraftsFromStudents(students)}
+                        className="px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800 font-semibold cursor-pointer whitespace-nowrap"
+                      >
+                        Discard Changes
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={isMutating || modifiedGoalStudents.length === 0}
+                      onClick={handleSaveAllGoalChanges}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer disabled:opacity-45 whitespace-nowrap"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>
+                        {isMutating
+                          ? 'Saving Goals...'
+                          : `Save Goal Changes (${modifiedGoalStudents.length})`}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {students.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-slate-500">
+                    No athletes on your roster yet.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50/70 dark:bg-[#09121B]/70 text-[11px] text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                        <tr>
+                          <th className="py-2.5 pl-3 pr-2 w-8">
+                            <input
+                              type="checkbox"
+                              checked={
+                                students.length > 0 &&
+                                selectedGoalStudentIds.size === students.length
+                              }
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedGoalStudentIds(new Set(students.map((s) => s.id)));
+                                } else {
+                                  setSelectedGoalStudentIds(new Set());
+                                }
+                              }}
+                              aria-label="Select all athletes"
+                              className="rounded border-slate-300 text-[#0593C6]"
+                            />
+                          </th>
+                          <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Athlete</th>
+                          <th className="py-2.5 px-2 font-semibold whitespace-nowrap">Goal Race</th>
+                          <th className="py-2.5 px-2 font-semibold whitespace-nowrap">Target Time</th>
+                          <th className="py-2.5 px-2 font-semibold whitespace-nowrap">Runs/Wk</th>
+                          <th className="py-2.5 px-2 font-semibold whitespace-nowrap">Weekly km</th>
+                          <th className="py-2.5 px-2 font-semibold whitespace-nowrap">Race Date</th>
+                          <th className="py-2.5 px-2 font-semibold whitespace-nowrap">Division</th>
+                          <th className="py-2.5 px-2.5 font-semibold whitespace-nowrap">Coach Note</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200/70 dark:divide-slate-800/80">
+                        {students.map((s) => {
+                          const d = goalDrafts[s.id] || buildGoalDraftRow(s);
+                          const dirty = isGoalRowModified(s);
+                          return (
+                            <tr
+                              key={s.id}
+                              className={
+                                dirty
+                                  ? 'bg-amber-500/5 dark:bg-amber-500/10'
+                                  : 'hover:bg-slate-50/70 dark:hover:bg-[#09121B]/50'
+                              }
+                            >
+                              <td className="py-2 pl-3 pr-2">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedGoalStudentIds.has(s.id)}
+                                  onChange={() => {
+                                    setSelectedGoalStudentIds((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(s.id)) next.delete(s.id);
+                                      else next.add(s.id);
+                                      return next;
+                                    });
+                                  }}
+                                  aria-label={`Select ${s.displayName}`}
+                                  className="rounded border-slate-300 text-[#0593C6]"
+                                />
+                              </td>
+                              <td className="py-2 px-2.5 whitespace-nowrap">
+                                <div className="font-bold text-slate-900 dark:text-white">
+                                  {s.displayName || 'Unnamed Athlete'}
+                                </div>
+                                <div className="text-[11px] text-slate-500">
+                                  {s.accountStatus === 'suspended' ? 'Suspended' : s.athleteLevel || 'XC'}
+                                  {dirty && (
+                                    <span className="ml-1.5 text-amber-600 dark:text-amber-400 font-semibold">
+                                      · Modified
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-2 px-2">
+                                <select
+                                  value={d.targetDistanceKm}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const found = TARGET_DISTANCE_OPTIONS.find(
+                                      (o) => o.km.toString() === val
+                                    );
+                                    updateGoalDraftField(s.id, {
+                                      targetDistanceKm: val,
+                                      targetGoalName: found ? found.label : `${val}K Race`,
+                                    });
+                                  }}
+                                  className="px-2 py-1 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs"
+                                >
+                                  {TARGET_DISTANCE_OPTIONS.map((opt) => (
+                                    <option key={opt.label} value={opt.km.toString()}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="py-2 px-2">
+                                <input
+                                  type="text"
+                                  value={d.targetTimeStr}
+                                  onChange={(e) =>
+                                    updateGoalDraftField(s.id, { targetTimeStr: e.target.value })
+                                  }
+                                  placeholder="21:00"
+                                  className="w-20 px-2 py-1 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-xs"
+                                />
+                              </td>
+                              <td className="py-2 px-2">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={14}
+                                  value={d.weeklyRunGoal}
+                                  onChange={(e) =>
+                                    updateGoalDraftField(s.id, { weeklyRunGoal: e.target.value })
+                                  }
+                                  className="w-16 px-2 py-1 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white tabular-nums text-xs"
+                                />
+                              </td>
+                              <td className="py-2 px-2">
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  min={0}
+                                  max={500}
+                                  value={d.weeklyDistKm}
+                                  onChange={(e) =>
+                                    updateGoalDraftField(s.id, { weeklyDistKm: e.target.value })
+                                  }
+                                  placeholder="—"
+                                  className="w-18 px-2 py-1 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white tabular-nums text-xs"
+                                />
+                              </td>
+                              <td className="py-2 px-2">
+                                <input
+                                  type="date"
+                                  value={d.targetGoalDate}
+                                  onChange={(e) =>
+                                    updateGoalDraftField(s.id, { targetGoalDate: e.target.value })
+                                  }
+                                  className="px-2 py-1 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs"
+                                />
+                              </td>
+                              <td className="py-2 px-2">
+                                <select
+                                  value={d.yraaDivision}
+                                  onChange={(e) =>
+                                    updateGoalDraftField(s.id, {
+                                      yraaDivision: e.target.value as YraaDivisionId,
+                                    })
+                                  }
+                                  className="px-2 py-1 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs"
+                                >
+                                  {YRAA_DIVISION_LIST.map((div) => (
+                                    <option key={div.id} value={div.id}>
+                                      {div.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="py-2 px-2.5">
+                                <input
+                                  type="text"
+                                  value={d.coachNotes}
+                                  onChange={(e) =>
+                                    updateGoalDraftField(s.id, { coachNotes: e.target.value })
+                                  }
+                                  maxLength={1000}
+                                  placeholder="Optional coach note"
+                                  className="w-40 px-2 py-1 rounded-lg bg-white dark:bg-[#0D1620] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs"
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

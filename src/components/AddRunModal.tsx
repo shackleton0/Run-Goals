@@ -199,6 +199,7 @@ export const AddRunModal: React.FC<AddRunModalProps> = ({
       avgCadence: avgCadence ? parseInt(avgCadence, 10) : undefined,
       elevationGainMeters: elevationGain ? parseInt(elevationGain, 10) : undefined,
       source: 'manual',
+      plannedWorkoutId: initialData?.plannedWorkoutId,
       notes: notes.trim() || undefined,
       createdAt: new Date().toISOString(),
     };

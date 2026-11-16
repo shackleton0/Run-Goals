@@ -37,7 +37,9 @@ import {
   AppAnnouncement,
   AdminAuditLog,
   AdminAuditAction,
+  PlannedTeamWorkout,
 } from '../types/running';
+import { buildBulkTeamWorkoutRuns } from '../utils/runningCalculations';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -1790,4 +1792,167 @@ export async function leaveCurrentTeam(userId: string): Promise<void> {
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
   }
+}
+
+// ============================================================
+// Coach Team Workout Planner, Bulk Attendance & Multi-Goal Sync
+// ============================================================
+
+export async function fetchTeamWorkoutsForTeacher(
+  teacher: TeacherRecord
+): Promise<PlannedTeamWorkout[]> {
+  try {
+    const snap = await getDocs(
+      query(collection(db, 'teamWorkouts'), where('teamCode', '==', teacher.inviteCode))
+    );
+    const list = snap.docs.map((d) => d.data() as PlannedTeamWorkout);
+    list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    return list;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'teamWorkouts');
+  }
+}
+
+export function subscribeTeamWorkouts(
+  teamCode: string | undefined,
+  onWorkouts: (workouts: PlannedTeamWorkout[]) => void
+): Unsubscribe {
+  const cleaned = normalizeInviteCode(teamCode || '');
+  if (!cleaned) {
+    onWorkouts([]);
+    return () => {};
+  }
+  const q = query(collection(db, 'teamWorkouts'), where('teamCode', '==', cleaned));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const list = snapshot.docs.map((d) => d.data() as PlannedTeamWorkout);
+      list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      onWorkouts(list);
+    },
+    (error) => {
+      console.warn('Could not subscribe to team workouts:', error);
+    }
+  );
+}
+
+export async function teacherSaveTeamWorkout(
+  teacher: TeacherRecord,
+  workout: PlannedTeamWorkout,
+  isNew: boolean
+): Promise<PlannedTeamWorkout> {
+  if (teacher.status !== 'active') {
+    throw new Error('Your teacher account is suspended.');
+  }
+  const now = new Date().toISOString();
+  const safeId = sanitizeDocId(workout.id || `tw_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`);
+  const normalized: PlannedTeamWorkout = {
+    id: safeId,
+    teamCode: teacher.inviteCode,
+    coachEmail: (workout.coachEmail || teacher.email).slice(0, 256),
+    date: (workout.date || new Date().toISOString().split('T')[0]).slice(0, 32),
+    title: (workout.title || 'Team Workout').trim().slice(0, 150),
+    runType: workout.runType,
+    distanceKm: Math.min(500, Math.max(0.1, Number(workout.distanceKm) || 1)),
+    durationSeconds: Math.min(86400, Math.max(0, Math.round(workout.durationSeconds || 0))),
+    targetPaceHint: workout.targetPaceHint?.trim()
+      ? workout.targetPaceHint.trim().slice(0, 80)
+      : undefined,
+    notes: workout.notes?.trim() ? workout.notes.trim().slice(0, 1000) : undefined,
+    completedUserIds: Array.from(new Set(workout.completedUserIds || [])).slice(0, 500),
+    createdAt: workout.createdAt || now,
+    updatedAt: now,
+  };
+
+  const cleanPayload = cleanObjectForFirestore(normalized);
+  const payload: Record<string, unknown> = { ...cleanPayload };
+  if (!isNew) {
+    if (!normalized.targetPaceHint) {
+      payload.targetPaceHint = deleteField();
+    }
+    if (!normalized.notes) {
+      payload.notes = deleteField();
+    }
+  }
+
+  const path = `teamWorkouts/${safeId}`;
+  try {
+    if (isNew) {
+      await setDoc(doc(db, 'teamWorkouts', safeId), payload);
+    } else {
+      await setDoc(doc(db, 'teamWorkouts', safeId), payload, { merge: true });
+    }
+  } catch (error) {
+    handleFirestoreError(error, isNew ? OperationType.CREATE : OperationType.UPDATE, path);
+  }
+  return normalized;
+}
+
+export async function teacherDeleteTeamWorkout(workout: PlannedTeamWorkout): Promise<void> {
+  const safeId = sanitizeDocId(workout.id);
+  const path = `teamWorkouts/${safeId}`;
+  try {
+    await deleteDoc(doc(db, 'teamWorkouts', safeId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export async function teacherBulkCompleteWorkout(
+  teacher: TeacherRecord,
+  workout: PlannedTeamWorkout,
+  targetStudents: UserProfile[],
+  existingRuns: RunRecord[]
+): Promise<{ createdRuns: RunRecord[]; skippedCount: number; updatedWorkout: PlannedTeamWorkout }> {
+  if (teacher.status !== 'active') {
+    throw new Error('Your teacher account is suspended.');
+  }
+
+  const { createdRuns, skippedUserIds, updatedWorkout } = buildBulkTeamWorkoutRuns(
+    workout,
+    targetStudents,
+    existingRuns
+  );
+
+  for (let i = 0; i < createdRuns.length; i += 400) {
+    const chunk = createdRuns.slice(i, i + 400);
+    const batch = writeBatch(db);
+    chunk.forEach((run) => {
+      const safeRunId = sanitizeDocId(run.id);
+      const cleanRun = cleanObjectForFirestore({
+        ...run,
+        id: safeRunId,
+        teamCode: teacher.inviteCode,
+      });
+      batch.set(doc(db, 'runs', safeRunId), cleanRun, { merge: true });
+    });
+    try {
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'runs (bulk team workout)');
+    }
+  }
+
+  const savedWorkout = await teacherSaveTeamWorkout(teacher, updatedWorkout, false);
+
+  return {
+    createdRuns,
+    skippedCount: skippedUserIds.length,
+    updatedWorkout: savedWorkout,
+  };
+}
+
+export async function teacherBatchUpdateStudentGoals(
+  teacher: TeacherRecord,
+  modifiedProfiles: UserProfile[]
+): Promise<UserProfile[]> {
+  if (teacher.status !== 'active') {
+    throw new Error('Your teacher account is suspended.');
+  }
+  const results: UserProfile[] = [];
+  for (const profile of modifiedProfiles) {
+    const saved = await teacherUpdateStudentProfile(teacher, profile);
+    results.push(saved);
+  }
+  return results;
 }

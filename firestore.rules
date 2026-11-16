@@ -37,6 +37,12 @@ service cloud.firestore {
       return get(teacherPath()).data;
     }
 
+    function isTeamMember(teamCode) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('teamCode', '') == teamCode;
+    }
+
     function incoming() {
       return request.resource.data;
     }
@@ -136,8 +142,36 @@ service cloud.firestore {
         && (!('restDurationSeconds' in data) || (data.restDurationSeconds is number))
         && (!('totalRestSeconds' in data) || (data.totalRestSeconds is number))
         && (!('intervalDetails' in data) || (data.intervalDetails is map))
+        && (!('plannedWorkoutId' in data) || (data.plannedWorkoutId is string && data.plannedWorkoutId.size() <= 128))
         && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64))
         && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    function isValidTeamWorkout(data) {
+      return data.keys().hasAll([
+          'id', 'teamCode', 'coachEmail', 'date', 'title', 'runType',
+          'distanceKm', 'durationSeconds', 'completedUserIds', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'teamCode', 'coachEmail', 'date', 'title', 'runType',
+          'distanceKm', 'durationSeconds', 'targetPaceHint', 'notes',
+          'completedUserIds', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidInviteCode(data.teamCode)
+        && data.coachEmail is string && data.coachEmail.size() <= 256
+        && data.date is string && data.date.size() <= 32
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 150
+        && data.runType in ['Aerobic', 'Interval Training', '6K Time Trial', 'Time Trial', 'Tempo', 'Long Run', 'Race', 'Easy', 'Intervals', 'Recovery', 'Hill Repeats', 'Hill Run']
+        && data.distanceKm is number && data.distanceKm > 0 && data.distanceKm <= 500
+        && data.durationSeconds is number && data.durationSeconds >= 0 && data.durationSeconds <= 86400
+        && (!('targetPaceHint' in data) || (data.targetPaceHint is string && data.targetPaceHint.size() <= 80))
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000))
+        && data.completedUserIds is list
+        && data.completedUserIds.size() <= 500
+        && (data.completedUserIds.size() == 0 || data.completedUserIds[0] is string)
+        && data.createdAt is string && data.createdAt.size() <= 64
+        && data.updatedAt is string && data.updatedAt.size() <= 64;
     }
 
     function isValidTeacherRecord(data) {
@@ -463,6 +497,37 @@ service cloud.firestore {
         && isValidAdminLog(incoming());
       allow update: if false;
       allow delete: if isAdmin() && isValidId(logId);
+    }
+
+    // Coach Planned Team Workouts: /teamWorkouts/{workoutId}
+    match /teamWorkouts/{workoutId} {
+      allow get: if isValidId(workoutId) && (
+        isAdmin()
+        || (isActiveTeacher() && existing().teamCode == myTeacherDoc().inviteCode)
+        || isTeamMember(existing().teamCode)
+      );
+      allow list: if isAdmin()
+        || (isActiveTeacher() && resource.data.teamCode == myTeacherDoc().inviteCode)
+        || isTeamMember(resource.data.teamCode);
+      allow create: if isValidId(workoutId)
+        && incoming().id == workoutId
+        && isValidTeamWorkout(incoming())
+        && (
+          isAdmin()
+          || (isActiveTeacher() && incoming().teamCode == myTeacherDoc().inviteCode)
+        );
+      allow update: if isValidId(workoutId)
+        && isValidTeamWorkout(incoming())
+        && incoming().id == existing().id
+        && incoming().teamCode == existing().teamCode
+        && (
+          isAdmin()
+          || (isActiveTeacher() && existing().teamCode == myTeacherDoc().inviteCode)
+        );
+      allow delete: if isValidId(workoutId) && (
+        isAdmin()
+        || (isActiveTeacher() && existing().teamCode == myTeacherDoc().inviteCode)
+      );
     }
   }
 }

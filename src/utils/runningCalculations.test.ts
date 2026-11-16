@@ -39,13 +39,16 @@ import {
   buildWeeklyDaySchedule,
   calculateRaceCountdown,
   resolveAccountSessionTransition,
+  buildTeamRunDocId,
+  buildBulkTeamWorkoutRuns,
+  applyBatchGoalPresetToProfiles,
 } from './runningCalculations';
 import {
   INITIAL_SAMPLE_RUNS,
   createPlaceholderRuns,
   isPlaceholderRun,
 } from '../data/sampleRuns';
-import { RunRecord } from '../types/running';
+import { RunRecord, PlannedTeamWorkout, UserProfile } from '../types/running';
 
 test('formatDuration and parseDuration roundtrip correctly', () => {
   assert.equal(formatDuration(1260), '21:00');
@@ -1046,6 +1049,118 @@ test('resolveAccountSessionTransition prevents cross-account cache leaks and tri
   assert.equal(guestUpgradeRes.guestRunsToMigrate[0].id, 'guest_real_1');
   assert.equal(guestUpgradeRes.guestRunsToMigrate[0].userId, 'uid_fresh_guest_upgrade');
 });
+
+test('buildBulkTeamWorkoutRuns generates idempotent team runs and computes personalized targets without duplicates', () => {
+  const workout: PlannedTeamWorkout = {
+    id: 'tw_100',
+    teamCode: 'DEMO2026',
+    coachEmail: 'coach@school.edu',
+    date: '2026-11-16',
+    title: '5K Tempo Loop',
+    runType: 'Tempo',
+    distanceKm: 5.0,
+    durationSeconds: 1200, // 20:00 (4:00/km)
+    targetPaceHint: '4:00 /km',
+    notes: 'Hold smooth form on second half',
+    completedUserIds: ['stu_a'],
+    createdAt: '2026-11-16T10:00:00Z',
+    updatedAt: '2026-11-16T10:00:00Z',
+  };
+
+  const students: UserProfile[] = [
+    {
+      id: 'stu_a',
+      email: 'a@school.edu',
+      displayName: 'Athlete A',
+      weeklyRunGoal: 4,
+      unitPreference: 'km',
+      targetDistanceKm: 6.0,
+    },
+    {
+      id: 'stu_b',
+      email: 'b@school.edu',
+      displayName: 'Athlete B',
+      weeklyRunGoal: 3,
+      unitPreference: 'km',
+      targetDistanceKm: 4.0,
+    },
+  ];
+
+  // Athlete A already logged this planned workout directly
+  const existingRuns: RunRecord[] = [
+    {
+      id: buildTeamRunDocId('tw_100', 'stu_a'),
+      userId: 'stu_a',
+      teamCode: 'DEMO2026',
+      date: '2026-11-16',
+      title: '5K Tempo Loop',
+      distanceKm: 5.0,
+      durationSeconds: 1180,
+      averagePaceSecPerKm: 236,
+      runType: 'Tempo',
+      source: 'manual',
+      plannedWorkoutId: 'tw_100',
+    },
+  ];
+
+  const res = buildBulkTeamWorkoutRuns(workout, students, existingRuns);
+
+  assert.equal(res.skippedUserIds.length, 1);
+  assert.equal(res.skippedUserIds[0], 'stu_a');
+  assert.equal(res.createdRuns.length, 1);
+  assert.equal(res.createdRuns[0].userId, 'stu_b');
+  assert.equal(res.createdRuns[0].id, buildTeamRunDocId('tw_100', 'stu_b'));
+  assert.equal(res.createdRuns[0].plannedWorkoutId, 'tw_100');
+  assert.equal(res.createdRuns[0].averagePaceSecPerKm, 240);
+  // Athlete B has 4K target so 5K in 20:00 projects to faster than 20:00 (< 1000s) for 4K
+  assert.ok((res.createdRuns[0].targetEquivalentSeconds || 0) < 1000);
+  assert.deepEqual(res.updatedWorkout.completedUserIds.sort(), ['stu_a', 'stu_b']);
+});
+
+test('applyBatchGoalPresetToProfiles updates only targeted athletes without clobbering unrelated fields', () => {
+  const roster: UserProfile[] = [
+    {
+      id: 'u1',
+      email: 'u1@school.edu',
+      displayName: 'Runner One',
+      weeklyRunGoal: 3,
+      unitPreference: 'km',
+      targetDistanceKm: 6.0,
+      target6kTimeSeconds: 1400,
+    },
+    {
+      id: 'u2',
+      email: 'u2@school.edu',
+      displayName: 'Runner Two',
+      weeklyRunGoal: 4,
+      unitPreference: 'miles',
+      targetDistanceKm: 5.0,
+      target6kTimeSeconds: 1200,
+    },
+  ];
+
+  const updated = applyBatchGoalPresetToProfiles(roster, new Set(['u2']), {
+    targetDistanceKm: 8.0,
+    targetGoalName: '8K Race',
+    weeklyRunGoal: 5,
+    targetGoalDate: '2026-12-01',
+  });
+
+  // u1 remains unchanged
+  assert.equal(updated[0].targetDistanceKm, 6.0);
+  assert.equal(updated[0].weeklyRunGoal, 3);
+  assert.equal(updated[0].targetGoalDate, undefined);
+
+  // u2 updated selectively while keeping existing target6kTimeSeconds and email
+  assert.equal(updated[1].email, 'u2@school.edu');
+  assert.equal(updated[1].unitPreference, 'miles');
+  assert.equal(updated[1].targetDistanceKm, 8.0);
+  assert.equal(updated[1].targetGoalName, '8K Race');
+  assert.equal(updated[1].weeklyRunGoal, 5);
+  assert.equal(updated[1].target6kTimeSeconds, 1200);
+  assert.equal(updated[1].targetGoalDate, '2026-12-01');
+});
+
 
 
 

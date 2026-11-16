@@ -79,6 +79,7 @@
         "repDistanceMeters": { "type": "number" },
         "restDurationSeconds": { "type": "number" },
         "totalRestSeconds": { "type": "number" },
+        "plannedWorkoutId": { "type": "string", "maxLength": 128 },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
@@ -187,6 +188,27 @@
         "createdAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "adminUid", "adminEmail", "action", "details", "createdAt"]
+    },
+    "PlannedTeamWorkout": {
+      "title": "PlannedTeamWorkout",
+      "description": "Scheduled team workout planned by a coach for athletes on their roster",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "teamCode": { "type": "string", "minLength": 6, "maxLength": 16, "pattern": "^[A-Z0-9]+$" },
+        "coachEmail": { "type": "string", "maxLength": 256 },
+        "date": { "type": "string", "maxLength": 32 },
+        "title": { "type": "string", "maxLength": 150 },
+        "runType": { "type": "string", "enum": ["Aerobic", "Interval Training", "6K Time Trial", "Time Trial", "Tempo", "Long Run", "Race", "Easy", "Intervals", "Recovery", "Hill Repeats", "Hill Run"] },
+        "distanceKm": { "type": "number" },
+        "durationSeconds": { "type": "number" },
+        "targetPaceHint": { "type": "string", "maxLength": 80 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "completedUserIds": { "type": "array", "items": { "type": "string", "maxLength": 128 } },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "teamCode", "coachEmail", "date", "title", "runType", "distanceKm", "durationSeconds", "completedUserIds", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -217,6 +239,10 @@
     "/adminLogs/{logId}": {
       "schema": "AdminAuditLog",
       "description": "Admin console action audit history"
+    },
+    "/teamWorkouts/{workoutId}": {
+      "schema": "PlannedTeamWorkout",
+      "description": "Scheduled team workouts planned by coaches with completion tracking"
     }
   }
 }

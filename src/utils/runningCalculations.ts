@@ -1,4 +1,12 @@
-import { RunRecord, UserProfile, WeeklyStat, AdherenceSummary, RunType, DuplicateRunMatch } from '../types/running';
+import {
+  RunRecord,
+  UserProfile,
+  WeeklyStat,
+  AdherenceSummary,
+  RunType,
+  DuplicateRunMatch,
+  PlannedTeamWorkout,
+} from '../types/running';
 import { YRAA_DIVISIONS, YraaDivisionData, YraaDivisionId } from '../data/yraaBenchmarks';
 
 export const KM_TO_MILES = 0.621371;
@@ -4218,6 +4226,140 @@ export function resolveAccountSessionTransition(
     guestRunsToMigrate,
     shouldOpenSetup,
   };
+}
+
+export interface BulkTeamWorkoutResult {
+  createdRuns: RunRecord[];
+  skippedUserIds: string[];
+  updatedWorkout: PlannedTeamWorkout;
+}
+
+export function buildTeamRunDocId(workoutId: string, studentId: string): string {
+  return `teamrun_${workoutId}_${studentId}`
+    .replace(/[^a-zA-Z0-9_\-\.:]/g, '_')
+    .slice(0, 120);
+}
+
+export function buildBulkTeamWorkoutRuns(
+  workout: PlannedTeamWorkout,
+  targetStudents: UserProfile[],
+  existingRuns: RunRecord[]
+): BulkTeamWorkoutResult {
+  const now = new Date().toISOString();
+  const safeDistKm = Math.max(0.1, Math.min(500, Number(workout.distanceKm) || 1));
+  const effectiveDuration =
+    workout.durationSeconds && workout.durationSeconds > 0
+      ? Math.round(workout.durationSeconds)
+      : Math.max(60, Math.round(safeDistKm * 300));
+  const avgPace = Math.round(calculatePaceSecPerKm(safeDistKm, effectiveDuration));
+  const best6k = calculate6kEquivalent(safeDistKm, effectiveDuration);
+
+  const noteParts = [workout.targetPaceHint?.trim(), workout.notes?.trim()].filter(
+    (v): v is string => Boolean(v)
+  );
+  const combinedNotes = noteParts.length > 0 ? noteParts.join(' · ').slice(0, 1000) : 'Team workout logged by coach';
+
+  const createdRuns: RunRecord[] = [];
+  const skippedUserIds: string[] = [];
+  const nextCompletedSet = new Set<string>(workout.completedUserIds || []);
+
+  targetStudents.forEach((student) => {
+    const deterministicId = buildTeamRunDocId(workout.id, student.id);
+    const alreadyLogged = existingRuns.some(
+      (r) =>
+        r.userId === student.id &&
+        (r.id === deterministicId || r.plannedWorkoutId === workout.id)
+    );
+
+    nextCompletedSet.add(student.id);
+
+    if (alreadyLogged) {
+      skippedUserIds.push(student.id);
+      return;
+    }
+
+    const targetDist = student.targetDistanceKm && student.targetDistanceKm > 0 ? student.targetDistanceKm : 6.0;
+    createdRuns.push({
+      id: deterministicId,
+      userId: student.id,
+      teamCode: workout.teamCode,
+      date: workout.date || formatLocalDateString(new Date()),
+      title: (workout.title || `${workout.runType} Team Workout`).slice(0, 150),
+      distanceKm: Number(safeDistKm.toFixed(2)),
+      durationSeconds: effectiveDuration,
+      averagePaceSecPerKm: avgPace,
+      best6kTimeSeconds: best6k,
+      targetEquivalentSeconds: calculateTargetDistanceEquivalent(safeDistKm, effectiveDuration, targetDist),
+      runType: workout.runType,
+      source: 'manual',
+      plannedWorkoutId: workout.id,
+      notes: combinedNotes,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
+  return {
+    createdRuns,
+    skippedUserIds,
+    updatedWorkout: {
+      ...workout,
+      completedUserIds: Array.from(nextCompletedSet).slice(0, 500),
+      updatedAt: now,
+    },
+  };
+}
+
+export interface BatchGoalPreset {
+  targetDistanceKm?: number;
+  targetGoalName?: string;
+  target6kTimeSeconds?: number;
+  weeklyRunGoal?: number;
+  weeklyDistanceGoalKm?: number;
+  targetGoalDate?: string;
+  yraaDivision?: UserProfile['yraaDivision'];
+  athleteLevel?: UserProfile['athleteLevel'];
+}
+
+export function applyBatchGoalPresetToProfiles(
+  profiles: UserProfile[],
+  targetUserIds: Set<string>,
+  preset: BatchGoalPreset
+): UserProfile[] {
+  const now = new Date().toISOString();
+  return profiles.map((p) => {
+    if (!targetUserIds.has(p.id)) return p;
+    const nextDist = preset.targetDistanceKm !== undefined ? preset.targetDistanceKm : p.targetDistanceKm;
+    const nextGoalName =
+      preset.targetGoalName !== undefined
+        ? preset.targetGoalName
+        : preset.targetDistanceKm !== undefined
+        ? `${preset.targetDistanceKm}K Race`
+        : p.targetGoalName;
+    const nextTargetTime =
+      preset.target6kTimeSeconds !== undefined && preset.target6kTimeSeconds > 0
+        ? preset.target6kTimeSeconds
+        : p.target6kTimeSeconds;
+
+    return {
+      ...p,
+      ...(nextDist !== undefined ? { targetDistanceKm: nextDist } : {}),
+      ...(nextGoalName !== undefined ? { targetGoalName: nextGoalName } : {}),
+      ...(nextTargetTime !== undefined
+        ? { target6kTimeSeconds: nextTargetTime, hasCustomTarget: true }
+        : {}),
+      ...(preset.weeklyRunGoal !== undefined
+        ? { weeklyRunGoal: Math.min(14, Math.max(1, Math.round(preset.weeklyRunGoal))) }
+        : {}),
+      ...(preset.weeklyDistanceGoalKm !== undefined
+        ? { weeklyDistanceGoalKm: Math.min(500, Math.max(0, preset.weeklyDistanceGoalKm)) }
+        : {}),
+      ...(preset.targetGoalDate !== undefined ? { targetGoalDate: preset.targetGoalDate || undefined } : {}),
+      ...(preset.yraaDivision !== undefined ? { yraaDivision: preset.yraaDivision } : {}),
+      ...(preset.athleteLevel !== undefined ? { athleteLevel: preset.athleteLevel } : {}),
+      updatedAt: now,
+    };
+  });
 }
 
 
